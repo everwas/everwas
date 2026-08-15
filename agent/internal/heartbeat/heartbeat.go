@@ -26,14 +26,21 @@ type beat struct {
 	Seq             uint64 `json:"seq"`
 }
 
+// ScheduleVersionFunc reports the schedule version the agent currently has
+// cached, so the server can tell which agents are running a stale schedule.
+type ScheduleVersionFunc func() int
+
 // Run publishes heartbeats until ctx is cancelled. The first beat goes out
 // immediately so the server sees the agent online without a 30 s wait.
-func Run(ctx context.Context, nc *nats.Conn, agentID, version string, log *slog.Logger) error {
+func Run(ctx context.Context, nc *nats.Conn, agentID, version string, schedVersion ScheduleVersionFunc, log *slog.Logger) error {
+	if schedVersion == nil {
+		schedVersion = func() int { return 0 }
+	}
 	start := time.Now()
 	var seq uint64
 	for {
 		seq++
-		if err := publish(nc, agentID, version, start, seq); err != nil {
+		if err := publish(nc, agentID, version, start, seq, schedVersion()); err != nil {
 			log.Warn("heartbeat publish failed", "seq", seq, "err", err)
 		}
 		select {
@@ -44,11 +51,12 @@ func Run(ctx context.Context, nc *nats.Conn, agentID, version string, log *slog.
 	}
 }
 
-func publish(nc *nats.Conn, agentID, version string, start time.Time, seq uint64) error {
+func publish(nc *nats.Conn, agentID, version string, start time.Time, seq uint64, schedVersion int) error {
 	env, err := wire.NewEnvelope("heartbeat", agentID, wire.NewMsgID(), beat{
-		Version: version,
-		UptimeS: int64(time.Since(start).Seconds()),
-		Seq:     seq,
+		Version:         version,
+		UptimeS:         int64(time.Since(start).Seconds()),
+		ScheduleVersion: schedVersion,
+		Seq:             seq,
 	})
 	if err != nil {
 		return err

@@ -67,15 +67,37 @@ def shell_resize(agent_id: str, session_id: str) -> str:
 # --- auth-callout permission sets ---
 
 
+def agent_durable(agent_id: str) -> str:
+    """Durable consumer name the agent binds on the JOBS stream."""
+    return f"agent-{agent_id}"
+
+
 def agent_permissions(agent_id: str) -> dict[str, list[str]]:
-    """Subject permissions pinned into the user JWT issued by the auth callout."""
+    """Subject permissions pinned into the user JWT issued by the auth callout.
+
+    Beyond its own namespace an agent needs a keyhole into the JetStream API:
+    enough to bind and pull from ITS OWN durable consumer on JOBS, and to ack.
+    Every JS subject below is scoped to this agent's durable name — an agent
+    cannot touch another agent's consumer, nor any other stream.
+    """
+    durable = agent_durable(agent_id)
     return {
-        "publish": [f"agents.{agent_id}.>", "_INBOX.>"],
+        "publish": [
+            f"agents.{agent_id}.>",
+            "_INBOX.>",
+            "$JS.API.INFO",
+            f"$JS.API.CONSUMER.INFO.JOBS.{durable}",
+            f"$JS.API.CONSUMER.CREATE.JOBS.{durable}",
+            f"$JS.API.CONSUMER.CREATE.JOBS.{durable}.>",
+            f"$JS.API.CONSUMER.MSG.NEXT.JOBS.{durable}",
+            "$JS.ACK.>",
+        ],
         "subscribe": [
             f"cmd.{agent_id}.>",
             f"jobs.{agent_id}",
             f"agents.{agent_id}.shell.*.in",
             f"agents.{agent_id}.shell.*.rsz",
+            f"agents.{agent_id}.shell.*.ctl",
             "_INBOX.>",
         ],
     }

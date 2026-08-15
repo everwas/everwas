@@ -1,4 +1,4 @@
-// Package agentcore supervises the periodic publishers. Each task runs in its
+// Package agentcore supervises the agent's modules. Each task runs in its
 // own goroutine with panic recovery; a task that dies is restarted with
 // exponential backoff, and everything stops cleanly on ctx cancel.
 package agentcore
@@ -13,8 +13,13 @@ import (
 
 	"github.com/nats-io/nats.go"
 
+	"github.com/openrmm/agent/internal/audit"
 	"github.com/openrmm/agent/internal/heartbeat"
 	"github.com/openrmm/agent/internal/inventory"
+	"github.com/openrmm/agent/internal/jobs"
+	"github.com/openrmm/agent/internal/sched"
+	"github.com/openrmm/agent/internal/scripts"
+	"github.com/openrmm/agent/internal/shell"
 	"github.com/openrmm/agent/internal/telemetry"
 )
 
@@ -23,12 +28,13 @@ const (
 	maxBackoff     = time.Minute
 )
 
-// Supervisor wires the publishers to a shared NATS connection.
+// Supervisor wires the modules to a shared NATS connection.
 type Supervisor struct {
-	NC      *nats.Conn
-	AgentID string
-	Version string
-	Log     *slog.Logger
+	NC       *nats.Conn
+	AgentID  string
+	Version  string
+	StateDir string
+	Log      *slog.Logger
 
 	wg sync.WaitGroup
 }
@@ -38,18 +44,46 @@ type task struct {
 	run  func(context.Context, *slog.Logger) error
 }
 
-// Start launches heartbeat, telemetry, and inventory. It returns immediately;
+// Start builds the modules and launches every task. It returns immediately;
 // cancel ctx to stop, then Wait for the goroutines to drain.
 func (s *Supervisor) Start(ctx context.Context) {
+	aud := audit.New(s.NC, s.AgentID, s.Log)
+	shells := shell.New(s.NC, s.AgentID, aud, s.Log)
+	runner := scripts.NewRunner(s.NC, s.AgentID, s.StateDir, aud, s.Log)
+
+	jobsMod := &jobs.Module{
+		NC:      s.NC,
+		AgentID: s.AgentID,
+		Version: s.Version,
+		Log:     s.Log,
+		Shell:   shells,
+		Scripts: runner,
+		Audit:   aud,
+		RefreshInventory: func(ctx context.Context) error {
+			return inventory.RefreshNow(ctx, s.NC, s.AgentID, s.Log)
+		},
+	}
+	scheduler := sched.New(s.AgentID, s.StateDir, jobsMod.RunScheduled, aud, s.Log)
+	jobsMod.Sched = scheduler
+
 	tasks := []task{
 		{"heartbeat", func(ctx context.Context, log *slog.Logger) error {
-			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version, log)
+			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version, scheduler.Version, log)
 		}},
 		{"telemetry", func(ctx context.Context, log *slog.Logger) error {
 			return telemetry.Run(ctx, s.NC, s.AgentID, log)
 		}},
 		{"inventory", func(ctx context.Context, log *slog.Logger) error {
 			return inventory.Run(ctx, s.NC, s.AgentID, log)
+		}},
+		{"shell", func(ctx context.Context, _ *slog.Logger) error {
+			return shells.Run(ctx)
+		}},
+		{"jobs", func(ctx context.Context, _ *slog.Logger) error {
+			return jobsMod.Run(ctx)
+		}},
+		{"sched", func(ctx context.Context, _ *slog.Logger) error {
+			return scheduler.Run(ctx)
 		}},
 	}
 	for _, t := range tasks {

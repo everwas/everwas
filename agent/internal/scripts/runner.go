@@ -85,6 +85,10 @@ type Runner struct {
 	Audit    *audit.Publisher
 	Log      *slog.Logger
 
+	// emit publishes one output chunk. Tests replace it to observe framing
+	// without standing up a NATS server.
+	emit func(Chunk) error
+
 	mu      sync.Mutex
 	running map[string]*handle
 }
@@ -113,7 +117,7 @@ func (r *Runner) Run(ctx context.Context, job JobSpec, publish ProgressFunc) Res
 		publish = func(int, string, string) {}
 	}
 	started := time.Now()
-	sink := newChunkSink(job.JobID, r.publishChunk)
+	sink := newChunkSink(job.JobID, r.chunkOut)
 
 	res := r.execute(ctx, job, publish, sink)
 	res.DurationMS = time.Since(started).Milliseconds()
@@ -338,6 +342,14 @@ func (b *reasonBox) get() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.reason
+}
+
+// chunkOut is the sink's emit hook, indirected so tests can capture output.
+func (r *Runner) chunkOut(c Chunk) error {
+	if r.emit != nil {
+		return r.emit(c)
+	}
+	return r.publishChunk(c)
 }
 
 func (r *Runner) warn(msg string, args ...any) {

@@ -7,7 +7,9 @@ package inventory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -25,22 +27,9 @@ type collector struct {
 // Run publishes all snapshot kinds immediately, then every 30 minutes, until
 // ctx is cancelled.
 func Run(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Logger) error {
-	collectors := []collector{
-		{"hardware", collectHardware},
-		{"software", collectSoftware},
-		{"processes", collectProcesses},
-		{"services", collectServices},
-	}
 	for {
-		for _, c := range collectors {
-			payload, err := c.collect(ctx)
-			if err != nil {
-				log.Warn("inventory collect failed", "kind", c.kind, "err", err)
-				continue
-			}
-			if err := publishSnapshot(nc, agentID, c.kind, payload); err != nil {
-				log.Warn("inventory publish failed", "kind", c.kind, "err", err)
-			}
+		if err := RefreshNow(ctx, nc, agentID, log); err != nil {
+			log.Warn("inventory refresh incomplete", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -48,6 +37,36 @@ func Run(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Logger) e
 		case <-time.After(interval):
 		}
 	}
+}
+
+// RefreshNow publishes one full round of snapshots. It is also the
+// inventory.refresh job handler, so an operator can force a snapshot
+// without waiting out the 30 minute cycle. A collector that fails is logged
+// and skipped; the error it returns names the kinds that did not publish.
+func RefreshNow(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Logger) error {
+	collectors := []collector{
+		{"hardware", collectHardware},
+		{"software", collectSoftware},
+		{"processes", collectProcesses},
+		{"services", collectServices},
+	}
+	var failed []string
+	for _, c := range collectors {
+		payload, err := c.collect(ctx)
+		if err != nil {
+			log.Warn("inventory collect failed", "kind", c.kind, "err", err)
+			failed = append(failed, c.kind)
+			continue
+		}
+		if err := publishSnapshot(nc, agentID, c.kind, payload); err != nil {
+			log.Warn("inventory publish failed", "kind", c.kind, "err", err)
+			failed = append(failed, c.kind)
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("inventory kinds failed: %s", strings.Join(failed, ", "))
+	}
+	return nil
 }
 
 // publishSnapshot hashes the payload, folds snapshot_hash into the data

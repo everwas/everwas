@@ -17,13 +17,28 @@ additive changes (new subjects, new optional fields) are always allowed.
 
 ```
 publish:   agents.{agent_id}.>   _INBOX.>
+           $JS.API.INFO
+           $JS.API.CONSUMER.INFO.JOBS.agent-{agent_id}
+           $JS.API.CONSUMER.CREATE.JOBS.agent-{agent_id}
+           $JS.API.CONSUMER.CREATE.JOBS.agent-{agent_id}.>
+           $JS.API.CONSUMER.MSG.NEXT.JOBS.agent-{agent_id}
+           $JS.ACK.>
 subscribe: cmd.{agent_id}.>   jobs.{agent_id}
            agents.{agent_id}.shell.*.in   agents.{agent_id}.shell.*.rsz
+           agents.{agent_id}.shell.*.ctl
            _INBOX.>
 ```
 
-An agent cannot publish or subscribe outside its own namespace. The M1
-conformance test asserts a foreign-subject publish is refused.
+An agent cannot publish or subscribe outside its own namespace, except for a
+keyhole into the JetStream API scoped to **its own** durable consumer
+(`agent-{agent_id}`) on the JOBS stream — needed to bind, pull, and ack
+durable job delivery. The M1 conformance test asserts a foreign-subject
+publish is refused.
+
+`agents.{id}.shell.{sid}.ctl` is **bidirectional**: the server publishes
+`{"ack": n}` and `{"event":"ping"}`; the agent publishes `{"event":"closed"...}`
+and `{"event":"gap"}`. Each side ignores shapes it does not own. Control
+messages on `.ctl` are **bare JSON, not enveloped**.
 
 ## Envelope
 

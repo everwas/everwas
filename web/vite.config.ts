@@ -17,6 +17,7 @@ export default defineConfig({
       "/api": {
         target: process.env.OPENRMM_API_URL ?? "http://localhost:8000",
         changeOrigin: true,
+        ws: true, // the remote shell rides a WebSocket through this proxy
       },
     },
   },

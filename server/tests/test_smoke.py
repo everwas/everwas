@@ -39,10 +39,21 @@ async def test_me_requires_auth(app):
 
 
 def test_agent_permissions_are_scoped():
+    """Every grant must name this agent, except the shared JS/inbox plumbing."""
     perms = subjects.agent_permissions("abc")
+    shared = {"_INBOX.>", "$JS.API.INFO", "$JS.ACK.>"}
     assert "agents.abc.>" in perms["publish"]
-    assert all("abc" in s or s.startswith("_INBOX") for s in perms["publish"])
-    assert all("abc" in s or s.startswith("_INBOX") for s in perms["subscribe"])
+    for subject in perms["publish"] + perms["subscribe"]:
+        assert subject in shared or "abc" in subject, subject
+
+
+def test_agent_jetstream_grants_are_own_durable_only():
+    perms = subjects.agent_permissions("abc")
+    js = [s for s in perms["publish"] if s.startswith("$JS.API.CONSUMER")]
+    assert js, "agent needs JS consumer access for durable job delivery"
+    # never a wildcard over other agents' consumers
+    assert all("agent-abc" in s for s in js)
+    assert not any(s.endswith("JOBS.>") or s.endswith("JOBS.*") for s in js)
 
 
 def test_subject_builders_match_contract():

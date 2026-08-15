@@ -75,6 +75,26 @@ func (r *Runner) publishResult(jobID string, res Result) {
 	}
 }
 
+// PublishResult publishes a terminal result for work the runner did not
+// execute itself (inventory refresh, unsupported job kinds).
+func (r *Runner) PublishResult(jobID string, res Result) {
+	r.publishResult(jobID, res)
+}
+
+// PublishStderr sends one stderr chunk and both EOF markers, so a job that
+// never spawned a process still terminates its output stream cleanly.
+func (r *Runner) PublishStderr(jobID, text string) {
+	sink := newChunkSink(jobID, r.chunkOut)
+	if err := sink.write(StreamStderr, []byte(text)); err != nil {
+		r.warn("job stderr publish", "job_id", jobID, "err", err)
+	}
+	for _, stream := range []string{StreamStdout, StreamStderr} {
+		if err := sink.eof(stream); err != nil {
+			r.warn("job output eof", "job_id", jobID, "err", err)
+		}
+	}
+}
+
 // envelope marshals data and returns the bytes plus the msg_id, so callers
 // can mirror it into the Nats-Msg-Id header for JetStream dedup.
 func (r *Runner) envelope(msgType string, data any) ([]byte, string, error) {

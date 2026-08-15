@@ -85,7 +85,19 @@ func cmdRun() int {
 	}
 	log.Info("agent started", "agent_id", cfg.AgentID, "version", Version, "nats_url", cfg.NATSURL)
 
-	sup := &agentcore.Supervisor{NC: nc, AgentID: cfg.AgentID, Version: Version, Log: log}
+	stateDir, err := config.Dir()
+	if err != nil {
+		log.Error("resolve state dir", "err", err)
+		return 1
+	}
+
+	sup := &agentcore.Supervisor{
+		NC:       nc,
+		AgentID:  cfg.AgentID,
+		Version:  Version,
+		StateDir: stateDir,
+		Log:      log,
+	}
 	sup.Start(ctx)
 
 	<-ctx.Done()
