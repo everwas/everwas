@@ -17,6 +17,16 @@ from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import AuditLog
 from openrmm.models.device import AgentCredential, Device, EnrollmentToken, Site
 from openrmm.models.facts import FACT_TABLES, FactHardware, FactPatchState, FactSoftware
+from openrmm.models.patch import (
+    ApprovalDecision,
+    PatchApproval,
+    PatchCatalog,
+    PatchJob,
+    PatchJobStatus,
+    PatchPolicy,
+    PatchSeverity,
+    RebootPolicy,
+)
 from openrmm.models.script import (
     RunStatus,
     RunTrigger,
@@ -58,6 +68,14 @@ __all__ = [
     "FactHardware",
     "FactPatchState",
     "FactSoftware",
+    "ApprovalDecision",
+    "PatchApproval",
+    "PatchCatalog",
+    "PatchJob",
+    "PatchJobStatus",
+    "PatchPolicy",
+    "PatchSeverity",
+    "RebootPolicy",
     "RunStatus",
     "RunTrigger",
     "Script",

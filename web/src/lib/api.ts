@@ -132,6 +132,37 @@ export type Channel = {
   enabled: boolean
 }
 
+export type PatchSeverity = "critical" | "important" | "moderate" | "low" | "unknown"
+
+export type DevicePatch = {
+  id: string
+  os_family: string
+  external_id: string
+  title: string
+  kind: string
+  severity: PatchSeverity
+  kb_ids: string[]
+  cves: string[]
+  size_bytes: number | null
+  reboot_likely: boolean
+  approved: boolean
+  unsupported: boolean
+  detail: string
+}
+
+export type PatchJob = {
+  id: string
+  device_id: string
+  external_ids: string[]
+  status: "queued" | "running" | "succeeded" | "failed" | "partial" | "cancelled"
+  installed: string[]
+  failed: Record<string, string>
+  reboot_required: boolean
+  requested_by: string | null
+  queued_at: string
+  finished_at: string | null
+}
+
 export const api = {
   me: () => request<User>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
@@ -187,4 +218,21 @@ export const api = {
     request<{ id: string; status: string }>(`/api/v1/alerts/channels/${id}/test`, {
       method: "POST",
     }),
+
+  devicePatches: (deviceId: string) =>
+    request<DevicePatch[]>(`/api/v1/patches/device/${deviceId}`),
+  scanPatches: (deviceId: string) =>
+    request<{ job_id: string }>(`/api/v1/patches/scan/${deviceId}`, { method: "POST" }),
+  approvePatches: (patchIds: string[], deviceId: string | null, decision = "approved") =>
+    request<{ decided: number }>("/api/v1/patches/approve", {
+      method: "POST",
+      body: JSON.stringify({ patch_ids: patchIds, device_id: deviceId, decision }),
+    }),
+  deployPatches: (deviceId: string, externalIds: string[] = []) =>
+    request<PatchJob>("/api/v1/patches/deploy", {
+      method: "POST",
+      body: JSON.stringify({ device_id: deviceId, external_ids: externalIds }),
+    }),
+  patchJobs: (deviceId?: string) =>
+    request<PatchJob[]>(`/api/v1/patches/jobs${deviceId ? `?device_id=${deviceId}` : ""}`),
 }

@@ -71,11 +71,48 @@ async def apply_job_output(
         run.truncated = True
 
 
+async def _apply_patch_job_result(
+    db: AsyncSession, device_id: uuid.UUID, job_id: uuid.UUID, data: dict
+) -> bool:
+    """Patch jobs share the job_id namespace with script runs; try them too."""
+    from openrmm.models.patch import PatchJob, PatchJobStatus
+
+    job = (await db.execute(select(PatchJob).where(PatchJob.id == job_id))).scalar_one_or_none()
+    if job is None or job.device_id != device_id:
+        return False
+
+    installed = [str(i) for i in (data.get("installed") or [])]
+    failed = data.get("failed") or {}
+    job.installed = installed
+    job.failed = failed if isinstance(failed, dict) else {}
+    job.reboot_required = bool(data.get("reboot_required"))
+    job.finished_at = datetime.now(UTC)
+    if data.get("status") == "cancelled":
+        job.status = PatchJobStatus.cancelled
+    elif job.failed and installed:
+        job.status = PatchJobStatus.partial
+    elif job.failed:
+        job.status = PatchJobStatus.failed
+    else:
+        job.status = PatchJobStatus.succeeded
+    log.info(
+        "patch job finished",
+        job_id=str(job_id),
+        status=job.status.value,
+        installed=len(installed),
+        failed=len(job.failed),
+        reboot_required=job.reboot_required,
+    )
+    return True
+
+
 async def apply_job_result(
     db: AsyncSession, device_id: uuid.UUID, job_id: uuid.UUID, data: dict
 ) -> None:
     run = await _run_for(db, job_id, device_id)
     if run is None:
+        if await _apply_patch_job_result(db, device_id, job_id, data):
+            return
         log.warning("result for unknown run", job_id=str(job_id))
         return
     status = data.get("status", "failed")

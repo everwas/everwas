@@ -16,6 +16,7 @@ import { AlertsPage } from "@/pages/Alerts"
 import { DeviceDetailPage } from "@/pages/DeviceDetail"
 import { DevicesPage } from "@/pages/Devices"
 import { LoginPage } from "@/pages/Login"
+import { PatchesPage } from "@/pages/Patches"
 import { ScriptsPage } from "@/pages/Scripts"
 
 const nav = [
@@ -23,7 +24,7 @@ const nav = [
   { label: "Devices", icon: MonitorSmartphone, to: "/" },
   { label: "Alerts", icon: Activity, to: "/alerts" },
   { label: "Scripts", icon: TerminalSquare, to: "/scripts" },
-  { label: "Patches", icon: ShieldCheck, to: null },
+  { label: "Patches", icon: ShieldCheck, to: "/patches" },
   { label: "Audit", icon: ScrollText, to: null },
 ]
 
@@ -107,6 +108,7 @@ export default function App() {
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
           <Route path="/scripts" element={<ScriptsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/patches" element={<PatchesPage />} />
         </Routes>
       </main>
     </div>

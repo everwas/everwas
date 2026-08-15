@@ -74,6 +74,24 @@ async def apply_inventory(
 ) -> None:
     snapshot_hash = data.pop("snapshot_hash", "") if isinstance(data, dict) else ""
 
+    if kind == "patchstate":
+        # Also feed the catalog and any auto-approve policies before the facts
+        # are recorded, so the UI can resolve titles for what it shows.
+        from sqlalchemy import select
+
+        from openrmm.models.device import Device
+        from openrmm.services.patching import auto_approve_for_policies, upsert_catalog
+
+        device = (
+            await db.execute(select(Device).where(Device.id == device_id))
+        ).scalar_one_or_none()
+        patches = data.get("patches") or []
+        if device is not None and patches:
+            await upsert_catalog(db, device.os_family, patches)
+            approved = await auto_approve_for_policies(db, device, patches)
+            if approved:
+                log.info("patches auto-approved", device=device.hostname, count=approved)
+
     if kind in FACT_KINDS:
         result = await record_facts(
             db, kind, device_id, _facts_from(kind, data), observed_at=observed_at
