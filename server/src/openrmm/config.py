@@ -10,7 +10,13 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-insecure"
     database_url: str = "postgresql+asyncpg://openrmm:openrmm@localhost:5432/openrmm"
     nats_url: str = "nats://localhost:4222"
+    # what enrolled agents are told to dial (wss:// behind Caddy in prod)
+    nats_public_url: str = "nats://localhost:4222"
     nats_auth_seed: str = ""
+    # credentials the api/dispatcher use on the internal NATS connection
+    # (listed in nats.conf auth_users, so they bypass the callout)
+    nats_server_user: str = "server"
+    nats_server_password: str = ""
 
     session_ttl_hours: int = 24 * 7
     heartbeat_offline_after_s: int = 90

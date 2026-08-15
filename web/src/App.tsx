@@ -1,30 +1,42 @@
 import { useEffect, useState } from "react"
-import { Activity, LayoutGrid, MonitorSmartphone, ScrollText, ShieldCheck, TerminalSquare } from "lucide-react"
+import {
+  Activity,
+  LayoutGrid,
+  LogOut,
+  MonitorSmartphone,
+  ScrollText,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-type Health = { status: string; version: string }
+import { api, type User } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import { DevicesPage } from "@/pages/Devices"
+import { LoginPage } from "@/pages/Login"
 
 const nav = [
-  { label: "Overview", icon: LayoutGrid },
-  { label: "Devices", icon: MonitorSmartphone },
-  { label: "Alerts", icon: Activity },
-  { label: "Scripts", icon: TerminalSquare },
-  { label: "Patches", icon: ShieldCheck },
-  { label: "Audit", icon: ScrollText },
+  { label: "Overview", icon: LayoutGrid, enabled: false },
+  { label: "Devices", icon: MonitorSmartphone, enabled: true },
+  { label: "Alerts", icon: Activity, enabled: false },
+  { label: "Scripts", icon: TerminalSquare, enabled: false },
+  { label: "Patches", icon: ShieldCheck, enabled: false },
+  { label: "Audit", icon: ScrollText, enabled: false },
 ]
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null)
-  const [error, setError] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [checked, setChecked] = useState(false)
 
   useEffect(() => {
-    fetch("/api/v1/health")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setHealth)
-      .catch(() => setError(true))
+    api
+      .me()
+      .then(setUser)
+      .catch(() => {})
+      .finally(() => setChecked(true))
   }, [])
+
+  if (!checked) return null
+  if (!user) return <LoginPage onLogin={setUser} />
 
   return (
     <div className="flex min-h-svh bg-background text-foreground">
@@ -33,46 +45,41 @@ export default function App() {
           <MonitorSmartphone className="size-5" />
           OpenRMM
         </div>
-        <nav className="flex flex-col gap-1 p-2">
-          {nav.map(({ label, icon: Icon }) => (
-            <a
+        <nav className="flex flex-1 flex-col gap-1 p-2">
+          {nav.map(({ label, icon: Icon, enabled }) => (
+            <span
               key={label}
-              href="#"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                label === "Devices"
+                  ? "bg-accent font-medium text-accent-foreground"
+                  : enabled
+                    ? "text-muted-foreground hover:bg-accent"
+                    : "cursor-default text-muted-foreground/50"
+              }`}
             >
               <Icon className="size-4" />
               {label}
-            </a>
+            </span>
           ))}
         </nav>
+        <div className="border-t p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-muted-foreground"
+            onClick={() => api.logout().then(() => setUser(null))}
+          >
+            <LogOut className="size-4" />
+            {user.email}
+          </Button>
+        </div>
       </aside>
 
       <main className="flex-1 p-6">
         <header className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Overview</h1>
-          {health ? (
-            <Badge variant="outline" className="gap-1.5">
-              <span className="size-2 rounded-full bg-emerald-500" />
-              server {health.version}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="gap-1.5">
-              <span className={`size-2 rounded-full ${error ? "bg-red-500" : "bg-muted-foreground"}`} />
-              {error ? "server unreachable" : "connecting"}
-            </Badge>
-          )}
+          <h1 className="text-xl font-semibold">Devices</h1>
         </header>
-
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle>Milestone 0</CardTitle>
-            <CardDescription>Skeleton stack is up.</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Next: agent enrollment and heartbeat (M1). Devices will appear here
-            once agents check in.
-          </CardContent>
-        </Card>
+        <DevicesPage />
       </main>
     </div>
   )

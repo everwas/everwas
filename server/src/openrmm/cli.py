@@ -45,5 +45,31 @@ def create_admin(email: str, password: str | None = None) -> None:
     typer.echo(f"admin {email}: {asyncio.run(run())}")
 
 
+@cli.command()
+def gen_enrollment_token(max_uses: int = 1, ttl_hours: int = 24, created_by: str = "cli") -> None:
+    """Mint a one-time (by default) agent enrollment token. Shown once."""
+    from openrmm.db.engine import session_scope
+    from openrmm.services.enrollment import mint_enrollment_token
+
+    async def run() -> str:
+        async with session_scope() as db:
+            _, token = await mint_enrollment_token(
+                db, max_uses=max_uses, ttl_hours=ttl_hours, created_by=created_by
+            )
+            return token
+
+    typer.echo(asyncio.run(run()))
+
+
+@cli.command()
+def gen_nats_keys() -> None:
+    """Generate the auth-callout account keypair. Put both values in .env."""
+    from openrmm.natsio.jwt import generate_account_keypair
+
+    seed, public = generate_account_keypair()
+    typer.echo(f"OPENRMM_NATS_AUTH_SEED={seed}")
+    typer.echo(f"OPENRMM_NATS_AUTH_ISSUER={public}")
+
+
 def main() -> None:
     cli()

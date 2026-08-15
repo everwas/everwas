@@ -17,6 +17,9 @@ services:
   openrmm-nats:
     image: nats:2.12-alpine
     command: ["-c", "/etc/nats/nats.conf"]
+    environment:
+      OPENRMM_NATS_AUTH_ISSUER: ${OPENRMM_NATS_AUTH_ISSUER:?run `openrmm gen-nats-keys`}
+      OPENRMM_NATS_SERVER_PASSWORD: ${OPENRMM_NATS_SERVER_PASSWORD:?set in .env}
     volumes:
       - ./docker/nats/nats.conf:/etc/nats/nats.conf:ro
       - openrmm-natsdata:/data
@@ -37,7 +40,9 @@ services:
       OPENRMM_SECRET_KEY: ${OPENRMM_SECRET_KEY:?set in .env}
       OPENRMM_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-openrmm}:${POSTGRES_PASSWORD}@openrmm-postgres:5432/${POSTGRES_DB:-openrmm}
       OPENRMM_NATS_URL: nats://openrmm-nats:4222
+      OPENRMM_NATS_PUBLIC_URL: ${OPENRMM_NATS_PUBLIC_URL:-nats://localhost:24222}
       OPENRMM_NATS_AUTH_SEED: ${OPENRMM_NATS_AUTH_SEED:-}
+      OPENRMM_NATS_SERVER_PASSWORD: ${OPENRMM_NATS_SERVER_PASSWORD:?set in .env}
     networks: [openrmm-internal]
     depends_on:
       openrmm-postgres:

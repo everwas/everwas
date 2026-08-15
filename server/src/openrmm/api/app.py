@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from openrmm import __version__
-from openrmm.api.v1 import auth, health
+from openrmm.api.v1 import agents, auth, devices, health
 from openrmm.db.engine import get_engine
 
 
@@ -24,6 +24,8 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+    app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
+    app.include_router(devices.router, prefix="/api/v1/devices", tags=["devices"])
     return app
 
 
