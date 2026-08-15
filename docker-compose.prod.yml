@@ -1,0 +1,36 @@
+# Prod overlay: caddy-docker-proxy labels on the external `caddy` network.
+# Web UI + API on one domain; NATS websocket for agents on the same domain
+# under /nats (Caddy proxies the websocket upgrade to the NATS listener).
+services:
+  openrmm-api:
+    restart: unless-stopped
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN:?set in .env}
+      caddy.@api.path: /api/*
+      caddy.reverse_proxy: "@api {{upstreams 8000}}"
+
+  openrmm-nats:
+    restart: unless-stopped
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN}
+      caddy.@nats.path: /nats
+      caddy.reverse_proxy_1: "@nats {{upstreams 8080}}"
+
+  openrmm-web:
+    restart: unless-stopped
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  openrmm-postgres:
+    restart: unless-stopped
+
+  openrmm-dispatcher:
+    restart: unless-stopped
+
+networks:
+  caddy:
+    external: true

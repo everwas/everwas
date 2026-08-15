@@ -1,0 +1,40 @@
+# Dev overlay: hot reload, published ports (host ports prefixed 2xxxx to avoid
+# clashing with other stacks on this machine), mailpit. `make dev` applies this.
+services:
+  openrmm-postgres:
+    ports:
+      - "127.0.0.1:25432:5432"
+
+  openrmm-nats:
+    command: ["-c", "/etc/nats/nats.conf", "-m", "8222"]
+    ports:
+      - "127.0.0.1:24222:4222"
+      - "127.0.0.1:28222:8222"
+
+  openrmm-api:
+    volumes:
+      - ./server/src:/app/src
+      - ./server/alembic:/app/alembic
+      - ./server/alembic.ini:/app/alembic.ini
+    ports:
+      - "127.0.0.1:28000:8000"
+
+  openrmm-dispatcher:
+    command: ["watchfiles", "--filter", "python", "openrmm-dispatcher", "/app/src"]
+    volumes:
+      - ./server/src:/app/src
+
+  openrmm-web:
+    environment:
+      OPENRMM_API_URL: http://openrmm-api:8000
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:25173:5173"
+
+  openrmm-mailpit:
+    image: axllent/mailpit:latest
+    networks: [openrmm-internal]
+    ports:
+      - "127.0.0.1:28025:8025"

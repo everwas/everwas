@@ -1,0 +1,54 @@
+[project]
+name = "openrmm"
+version = "2026.8.15"
+description = "Open-source remote monitoring and management — server"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    { name = "Ryan Malloy", email = "ryan@supported.systems" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "aiosmtplib>=5.1.2",
+    "alembic>=1.19.1",
+    "apscheduler>=3.11.3",
+    "asyncpg>=0.31.0",
+    "croniter>=6.2.4",
+    "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "nats-py>=2.15.0",
+    "nkeys>=0.2.1",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic[email]>=2.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0.52",
+    "structlog>=26.1.0",
+    "typer>=0.27.1",
+    "uvicorn[standard]>=0.52.3",
+]
+
+[project.scripts]
+openrmm = "openrmm.cli:main"
+openrmm-dispatcher = "openrmm.dispatcher.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.16.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
