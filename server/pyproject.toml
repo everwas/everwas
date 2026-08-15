@@ -31,6 +31,7 @@ dependencies = [
 openrmm = "openrmm.cli:main"
 openrmm-dispatcher = "openrmm.dispatcher.main:main"
 openrmm-stub-agent = "openrmm.devtools.stub_agent:cli"
+openrmm-fleet-sim = "openrmm.devtools.fleet_sim:cli"
 
 [build-system]
 requires = ["uv_build>=0.11.3,<0.12.0"]

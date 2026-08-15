@@ -3,16 +3,31 @@
 from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import AuditLog
 from openrmm.models.device import AgentCredential, Device, EnrollmentToken, Site
+from openrmm.models.facts import FACT_TABLES, FactHardware, FactPatchState, FactSoftware
 from openrmm.models.session import Session
+from openrmm.models.telemetry import (
+    DeviceSnapshot,
+    DeviceStatusLatest,
+    telemetry_disks,
+    telemetry_metrics,
+)
 from openrmm.models.user import User
 
 __all__ = [
+    "FACT_TABLES",
     "AgentCredential",
     "ApiKey",
     "AuditLog",
     "Device",
+    "DeviceSnapshot",
+    "DeviceStatusLatest",
     "EnrollmentToken",
+    "FactHardware",
+    "FactPatchState",
+    "FactSoftware",
     "Session",
     "Site",
     "User",
+    "telemetry_disks",
+    "telemetry_metrics",
 ]

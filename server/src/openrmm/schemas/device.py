@@ -19,3 +19,24 @@ class DeviceOut(BaseModel):
     enrolled_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DeviceDetailOut(DeviceOut):
+    cpu_pct: float | None = None
+    mem_pct: float | None = None
+    worst_disk_pct: float | None = None
+
+
+class TelemetryPoint(BaseModel):
+    ts: datetime
+    cpu_pct: float | None
+    mem_pct: float | None
+    load1: float | None
+
+
+class FactOut(BaseModel):
+    fact_key: str
+    payload: dict
+    valid_from: datetime | None
+    valid_to: datetime | None
+    source: str

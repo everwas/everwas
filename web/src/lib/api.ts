@@ -11,6 +11,30 @@ export type Device = {
   enrolled_at: string
 }
 
+export type DeviceDetail = Device & {
+  cpu_pct: number | null
+  mem_pct: number | null
+  worst_disk_pct: number | null
+}
+
+export type TelemetryPoint = {
+  ts: string
+  cpu_pct: number | null
+  mem_pct: number | null
+  load1: number | null
+}
+
+export type Fact = {
+  fact_key: string
+  payload: Record<string, unknown>
+  valid_from: string | null
+  valid_to: string | null
+  source: string
+}
+
+export type FactKind = "hardware" | "software" | "patchstate"
+export type SnapshotKind = "processes" | "services"
+
 export type User = { id: string; email: string; role: string }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -40,4 +64,16 @@ export const api = {
     }),
   logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
   devices: () => request<Device[]>("/api/v1/devices"),
+  device: (id: string) => request<DeviceDetail>(`/api/v1/devices/${id}`),
+  telemetry: (id: string, hours = 24) =>
+    request<TelemetryPoint[]>(`/api/v1/devices/${id}/telemetry?hours=${hours}`),
+  facts: (id: string, kind: FactKind, asOf?: Date) => {
+    const params = new URLSearchParams({ kind })
+    if (asOf) params.set("as_of", asOf.toISOString())
+    return request<Fact[]>(`/api/v1/devices/${id}/facts?${params}`)
+  },
+  snapshot: (id: string, kind: SnapshotKind) =>
+    request<{ payload: Record<string, unknown> | null; updated_at: string | null }>(
+      `/api/v1/devices/${id}/snapshots/${kind}`,
+    ),
 }

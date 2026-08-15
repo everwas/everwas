@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { Apple, AppWindow, Terminal } from "lucide-react"
 
 import { api, type Device } from "@/lib/api"
@@ -45,6 +46,7 @@ function lastSeen(iso: string | null): string {
 }
 
 export function DevicesPage() {
+  const navigate = useNavigate()
   const [devices, setDevices] = useState<Device[] | null>(null)
 
   useEffect(() => {
@@ -88,7 +90,11 @@ export function DevicesPage() {
         {devices.map((d) => {
           const Os = osIcon[d.os_family]
           return (
-            <TableRow key={d.id}>
+            <TableRow
+              key={d.id}
+              className="cursor-pointer"
+              onClick={() => navigate(`/devices/${d.id}`)}
+            >
               <TableCell className="font-medium">{d.hostname}</TableCell>
               <TableCell>
                 <StatusPill status={d.status} />

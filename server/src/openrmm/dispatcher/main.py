@@ -50,6 +50,19 @@ async def offline_sweep(settings: Settings) -> None:
             log.exception("offline sweep failed")
 
 
+async def partition_maintenance(settings: Settings) -> None:
+    from openrmm.services.partitions import ensure_partitions
+
+    while True:
+        try:
+            async with session_scope() as db:
+                await ensure_partitions(db, settings.telemetry_retention_days)
+            log.info("partitions ensured")
+        except Exception:
+            log.exception("partition maintenance failed")
+        await asyncio.sleep(24 * 3600)
+
+
 async def run() -> None:
     settings = get_settings()
     log.info("dispatcher starting", version=__version__, nats_url=settings.nats_url)
@@ -63,9 +76,24 @@ async def run() -> None:
     )
     log.info("dispatcher connected", server=nc.connected_url.netloc if nc.connected_url else None)
 
+    # partitions must exist before ingest starts
+    from openrmm.services.partitions import ensure_partitions
+
+    async with session_scope() as db:
+        await ensure_partitions(db, settings.telemetry_retention_days)
+
+    js = nc.jetstream()
+    from openrmm.natsio.streams import ensure_streams
+
+    await ensure_streams(js)
+
+    from openrmm.dispatcher.consumers import start_consumers
+
     tasks = [
         asyncio.create_task(heartbeat_consumer(nc), name="heartbeat"),
         asyncio.create_task(offline_sweep(settings), name="sweep"),
+        asyncio.create_task(partition_maintenance(settings), name="partitions"),
+        *start_consumers(js),
     ]
 
     if settings.nats_auth_seed:

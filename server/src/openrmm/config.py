@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     session_ttl_hours: int = 24 * 7
     heartbeat_offline_after_s: int = 90
+    telemetry_retention_days: int = 30
 
     smtp_host: str = ""
     smtp_port: int = 587

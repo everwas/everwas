@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { Route, Routes } from "react-router-dom"
 import {
   Activity,
   LayoutGrid,
@@ -11,6 +12,7 @@ import {
 
 import { api, type User } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { DeviceDetailPage } from "@/pages/DeviceDetail"
 import { DevicesPage } from "@/pages/Devices"
 import { LoginPage } from "@/pages/Login"
 
@@ -76,10 +78,20 @@ export default function App() {
       </aside>
 
       <main className="flex-1 p-6">
-        <header className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Devices</h1>
-        </header>
-        <DevicesPage />
+        <Routes>
+          <Route
+            index
+            element={
+              <>
+                <header className="mb-6 flex items-center justify-between">
+                  <h1 className="text-xl font-semibold">Devices</h1>
+                </header>
+                <DevicesPage />
+              </>
+            }
+          />
+          <Route path="/devices/:id" element={<DeviceDetailPage />} />
+        </Routes>
       </main>
     </div>
   )

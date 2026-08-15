@@ -128,3 +128,18 @@
     @apply font-sans;
     }
 }
+/* chart colors — validated categorical slots (dataviz palette), light + dark */
+:root {
+    --chart-cpu: #2a78d6;
+    --chart-mem: #eb6834;
+    --viz-grid: #e1e0d9;
+    --viz-axis: #c3c2b7;
+    --viz-muted: #898781;
+}
+.dark {
+    --chart-cpu: #3987e5;
+    --chart-mem: #d95926;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+    --viz-muted: #898781;
+}
