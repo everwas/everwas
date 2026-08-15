@@ -13,6 +13,7 @@ import structlog
 from openrmm import __version__
 from openrmm.config import Settings, get_settings
 from openrmm.db.engine import session_scope
+from openrmm.dispatcher.consumers import ENGINE
 from openrmm.ingest.heartbeat import apply_heartbeat, parse_heartbeat, sweep_offline
 
 log = structlog.get_logger()
@@ -31,9 +32,12 @@ async def heartbeat_consumer(nc: nats.NATS) -> None:
         agent_id, data = parsed
         try:
             async with session_scope() as db:
-                known = await apply_heartbeat(db, agent_id, data)
-            if not known:
-                log.warning("heartbeat from unknown device", agent_id=str(agent_id))
+                device = await apply_heartbeat(db, agent_id, data)
+                if device is None:
+                    log.warning("heartbeat from unknown device", agent_id=str(agent_id))
+                else:
+                    # Idempotent: a no-op unless a heartbeat alert is open.
+                    await ENGINE.resolve_for_device(db, device)
         except Exception:
             log.exception("heartbeat apply failed", agent_id=str(agent_id))
 
@@ -43,9 +47,11 @@ async def offline_sweep(settings: Settings) -> None:
         await asyncio.sleep(SWEEP_INTERVAL_S)
         try:
             async with session_scope() as db:
-                flipped = await sweep_offline(db, settings.heartbeat_offline_after_s)
-            if flipped:
-                log.info("devices marked offline", count=flipped)
+                gone = await sweep_offline(db, settings.heartbeat_offline_after_s)
+                if gone:
+                    await ENGINE.evaluate_heartbeat_missed(db, gone)
+            if gone:
+                log.info("devices marked offline", count=len(gone))
         except Exception:
             log.exception("offline sweep failed")
 
@@ -88,11 +94,13 @@ async def run() -> None:
     await ensure_streams(js)
 
     from openrmm.dispatcher.consumers import start_consumers
+    from openrmm.services.outbox import outbox_loop
 
     tasks = [
         asyncio.create_task(heartbeat_consumer(nc), name="heartbeat"),
         asyncio.create_task(offline_sweep(settings), name="sweep"),
         asyncio.create_task(partition_maintenance(settings), name="partitions"),
+        asyncio.create_task(outbox_loop(), name="outbox"),
         *start_consumers(js),
     ]
 

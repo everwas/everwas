@@ -43,6 +43,11 @@ services:
       OPENRMM_NATS_PUBLIC_URL: ${OPENRMM_NATS_PUBLIC_URL:-nats://localhost:24222}
       OPENRMM_NATS_AUTH_SEED: ${OPENRMM_NATS_AUTH_SEED:-}
       OPENRMM_NATS_SERVER_PASSWORD: ${OPENRMM_NATS_SERVER_PASSWORD:?set in .env}
+      OPENRMM_SMTP_HOST: ${OPENRMM_SMTP_HOST:-}
+      OPENRMM_SMTP_PORT: ${OPENRMM_SMTP_PORT:-587}
+      OPENRMM_SMTP_USER: ${OPENRMM_SMTP_USER:-}
+      OPENRMM_SMTP_PASSWORD: ${OPENRMM_SMTP_PASSWORD:-}
+      OPENRMM_SMTP_FROM: ${OPENRMM_SMTP_FROM:-openrmm@localhost}
     networks: [openrmm-internal]
     depends_on:
       openrmm-postgres:

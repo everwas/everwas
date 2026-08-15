@@ -4,7 +4,7 @@ import structlog
 from fastapi import FastAPI
 
 from openrmm import __version__
-from openrmm.api.v1 import agents, auth, devices, health, scripts, shell
+from openrmm.api.v1 import agents, alerts, auth, devices, health, scripts, shell
 from openrmm.db.engine import get_engine
 from openrmm.natsio import client as nats_client
 
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
     app.include_router(devices.router, prefix="/api/v1/devices", tags=["devices"])
     app.include_router(scripts.router, prefix="/api/v1/scripts", tags=["scripts"])
+    app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
     app.include_router(shell.router, prefix="/api/v1/devices", tags=["shell"])
     return app
 

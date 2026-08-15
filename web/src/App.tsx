@@ -12,6 +12,7 @@ import {
 
 import { api, type User } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { AlertsPage } from "@/pages/Alerts"
 import { DeviceDetailPage } from "@/pages/DeviceDetail"
 import { DevicesPage } from "@/pages/Devices"
 import { LoginPage } from "@/pages/Login"
@@ -20,7 +21,7 @@ import { ScriptsPage } from "@/pages/Scripts"
 const nav = [
   { label: "Overview", icon: LayoutGrid, to: null },
   { label: "Devices", icon: MonitorSmartphone, to: "/" },
-  { label: "Alerts", icon: Activity, to: null },
+  { label: "Alerts", icon: Activity, to: "/alerts" },
   { label: "Scripts", icon: TerminalSquare, to: "/scripts" },
   { label: "Patches", icon: ShieldCheck, to: null },
   { label: "Audit", icon: ScrollText, to: null },
@@ -105,6 +106,7 @@ export default function App() {
           />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
           <Route path="/scripts" element={<ScriptsPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
         </Routes>
       </main>
     </div>

@@ -1,0 +1,224 @@
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, HTTPException, Query, status
+from sqlalchemy import delete, select
+
+from openrmm.api.deps import CurrentUser, DbSession, require_role
+from openrmm.models.alert import (
+    Alert,
+    AlertRule,
+    AlertState,
+    NotificationChannel,
+    NotificationOutbox,
+    OutboxStatus,
+    RuleChannel,
+)
+from openrmm.models.audit import ActorType, AuditLog
+from openrmm.models.user import Role
+from openrmm.schemas.alert import (
+    AlertOut,
+    AlertRuleIn,
+    AlertRuleOut,
+    ChannelIn,
+    ChannelOut,
+    OutboxOut,
+)
+
+router = APIRouter()
+OPERATOR = require_role(Role.admin, Role.operator)
+
+
+async def _channel_ids(db, rule_id: uuid.UUID) -> list[uuid.UUID]:
+    rows = await db.execute(select(RuleChannel.channel_id).where(RuleChannel.rule_id == rule_id))
+    return list(rows.scalars())
+
+
+def _rule_out(rule: AlertRule, channel_ids: list[uuid.UUID]) -> AlertRuleOut:
+    out = AlertRuleOut.model_validate(rule)
+    out.channel_ids = channel_ids
+    return out
+
+
+# --- rules ---
+
+
+@router.get("/rules")
+async def list_rules(db: DbSession, _user: CurrentUser) -> list[AlertRuleOut]:
+    rules = list((await db.execute(select(AlertRule).order_by(AlertRule.name))).scalars())
+    return [_rule_out(r, await _channel_ids(db, r.id)) for r in rules]
+
+
+@router.post("/rules", status_code=status.HTTP_201_CREATED, dependencies=[OPERATOR])
+async def create_rule(body: AlertRuleIn, db: DbSession, user: CurrentUser) -> AlertRuleOut:
+    data = body.model_dump(exclude={"channel_ids"})
+    rule = AlertRule(**data)
+    db.add(rule)
+    await db.flush()
+    for channel_id in body.channel_ids:
+        db.add(RuleChannel(rule_id=rule.id, channel_id=channel_id))
+    db.add(
+        AuditLog(
+            actor_type=ActorType.user,
+            actor_id=user.email,
+            action="alert_rule.created",
+            target_type="alert_rule",
+            target_id=str(rule.id),
+            detail={"name": rule.name, "metric": rule.metric.value},
+        )
+    )
+    await db.commit()
+    return _rule_out(rule, body.channel_ids)
+
+
+@router.put("/rules/{rule_id}", dependencies=[OPERATOR])
+async def update_rule(
+    rule_id: uuid.UUID, body: AlertRuleIn, db: DbSession, _user: CurrentUser
+) -> AlertRuleOut:
+    rule = (await db.execute(select(AlertRule).where(AlertRule.id == rule_id))).scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown rule")
+    for field, value in body.model_dump(exclude={"channel_ids"}).items():
+        setattr(rule, field, value)
+    await db.execute(delete(RuleChannel).where(RuleChannel.rule_id == rule_id))
+    for channel_id in body.channel_ids:
+        db.add(RuleChannel(rule_id=rule_id, channel_id=channel_id))
+    await db.commit()
+    return _rule_out(rule, body.channel_ids)
+
+
+@router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OPERATOR])
+async def delete_rule(rule_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> None:
+    rule = (await db.execute(select(AlertRule).where(AlertRule.id == rule_id))).scalar_one_or_none()
+    if rule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown rule")
+    await db.delete(rule)
+    await db.commit()
+
+
+# --- alerts ---
+
+
+@router.get("")
+async def list_alerts(
+    db: DbSession,
+    _user: CurrentUser,
+    state: AlertState | None = None,
+    device_id: uuid.UUID | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[AlertOut]:
+    stmt = select(Alert).order_by(Alert.opened_at.desc()).limit(limit)
+    if state is not None:
+        stmt = stmt.where(Alert.state == state)
+    if device_id is not None:
+        stmt = stmt.where(Alert.device_id == device_id)
+    return [AlertOut.model_validate(a) for a in (await db.execute(stmt)).scalars()]
+
+
+@router.post("/{alert_id}/ack", dependencies=[OPERATOR])
+async def ack_alert(alert_id: uuid.UUID, db: DbSession, user: CurrentUser) -> AlertOut:
+    alert = (await db.execute(select(Alert).where(Alert.id == alert_id))).scalar_one_or_none()
+    if alert is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown alert")
+    if alert.state == AlertState.resolved:
+        raise HTTPException(status.HTTP_409_CONFLICT, "alert already resolved")
+    alert.state = AlertState.acknowledged
+    alert.acked_at = datetime.now(UTC)
+    alert.acked_by = user.email
+    db.add(
+        AuditLog(
+            actor_type=ActorType.user,
+            actor_id=user.email,
+            action="alert.acknowledged",
+            target_type="alert",
+            target_id=str(alert.id),
+        )
+    )
+    await db.commit()
+    return AlertOut.model_validate(alert)
+
+
+@router.post("/{alert_id}/resolve", dependencies=[OPERATOR])
+async def resolve_alert(alert_id: uuid.UUID, db: DbSession, user: CurrentUser) -> AlertOut:
+    alert = (await db.execute(select(Alert).where(Alert.id == alert_id))).scalar_one_or_none()
+    if alert is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown alert")
+    alert.state = AlertState.resolved
+    alert.resolved_at = datetime.now(UTC)
+    db.add(
+        AuditLog(
+            actor_type=ActorType.user,
+            actor_id=user.email,
+            action="alert.resolved",
+            target_type="alert",
+            target_id=str(alert.id),
+        )
+    )
+    await db.commit()
+    return AlertOut.model_validate(alert)
+
+
+# --- channels ---
+
+
+@router.get("/channels")
+async def list_channels(db: DbSession, _user: CurrentUser) -> list[ChannelOut]:
+    rows = await db.execute(select(NotificationChannel).order_by(NotificationChannel.name))
+    return [ChannelOut.model_validate(c) for c in rows.scalars()]
+
+
+@router.post("/channels", status_code=status.HTTP_201_CREATED, dependencies=[OPERATOR])
+async def create_channel(body: ChannelIn, db: DbSession, _user: CurrentUser) -> ChannelOut:
+    channel = NotificationChannel(**body.model_dump())
+    db.add(channel)
+    await db.commit()
+    return ChannelOut.model_validate(channel)
+
+
+@router.delete(
+    "/channels/{channel_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OPERATOR]
+)
+async def delete_channel(channel_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> None:
+    channel = (
+        await db.execute(select(NotificationChannel).where(NotificationChannel.id == channel_id))
+    ).scalar_one_or_none()
+    if channel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown channel")
+    await db.delete(channel)
+    await db.commit()
+
+
+@router.post("/channels/{channel_id}/test", dependencies=[OPERATOR])
+async def test_channel(channel_id: uuid.UUID, db: DbSession, user: CurrentUser) -> OutboxOut:
+    """Enqueue a test notification; the dispatcher's drainer delivers it."""
+    channel = (
+        await db.execute(select(NotificationChannel).where(NotificationChannel.id == channel_id))
+    ).scalar_one_or_none()
+    if channel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown channel")
+    entry = NotificationOutbox(
+        channel_id=channel_id,
+        status=OutboxStatus.pending,
+        payload={
+            "kind": "test",
+            "title": "OpenRMM test notification",
+            "body": f"Test message requested by {user.email}.",
+            "severity": "info",
+            "device_hostname": None,
+            "alert_id": None,
+            "context": {"channel": channel.name},
+        },
+    )
+    db.add(entry)
+    await db.commit()
+    return OutboxOut.model_validate(entry)
+
+
+@router.get("/outbox")
+async def list_outbox(
+    db: DbSession, _user: CurrentUser, limit: int = Query(default=50, ge=1, le=200)
+) -> list[OutboxOut]:
+    rows = await db.execute(
+        select(NotificationOutbox).order_by(NotificationOutbox.created_at.desc()).limit(limit)
+    )
+    return [OutboxOut.model_validate(o) for o in rows.scalars()]

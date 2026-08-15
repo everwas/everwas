@@ -7,6 +7,7 @@ import nats.errors
 import nats.js
 import structlog
 
+from openrmm.alerting.engine import AlertEngine
 from openrmm.db.engine import session_scope
 from openrmm.ingest.events import parse_agent_event, record_agent_event
 from openrmm.ingest.inventory import apply_inventory, parse_inventory
@@ -22,6 +23,10 @@ log = structlog.get_logger()
 
 FETCH_BATCH = 64
 FETCH_TIMEOUT_S = 5
+
+# One engine instance per dispatcher process: it holds the breach state
+# machine and the rule cache.
+ENGINE = AlertEngine()
 
 
 async def _pull_loop(js: nats.js.JetStreamContext, stream: str, durable: str, handler) -> None:
@@ -49,6 +54,9 @@ async def _handle_telemetry(subject: str, data: bytes) -> None:
     device_id, ts, payload = parsed
     async with session_scope() as db:
         await apply_telemetry(db, device_id, ts, payload)
+        # Evaluate in the same transaction: an alert and its outbox rows commit
+        # together with the sample that caused them.
+        await ENGINE.evaluate_telemetry(db, device_id, payload)
 
 
 async def _handle_inventory(subject: str, data: bytes) -> None:

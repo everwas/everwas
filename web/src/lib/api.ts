@@ -87,6 +87,51 @@ export type ScriptRun = {
   finished_at: string | null
 }
 
+export type Severity = "info" | "warning" | "critical"
+export type AlertMetric =
+  | "cpu"
+  | "memory"
+  | "disk"
+  | "heartbeat_missed"
+  | "service_down"
+  | "patch_overdue"
+
+export type AlertRule = {
+  id: string
+  name: string
+  metric: AlertMetric
+  operator: "gt" | "lt"
+  threshold: number
+  duration_s: number
+  severity: Severity
+  target: Record<string, unknown>
+  cooldown_s: number
+  enabled: boolean
+  channel_ids: string[]
+}
+
+export type Alert = {
+  id: string
+  rule_id: string
+  device_id: string
+  state: "firing" | "acknowledged" | "resolved"
+  severity: Severity
+  opened_at: string
+  resolved_at: string | null
+  acked_at: string | null
+  acked_by: string | null
+  last_value: number | null
+  context: Record<string, unknown>
+}
+
+export type Channel = {
+  id: string
+  name: string
+  kind: "email" | "webhook" | "ntfy" | "gotify"
+  config: Record<string, unknown>
+  enabled: boolean
+}
+
 export const api = {
   me: () => request<User>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
@@ -123,4 +168,23 @@ export const api = {
       `/api/v1/scripts/runs/recent${deviceId ? `?device_id=${deviceId}` : ""}`,
     ),
   run: (runId: string) => request<ScriptRun>(`/api/v1/scripts/runs/${runId}`),
+
+  alerts: (state?: Alert["state"]) =>
+    request<Alert[]>(`/api/v1/alerts${state ? `?state=${state}` : ""}`),
+  ackAlert: (id: string) => request<Alert>(`/api/v1/alerts/${id}/ack`, { method: "POST" }),
+  resolveAlert: (id: string) => request<Alert>(`/api/v1/alerts/${id}/resolve`, { method: "POST" }),
+  alertRules: () => request<AlertRule[]>("/api/v1/alerts/rules"),
+  createRule: (body: Partial<AlertRule>) =>
+    request<AlertRule>("/api/v1/alerts/rules", { method: "POST", body: JSON.stringify(body) }),
+  deleteRule: (id: string) =>
+    request<void>(`/api/v1/alerts/rules/${id}`, { method: "DELETE" }),
+  channels: () => request<Channel[]>("/api/v1/alerts/channels"),
+  createChannel: (body: Partial<Channel>) =>
+    request<Channel>("/api/v1/alerts/channels", { method: "POST", body: JSON.stringify(body) }),
+  deleteChannel: (id: string) =>
+    request<void>(`/api/v1/alerts/channels/${id}`, { method: "DELETE" }),
+  testChannel: (id: string) =>
+    request<{ id: string; status: string }>(`/api/v1/alerts/channels/${id}/test`, {
+      method: "POST",
+    }),
 }

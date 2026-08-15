@@ -29,28 +29,34 @@ def parse_heartbeat(subject: str, payload: bytes) -> tuple[uuid.UUID, dict] | No
     return agent_id, envelope.get("data") or {}
 
 
-async def apply_heartbeat(db: AsyncSession, agent_id: uuid.UUID, data: dict) -> bool:
-    """Mark the device active. Returns False for unknown devices."""
+async def apply_heartbeat(db: AsyncSession, agent_id: uuid.UUID, data: dict) -> Device | None:
+    """Mark the device active. Returns the device, or None if unknown."""
     values: dict = {
         "last_heartbeat_at": datetime.now(UTC),
         "status": DeviceStatus.active,
     }
     if data.get("version"):
         values["agent_version"] = str(data["version"])[:64]
-    result = await db.execute(
+    rows = await db.execute(
         update(Device)
         .where(Device.id == agent_id, Device.status != DeviceStatus.retired)
         .values(**values)
+        .returning(Device)
     )
-    return result.rowcount > 0
+    return rows.scalar_one_or_none()
 
 
-async def sweep_offline(db: AsyncSession, offline_after_s: int) -> int:
-    """Flip active devices with stale heartbeats to offline. Returns count flipped."""
+async def sweep_offline(db: AsyncSession, offline_after_s: int) -> list[Device]:
+    """Flip active devices with stale heartbeats to offline.
+
+    Returns the devices that just went offline so the caller can fire
+    heartbeat-missed alerts for them.
+    """
     cutoff = datetime.now(UTC) - timedelta(seconds=offline_after_s)
-    result = await db.execute(
+    rows = await db.execute(
         update(Device)
         .where(Device.status == DeviceStatus.active, Device.last_heartbeat_at < cutoff)
         .values(status=DeviceStatus.offline)
+        .returning(Device)
     )
-    return result.rowcount
+    return list(rows.scalars())
