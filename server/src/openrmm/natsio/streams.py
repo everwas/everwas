@@ -23,6 +23,40 @@ STREAMS = [
         storage=StorageType.FILE,
         discard=DiscardPolicy.OLD,
     ),
+    # Durable job delivery: a script queued to an offline laptop runs when it
+    # comes back. Per-agent durable pull consumers are created by the agents.
+    StreamConfig(
+        name="JOBS",
+        subjects=["jobs.*"],
+        retention=RetentionPolicy.LIMITS,
+        max_age=7 * 24 * 3600,
+        storage=StorageType.FILE,
+        discard=DiscardPolicy.OLD,
+    ),
+    StreamConfig(
+        name="JOBOUT",
+        subjects=["agents.*.jobs.*.output"],
+        retention=RetentionPolicy.LIMITS,
+        max_age=24 * 3600,
+        storage=StorageType.FILE,
+        discard=DiscardPolicy.OLD,
+    ),
+    StreamConfig(
+        name="RESULTS",
+        subjects=["agents.*.jobs.*.result"],
+        retention=RetentionPolicy.LIMITS,
+        max_age=7 * 24 * 3600,
+        storage=StorageType.FILE,
+        discard=DiscardPolicy.OLD,
+    ),
+    StreamConfig(
+        name="EVENTS",
+        subjects=["agents.*.events"],
+        retention=RetentionPolicy.LIMITS,
+        max_age=90 * 24 * 3600,
+        storage=StorageType.FILE,
+        discard=DiscardPolicy.OLD,
+    ),
 ]
 
 

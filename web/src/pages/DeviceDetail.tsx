@@ -7,10 +7,13 @@ import {
   type DeviceDetail,
   type Fact,
   type FactKind,
+  type ScriptRun,
   type SnapshotKind,
   type TelemetryPoint,
 } from "@/lib/api"
+import { DeviceTerminal } from "@/components/Terminal"
 import { TelemetryChart } from "@/components/TelemetryChart"
+import { RunStatusBadge } from "@/pages/Scripts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -23,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const TABS = ["software", "hardware", "processes", "services"] as const
+const TABS = ["software", "hardware", "processes", "services", "terminal", "runs"] as const
 type Tab = (typeof TABS)[number]
 
 const TIME_MACHINE_MAX_HOURS = 7 * 24
@@ -142,6 +145,7 @@ export function DeviceDetailPage() {
   const [tab, setTab] = useState<Tab>("software")
   const [facts, setFacts] = useState<Fact[]>([])
   const [snapshotRows, setSnapshotRows] = useState<Record<string, unknown>[]>([])
+  const [runs, setRuns] = useState<ScriptRun[]>([])
 
   // time machine: hoursBack = 0 means "now"
   const [timeMachine, setTimeMachine] = useState(false)
@@ -164,12 +168,20 @@ export function DeviceDetailPage() {
         const rows = (s.payload?.[tab] ?? []) as Record<string, unknown>[]
         setSnapshotRows(rows)
       })
-    } else {
+    } else if (tab === "runs") {
+      api.runs(id).then(setRuns).catch(() => {})
+    } else if (tab !== "terminal") {
       api.facts(id, tab, asOf).then(setFacts).catch(() => {})
     }
   }, [id, tab, asOf])
 
   useEffect(loadTab, [loadTab])
+
+  useEffect(() => {
+    if (tab !== "runs" || !id) return
+    const timer = setInterval(() => api.runs(id).then(setRuns).catch(() => {}), 4000)
+    return () => clearInterval(timer)
+  }, [tab, id])
 
   if (!device) return <p className="text-sm text-muted-foreground">Loading…</p>
 
@@ -267,13 +279,58 @@ export function DeviceDetailPage() {
           </div>
         )}
 
-        <div className="max-h-[28rem] overflow-y-auto">
-          {isFactTab ? (
-            <FactsTable facts={facts} kind={tab as FactKind} />
-          ) : (
-            <SnapshotTable kind={tab as SnapshotKind} rows={snapshotRows} />
-          )}
-        </div>
+        {tab === "terminal" ? (
+          <div className="pt-4">
+            <DeviceTerminal deviceId={id!} />
+          </div>
+        ) : tab === "runs" ? (
+          <div className="max-h-[28rem] overflow-y-auto">
+            {runs.length === 0 ? (
+              <p className="p-6 text-sm text-muted-foreground">
+                No script runs for this device yet.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Exit</TableHead>
+                    <TableHead>Output</TableHead>
+                    <TableHead>By</TableHead>
+                    <TableHead>Queued</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <RunStatusBadge status={r.status} />
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{r.exit_code ?? "-"}</TableCell>
+                      <TableCell className="max-w-md whitespace-pre-wrap font-mono text-xs">
+                        {(r.stdout || r.stderr || "").slice(0, 400) || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {r.requested_by ?? "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {new Date(r.queued_at).toLocaleTimeString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto">
+            {isFactTab ? (
+              <FactsTable facts={facts} kind={tab as FactKind} />
+            ) : (
+              <SnapshotTable kind={tab as SnapshotKind} rows={snapshotRows} />
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

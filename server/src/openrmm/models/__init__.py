@@ -4,6 +4,15 @@ from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import AuditLog
 from openrmm.models.device import AgentCredential, Device, EnrollmentToken, Site
 from openrmm.models.facts import FACT_TABLES, FactHardware, FactPatchState, FactSoftware
+from openrmm.models.script import (
+    RunStatus,
+    RunTrigger,
+    Script,
+    ScriptRun,
+    ScriptSchedule,
+    ShellKind,
+    ShellSession,
+)
 from openrmm.models.session import Session
 from openrmm.models.telemetry import (
     DeviceSnapshot,
@@ -25,6 +34,13 @@ __all__ = [
     "FactHardware",
     "FactPatchState",
     "FactSoftware",
+    "RunStatus",
+    "RunTrigger",
+    "Script",
+    "ScriptRun",
+    "ScriptSchedule",
+    "ShellKind",
+    "ShellSession",
     "Session",
     "Site",
     "User",

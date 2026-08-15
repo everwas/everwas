@@ -55,6 +55,38 @@ export class ApiError extends Error {
   }
 }
 
+export type ShellKind = "bash" | "sh" | "zsh" | "powershell" | "pwsh" | "cmd" | "python"
+
+export type Script = {
+  id: string
+  name: string
+  description: string
+  shell: ShellKind
+  body: string
+  os_filter: string[]
+  timeout_s: number
+  sha256: string
+  version: number
+  updated_at: string
+}
+
+export type ScriptRun = {
+  id: string
+  script_id: string | null
+  device_id: string
+  run_batch_id: string | null
+  trigger: string
+  status: "queued" | "delivered" | "running" | "succeeded" | "failed" | "timeout" | "cancelled"
+  exit_code: number | null
+  stdout: string
+  stderr: string
+  truncated: boolean
+  requested_by: string | null
+  queued_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
 export const api = {
   me: () => request<User>("/api/v1/auth/me"),
   login: (email: string, password: string) =>
@@ -76,4 +108,19 @@ export const api = {
     request<{ payload: Record<string, unknown> | null; updated_at: string | null }>(
       `/api/v1/devices/${id}/snapshots/${kind}`,
     ),
+
+  scripts: () => request<Script[]>("/api/v1/scripts"),
+  createScript: (body: Partial<Script>) =>
+    request<Script>("/api/v1/scripts", { method: "POST", body: JSON.stringify(body) }),
+  deleteScript: (id: string) => request<void>(`/api/v1/scripts/${id}`, { method: "DELETE" }),
+  runScript: (id: string, target: { device_ids?: string[]; tags?: string[]; all?: boolean }) =>
+    request<{ batch_id: string; queued: number; run_ids: string[] }>(
+      `/api/v1/scripts/${id}/run`,
+      { method: "POST", body: JSON.stringify(target) },
+    ),
+  runs: (deviceId?: string) =>
+    request<ScriptRun[]>(
+      `/api/v1/scripts/runs/recent${deviceId ? `?device_id=${deviceId}` : ""}`,
+    ),
+  run: (runId: string) => request<ScriptRun>(`/api/v1/scripts/runs/${runId}`),
 }

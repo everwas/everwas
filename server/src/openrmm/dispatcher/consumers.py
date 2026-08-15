@@ -8,7 +8,14 @@ import nats.js
 import structlog
 
 from openrmm.db.engine import session_scope
+from openrmm.ingest.events import parse_agent_event, record_agent_event
 from openrmm.ingest.inventory import apply_inventory, parse_inventory
+from openrmm.ingest.results import (
+    apply_job_output,
+    apply_job_result,
+    parse_job_output,
+    parse_job_result,
+)
 from openrmm.ingest.telemetry import apply_telemetry, parse_telemetry
 
 log = structlog.get_logger()
@@ -54,14 +61,44 @@ async def _handle_inventory(subject: str, data: bytes) -> None:
         await apply_inventory(db, device_id, kind, observed_at, payload)
 
 
+async def _handle_job_output(subject: str, data: bytes) -> None:
+    parsed = parse_job_output(subject, data)
+    if parsed is None:
+        log.warning("malformed job output", subject=subject)
+        return
+    device_id, job_id, payload = parsed
+    async with session_scope() as db:
+        await apply_job_output(db, device_id, job_id, payload)
+
+
+async def _handle_job_result(subject: str, data: bytes) -> None:
+    parsed = parse_job_result(subject, data)
+    if parsed is None:
+        log.warning("malformed job result", subject=subject)
+        return
+    device_id, job_id, payload = parsed
+    async with session_scope() as db:
+        await apply_job_result(db, device_id, job_id, payload)
+
+
+async def _handle_event(subject: str, data: bytes) -> None:
+    parsed = parse_agent_event(subject, data)
+    if parsed is None:
+        return
+    device_id, payload = parsed
+    async with session_scope() as db:
+        await record_agent_event(db, device_id, payload)
+
+
 def start_consumers(js: nats.js.JetStreamContext) -> list[asyncio.Task]:
+    specs = [
+        ("TELEMETRY", "ingest-telemetry", _handle_telemetry),
+        ("INVENTORY", "ingest-inventory", _handle_inventory),
+        ("JOBOUT", "ingest-joboutput", _handle_job_output),
+        ("RESULTS", "ingest-jobresults", _handle_job_result),
+        ("EVENTS", "ingest-events", _handle_event),
+    ]
     return [
-        asyncio.create_task(
-            _pull_loop(js, "TELEMETRY", "ingest-telemetry", _handle_telemetry),
-            name="telemetry-consumer",
-        ),
-        asyncio.create_task(
-            _pull_loop(js, "INVENTORY", "ingest-inventory", _handle_inventory),
-            name="inventory-consumer",
-        ),
+        asyncio.create_task(_pull_loop(js, stream, durable, handler), name=f"{durable}-consumer")
+        for stream, durable, handler in specs
     ]

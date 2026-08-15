@@ -1,0 +1,110 @@
+import enum
+import uuid
+from datetime import datetime
+
+from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from openrmm.db.base import Base
+
+
+class ShellKind(enum.StrEnum):
+    bash = "bash"
+    sh = "sh"
+    zsh = "zsh"
+    powershell = "powershell"
+    pwsh = "pwsh"
+    cmd = "cmd"
+    python = "python"
+
+
+class RunStatus(enum.StrEnum):
+    queued = "queued"
+    delivered = "delivered"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    timeout = "timeout"
+    cancelled = "cancelled"
+
+
+class RunTrigger(enum.StrEnum):
+    manual = "manual"
+    schedule = "schedule"
+    policy = "policy"
+    mcp = "mcp"
+
+
+class Script(Base):
+    __tablename__ = "scripts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    shell: Mapped[ShellKind] = mapped_column(Enum(ShellKind, name="shell_kind"))
+    body: Mapped[str] = mapped_column(Text)
+    os_filter: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    timeout_s: Mapped[int] = mapped_column(Integer, default=300)
+    sha256: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(255), default=None)
+
+
+class ScriptSchedule(Base):
+    __tablename__ = "script_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    script_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scripts.id", ondelete="CASCADE"))
+    cron: Mapped[str] = mapped_column(String(120))
+    target: Mapped[dict] = mapped_column(JSONB, default=dict)
+    jitter_s: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class ScriptRun(Base):
+    """One row per device per run. id IS the job_id on the wire."""
+
+    __tablename__ = "script_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    script_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("scripts.id", ondelete="SET NULL"), default=None
+    )
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    run_batch_id: Mapped[uuid.UUID | None] = mapped_column(default=None, index=True)
+    trigger: Mapped[RunTrigger] = mapped_column(
+        Enum(RunTrigger, name="run_trigger"), default=RunTrigger.manual
+    )
+    status: Mapped[RunStatus] = mapped_column(
+        Enum(RunStatus, name="run_status"), default=RunStatus.queued, index=True
+    )
+    exit_code: Mapped[int | None] = mapped_column(Integer, default=None)
+    stdout: Mapped[str] = mapped_column(Text, default="")
+    stderr: Mapped[str] = mapped_column(Text, default="")
+    truncated: Mapped[bool] = mapped_column(default=False)
+    requested_by: Mapped[str | None] = mapped_column(String(255), default=None)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class ShellSession(Base):
+    __tablename__ = "shell_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    close_reason: Mapped[str | None] = mapped_column(String(64), default=None)
+    recording_path: Mapped[str | None] = mapped_column(String(255), default=None)
+    bytes_in: Mapped[int] = mapped_column(Integer, default=0)
+    bytes_out: Mapped[int] = mapped_column(Integer, default=0)
