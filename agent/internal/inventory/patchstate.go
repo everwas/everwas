@@ -10,7 +10,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/patch"
+	"github.com/rsp2k/openrmm/agent/internal/patch"
 )
 
 const (

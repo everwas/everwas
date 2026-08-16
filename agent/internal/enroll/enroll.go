@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openrmm/agent/internal/config"
-	"github.com/openrmm/agent/internal/sysinfo"
+	"github.com/rsp2k/openrmm/agent/internal/config"
+	"github.com/rsp2k/openrmm/agent/internal/sysinfo"
 )
 
 const enrollPath = "/api/v1/agents/enroll"

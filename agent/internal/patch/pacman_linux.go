@@ -55,27 +55,24 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 	}
 	defer m.gate.release()
 
-	names := make([]string, 0, len(ids))
-	idByName := make(map[string]string, len(ids))
-	before := m.installedVersions(ctx, nil)
-	for _, id := range ids {
-		name, _, ok := splitPkgVersionID(id)
-		if !ok {
-			name = id // tolerate a bare package name
-		}
-		if name == "" {
-			res.fail(id, errors.New("empty pacman update id"))
-			continue
-		}
-		names = append(names, name)
-		idByName[name] = id
+	// Scan first and install only what is actually pending. An approval is
+	// permission to take a specific pending update, not a standing licence to
+	// name any package, and a scan that fails is a reason to do nothing.
+	available, err := m.Scan(ctx)
+	if err != nil {
+		return res, fmt.Errorf("pacman scan before install: %w", err)
 	}
+
+	before := m.installedVersions(ctx, nil)
+	names, idByName := pacmanInstallPlan(ids, pacmanOfferedNames(available), &res)
 	if len(names) == 0 {
 		return res, nil
 	}
 
 	seen := 0
-	args := append([]string{"-S", "--noconfirm", "--needed"}, names...)
+	// "--" ends option parsing: after it pacman cannot read a package name as
+	// a flag, whatever gets past the validator in future.
+	args := append([]string{"-S", "--noconfirm", "--needed", "--"}, names...)
 	cmdRes := runCmd(ctx, execOptions{
 		Timeout: installTimeout,
 		OnLine: func(line string) {

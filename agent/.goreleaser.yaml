@@ -8,10 +8,20 @@
 #
 #   OPENRMM_UPDATE_PUBKEY      base64 body of the minisign public key, baked
 #                              into every binary as the self-update trust
-#                              anchor. Set it to "" for snapshot builds and
-#                              self-update refuses to run, which is correct.
+#                              anchor. A build with this empty cannot
+#                              self-update at all: TrustedKeys fails closed
+#                              with ErrNoTrustAnchor, because a build with no
+#                              anchor of its own would otherwise trust
+#                              whatever key the server named. Set it for
+#                              every build you intend to ship, snapshots
+#                              included.
 #   MINISIGN_SECRET_KEY_FILE   path to the release signing secret key.
 #   MINISIGN_PASSWORD          its passphrase, fed to minisign on stdin.
+#
+# For a local build that is knowingly unsigned, opt out on purpose by adding
+#   -X github.com/rsp2k/openrmm/agent/internal/update.DevBuild=true
+# to the ldflags below. That build will accept an artifact signed by a key the
+# server supplies, so it must never leave a workstation.
 version: 2
 
 project_name: openrmm-agent
@@ -32,8 +42,8 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/openrmm/agent/internal/cli.Version={{ .Version }}
-      - -X github.com/openrmm/agent/internal/update.EmbeddedPublicKey={{ .Env.OPENRMM_UPDATE_PUBKEY }}
+      - -X github.com/rsp2k/openrmm/agent/internal/cli.Version={{ .Version }}
+      - -X github.com/rsp2k/openrmm/agent/internal/update.EmbeddedPublicKey={{ .Env.OPENRMM_UPDATE_PUBKEY }}
     goos:
       - linux
       - darwin
@@ -74,7 +84,7 @@ nfpms:
     package_name: openrmm-agent
     file_name_template: "{{ .ConventionalFileName }}"
     vendor: OpenRMM
-    homepage: https://github.com/openrmm/agent
+    homepage: https://github.com/rsp2k/openrmm/agent
     maintainer: OpenRMM <agents@openrmm.invalid>
     description: |-
       OpenRMM remote monitoring and management agent.

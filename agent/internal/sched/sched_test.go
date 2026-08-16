@@ -3,6 +3,7 @@ package sched
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 func testScheduler(t *testing.T, run RunFunc) *Scheduler {
@@ -303,4 +306,39 @@ func TestJobID(t *testing.T) {
 func disabled(e Entry) Entry {
 	e.Enabled = false
 	return e
+}
+
+// TestSyncRejectsUnusableEntryIDs is the regression for the third
+// interpolation site. An entry id becomes part of the job id
+// (sched:{entry_id}:{ts}), and the job id becomes three publish subjects, so
+// a wildcard smuggled in through a schedule sync would take the connection
+// down hours later, when the entry fired, with nothing pointing back at the
+// sync that caused it.
+func TestSyncRejectsUnusableEntryIDs(t *testing.T) {
+	for _, id := range []string{">", "*", "", "..", "a b", "nightly>"} {
+		t.Run(strconv.Quote(id), func(t *testing.T) {
+			s := testScheduler(t, nil)
+			good := Document{ScheduleVersion: 3, Entries: []Entry{daily("nightly", 3600)}}
+			if _, err := s.Sync(good); err != nil {
+				t.Fatalf("Sync(good): %v", err)
+			}
+
+			bad := Document{ScheduleVersion: 4, Entries: []Entry{daily("nightly", 3600), daily(id, 3600)}}
+			_, syncErr := s.Sync(bad)
+			if syncErr == nil {
+				t.Fatalf("Sync accepted entry_id %q", id)
+			}
+			if !errors.Is(syncErr, wire.ErrInvalidIdentifier) {
+				t.Errorf("Sync(%q) = %v, want it to wrap wire.ErrInvalidIdentifier", id, syncErr)
+			}
+			// The rejection is whole-document: the previous schedule survives
+			// rather than being half replaced by a payload we refused.
+			if got := s.Version(); got != 3 {
+				t.Errorf("schedule_version = %d after a refused sync, want 3", got)
+			}
+			if entries := s.Entries(); len(entries) != 1 || entries[0].EntryID != "nightly" {
+				t.Errorf("cached entries = %v, want the previous schedule untouched", entries)
+			}
+		})
+	}
 }

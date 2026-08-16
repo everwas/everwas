@@ -9,8 +9,8 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/openrmm/agent/internal/scripts"
-	"github.com/openrmm/agent/internal/wire"
+	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 const (
@@ -95,8 +95,12 @@ func (m *Module) handleJob(msg jetstream.Msg) {
 		}
 		return
 	}
-	if spec.JobID == "" {
-		m.Log.Warn("job without job_id, discarding", "kind", spec.Kind)
+	// job_id goes straight into the progress, output and result subjects. An
+	// id carrying a wildcard would make every publish illegal and take the
+	// connection down with it, so an unusable id is terminated here rather
+	// than executed. Term, not Nak: redelivering it would fail identically.
+	if err := wire.CheckIdentifier("job_id", spec.JobID); err != nil {
+		m.Log.Warn("job with unusable job_id, discarding", "kind", spec.Kind, "err", err)
 		if terr := msg.Term(); terr != nil {
 			m.Log.Warn("job term", "err", terr)
 		}

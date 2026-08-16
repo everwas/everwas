@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openrmm/agent/internal/config"
-	"github.com/openrmm/agent/internal/enroll"
-	"github.com/openrmm/agent/internal/svc"
-	"github.com/openrmm/agent/internal/update"
+	"github.com/rsp2k/openrmm/agent/internal/config"
+	"github.com/rsp2k/openrmm/agent/internal/enroll"
+	"github.com/rsp2k/openrmm/agent/internal/svc"
+	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // CmdInstall copies the running binary to the per-OS install location,

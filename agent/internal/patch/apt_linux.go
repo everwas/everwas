@@ -95,34 +95,34 @@ func (m *aptManager) Install(ctx context.Context, ids []string, progress func(In
 	}
 	defer m.gate.release()
 
-	specs := make([]string, 0, len(ids))
-	want := make(map[string]string, len(ids))
-	idByName := make(map[string]string, len(ids))
-	for _, id := range ids {
-		name, version, ok := splitPkgVersionID(id)
-		if !ok {
-			res.fail(id, fmt.Errorf("malformed apt update id %q, want pkg=version", id))
-			continue
-		}
-		specs = append(specs, name+"="+version)
-		want[name] = version
-		idByName[name] = id
+	// Scan first and install only what apt is actually offering. It costs a
+	// refresh on every install, which is the price of never handing apt a
+	// package name that nobody approved.
+	available, err := m.Scan(ctx)
+	if err != nil {
+		return res, fmt.Errorf("apt scan before install: %w", err)
 	}
+
+	specs, want, idByName := aptInstallPlan(ids, offeredIDs(available), &res)
 	if len(specs) == 0 {
 		return res, nil
 	}
 
+	// "--" ends option parsing. Without it an id whose name half begins with
+	// a dash reaches apt as an option: "--option=Dpkg::Options::=--force-confnew"
+	// round-tripped through the id and inverted the conffile safety set on
+	// the two lines above it.
 	args := append([]string{
 		"-y",
 		"-o", "Dpkg::Options::=--force-confdef",
 		"-o", "Dpkg::Options::=--force-confold",
 		"install",
+		"--",
 	}, specs...)
 
 	cmdRes, err := m.runInstall(ctx, args, len(specs), progress)
 	if err != nil {
-		for name, id := range idByName {
-			_ = name
+		for _, id := range idByName {
 			res.fail(id, err)
 		}
 		res.RebootRequired = fileExists(rebootRequiredFlag)

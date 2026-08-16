@@ -9,8 +9,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/audit"
-	"github.com/openrmm/agent/internal/wire"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 // Close reasons published in the ctl "closed" event.
@@ -64,7 +64,14 @@ type session struct {
 }
 
 // start spawns the PTY and wires the three server-facing subscriptions.
+//
+// The id check is deliberately repeated here even though OpenSession already
+// made it: this function is what actually builds the subjects, and a future
+// second caller must not be able to reintroduce the wildcard.
 func (s *session) start(cols, rows uint16) error {
+	if err := wire.CheckIdentifier("session_id", s.id); err != nil {
+		return err
+	}
 	p, err := startPTY(s.shellName, cols, rows)
 	if err != nil {
 		return err
@@ -91,7 +98,8 @@ func (s *session) start(cols, rows uint16) error {
 		sub, err := s.nc.Subscribe(sp.subject, sp.handler)
 		if err != nil {
 			s.unsubscribe()
-			_ = p.Close()
+			s.cancel()
+			s.closeAndReap(p)
 			return err
 		}
 		s.subs = append(s.subs, sub)
@@ -111,6 +119,23 @@ func (s *session) start(cols, rows uint16) error {
 	s.log.Info("shell session opened", "session_id", s.id, "shell", s.shellName,
 		"requested_by", s.requestedBy)
 	return nil
+}
+
+// closeAndReap kills the child and waits for it. Close on its own is not
+// enough on the setup path: it SIGKILLs the process group but nothing calls
+// Wait, because watchExit (the only other caller) has not been started yet,
+// so the child sits as a zombie for the life of the agent. Wait runs on its
+// own goroutine so a PTY implementation that blocks cannot wedge the caller,
+// which is holding the module lock.
+func (s *session) closeAndReap(p PTY) {
+	if err := p.Close(); err != nil {
+		s.log.Debug("shell pty close", "session_id", s.id, "err", err)
+	}
+	go func() {
+		if _, err := p.Wait(); err != nil {
+			s.log.Debug("shell pty reap", "session_id", s.id, "err", err)
+		}
+	}()
 }
 
 // pumpOutput reads the PTY and publishes frames, blocking whenever flow

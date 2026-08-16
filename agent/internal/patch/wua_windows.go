@@ -40,10 +40,15 @@ func (m *wuaManager) thread() *comThread {
 // minutes on a machine that has not checked in for a while, most of it
 // inside a single COM call that cannot be interrupted, so callers must not
 // wrap this in a short timeout.
+//
+// The search result comes back by value, not through a captured slice: an
+// abandoned wait leaves the COM thread still appending to whatever the
+// closure was given, and a caller that then read it would be racing a live
+// writer.
 func (m *wuaManager) Scan(ctx context.Context) ([]Update, error) {
-	updates := []Update{}
-	err := m.thread().do(ctx, func() error {
-		return withUpdateSearch(func(coll *ole.IDispatch, count int64) error {
+	updates, _, err := comDo(ctx, m.thread(), func() ([]Update, error) {
+		found := []Update{}
+		err := withUpdateSearch(func(coll *ole.IDispatch, count int64) error {
 			for i := int64(0); i < count; i++ {
 				item, err := propDispatch(coll, "Item", int(i))
 				if err != nil {
@@ -51,11 +56,12 @@ func (m *wuaManager) Scan(ctx context.Context) ([]Update, error) {
 						"index", i, "err", err)
 					continue
 				}
-				updates = append(updates, wuaUpdateFromFields(readUpdateFields(item)))
+				found = append(found, wuaUpdateFromFields(readUpdateFields(item)))
 				item.Release()
 			}
 			return nil
 		})
+		return found, err
 	})
 	if err != nil {
 		return nil, err
@@ -71,21 +77,19 @@ func (m *wuaManager) Scan(ctx context.Context) ([]Update, error) {
 // IDownloadProgressChangedCallback as a COM object) buys percentage ticks
 // at the cost of a callback surface that can deadlock the apartment. Phase
 // transitions are honest; sub-percentages would not be.
+//
+// Cancellation does not cancel the install, because nothing can: WUA's
+// Install is a synchronous COM call. It only ends the agent's wait, and
+// installViaCOM makes sure that walking away leaves nothing shared behind
+// and does not free the install gate while Windows Update is still working.
 func (m *wuaManager) Install(ctx context.Context, ids []string, progress func(InstallProgress)) (InstallResult, error) {
 	ids = dedupeIDs(ids)
-	res := newInstallResult()
 	if len(ids) == 0 {
-		return res, nil
+		return newInstallResult(), nil
 	}
-	if !m.gate.acquire() {
-		return res, ErrBusy
-	}
-	defer m.gate.release()
-
-	err := m.thread().do(ctx, func() error {
-		return m.install(ids, &res, progress)
+	return installViaCOM(ctx, m.thread(), &m.gate, ids, func(res *InstallResult) error {
+		return m.install(ids, res, progress)
 	})
-	return res, err
 }
 
 // install runs entirely on the COM thread.
@@ -255,15 +259,13 @@ func (m *wuaManager) recordOutcomes(installResult *ole.IDispatch, ordered []stri
 // and never acts on it: rebooting a server because a patch asked for it is
 // the operator's decision, made in their maintenance window.
 func (m *wuaManager) RebootRequired(ctx context.Context) (bool, error) {
-	var required bool
-	err := m.thread().do(ctx, func() error {
+	required, _, err := comDo(ctx, m.thread(), func() (bool, error) {
 		info, err := createObject("Microsoft.Update.SystemInfo")
 		if err != nil {
-			return err
+			return false, err
 		}
 		defer info.Release()
-		required = propBool(info, "RebootRequired")
-		return nil
+		return propBool(info, "RebootRequired"), nil
 	})
 	return required, err
 }

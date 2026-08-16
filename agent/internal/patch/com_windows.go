@@ -1,10 +1,7 @@
 package patch
 
 import (
-	"context"
 	"fmt"
-	"runtime"
-	"runtime/debug"
 	"strconv"
 
 	ole "github.com/go-ole/go-ole"
@@ -18,50 +15,28 @@ const (
 	hrRPCEChangedMode = 0x80010106
 )
 
-// comThread owns one OS thread with an initialised STA apartment and runs
-// every COM call on it.
+// newCOMThread starts the single thread every COM call runs on.
 //
-// This is not optional decoration. COM apartment state is per THREAD, and
-// Go moves goroutines between threads freely: a goroutine that calls
-// CoInitializeEx and then makes a call after a scheduling point can find
-// itself on a thread with no apartment at all, which surfaces as
+// The pinned thread is not optional decoration. COM apartment state is per
+// THREAD, and Go moves goroutines between threads freely: a goroutine that
+// calls CoInitializeEx and then makes a call after a scheduling point can
+// find itself on a thread with no apartment at all, which surfaces as
 // CO_E_NOTINITIALIZED from somewhere deep inside wuapi.dll. Locking one
 // thread and funnelling every request through it is the only arrangement
-// that holds.
-type comThread struct {
-	reqs    chan func()
-	ready   chan struct{}
-	initErr error
-}
-
+// that holds. The request plumbing itself is in com.go.
 func newCOMThread() *comThread {
-	t := &comThread{reqs: make(chan func()), ready: make(chan struct{})}
-	go t.loop()
-	<-t.ready
-	return t
-}
-
-func (t *comThread) loop() {
-	// Never unlocked: when this goroutine exits, the thread dies with it,
-	// which is what we want for a thread carrying apartment state.
-	runtime.LockOSThread()
-
-	// COINIT_APARTMENTTHREADED, not MULTITHREADED: the Windows Update Agent
-	// objects are apartment threaded, and an MTA caller pays for a proxy on
-	// every property read of a several-thousand-item search result.
-	if err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED); err != nil {
-		if !alreadyInitialized(err) {
-			t.initErr = err
+	return startCOMThread(func() error {
+		// COINIT_APARTMENTTHREADED, not MULTITHREADED: the Windows Update
+		// Agent objects are apartment threaded, and an MTA caller pays for a
+		// proxy on every property read of a several-thousand-item search
+		// result.
+		if err := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED); err != nil {
+			if !alreadyInitialized(err) {
+				return err
+			}
 		}
-	}
-	close(t.ready)
-	if t.initErr != nil {
-		return // do() checks initErr and never sends, so nothing blocks
-	}
-	defer ole.CoUninitialize()
-	for fn := range t.reqs {
-		fn()
-	}
+		return nil
+	}, ole.CoUninitialize)
 }
 
 // alreadyInitialized reports whether a CoInitializeEx error just means the
@@ -73,42 +48,6 @@ func alreadyInitialized(err error) bool {
 	}
 	code := uint32(oleErr.Code())
 	return code == hrSFalse || code == hrRPCEChangedMode
-}
-
-// do runs fn on the COM thread and waits for it.
-//
-// ctx bounds the WAIT, not the call: an in-flight COM call cannot be
-// interrupted, so a cancelled context abandons the result while the call
-// runs to completion on the COM thread. That is deliberate. Killing a
-// Windows Update install midway is far worse than waiting for it.
-func (t *comThread) do(ctx context.Context, fn func() error) error {
-	if t.initErr != nil {
-		return fmt.Errorf("com initialize: %w", t.initErr)
-	}
-	done := make(chan error, 1)
-	select {
-	case t.reqs <- func() { done <- callRecovered(fn) }:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// callRecovered turns a panic from the COM layer into an error. go-ole
-// panics on some malformed variants, and one bad update in a search result
-// must not take the agent down.
-func callRecovered(fn func() error) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("com call panicked: %v\n%s", r, debug.Stack())
-		}
-	}()
-	return fn()
 }
 
 // createObject instantiates a COM object by ProgID and returns its

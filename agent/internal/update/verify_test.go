@@ -214,12 +214,72 @@ func TestTrustedKeys(t *testing.T) {
 		t.Fatalf("got %d keys, want 2 (duplicates collapse)", len(keys))
 	}
 
-	EmbeddedPublicKey = ""
+	if _, err := TrustedKeys("nonsense"); !errors.Is(err, ErrMalformedKey) {
+		t.Fatalf("err = %v, want ErrMalformedKey", err)
+	}
+}
+
+// TestTrustedKeysRefusesAnEmptyEmbeddedKey is the regression for the defect
+// that handed the update trust anchor to the server.
+//
+// The documented invariant is that rotated keys are trusted IN ADDITION TO
+// the embedded key, never instead of it, so a compromised server cannot swap
+// the anchor. Skipping a blank embedded key silently inverted that: a build
+// with EmbeddedPublicKey="" trusted whatever key the server put in
+// PublicKeys, and every artifact it signed verified. The goreleaser header
+// told operators to build exactly that build for snapshots, claiming
+// self-update would refuse to run.
+func TestTrustedKeysRefusesAnEmptyEmbeddedKey(t *testing.T) {
+	attacker := newTestKey(t, 0xd0)
+
+	origKey, origDev := EmbeddedPublicKey, DevBuild
+	t.Cleanup(func() { EmbeddedPublicKey, DevBuild = origKey, origDev })
+	EmbeddedPublicKey, DevBuild = "", ""
+
+	if _, err := TrustedKeys(); !errors.Is(err, ErrNoTrustAnchor) {
+		t.Fatalf("TrustedKeys() = %v, want ErrNoTrustAnchor", err)
+	}
+	// The one that matters: a server-supplied key must not become the anchor.
+	keys, err := TrustedKeys(attacker.pub)
+	if !errors.Is(err, ErrNoTrustAnchor) {
+		t.Fatalf("TrustedKeys(server key) = %v, want ErrNoTrustAnchor", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("TrustedKeys returned %d keys for a build with no anchor", len(keys))
+	}
+	// Whitespace is not a key either.
+	EmbeddedPublicKey = "   \n\t "
+	if _, err := TrustedKeys(attacker.pub); !errors.Is(err, ErrNoTrustAnchor) {
+		t.Fatalf("TrustedKeys with a whitespace anchor = %v, want ErrNoTrustAnchor", err)
+	}
+}
+
+// TestTrustedKeysDevBuildEscapeHatch keeps unsigned local builds workable,
+// but only when the build said so out loud.
+func TestTrustedKeysDevBuildEscapeHatch(t *testing.T) {
+	local := newTestKey(t, 0xe0)
+
+	origKey, origDev := EmbeddedPublicKey, DevBuild
+	t.Cleanup(func() { EmbeddedPublicKey, DevBuild = origKey, origDev })
+	EmbeddedPublicKey, DevBuild = "", "true"
+
+	keys, err := TrustedKeys(local.pub)
+	if err != nil {
+		t.Fatalf("TrustedKeys in a dev build: %v", err)
+	}
+	if len(keys) != 1 {
+		t.Fatalf("got %d keys, want 1", len(keys))
+	}
+	// A dev build with nothing at all still has nothing to verify against.
 	if _, err := TrustedKeys(); !errors.Is(err, ErrNoPublicKey) {
 		t.Fatalf("err = %v, want ErrNoPublicKey", err)
 	}
-	if _, err := TrustedKeys("nonsense"); !errors.Is(err, ErrMalformedKey) {
-		t.Fatalf("err = %v, want ErrMalformedKey", err)
+	// Anything other than the exact opt-in is not an opt-in.
+	for _, flag := range []string{"1", "yes", "TRUE", "false", ""} {
+		DevBuild = flag
+		if _, err := TrustedKeys(local.pub); !errors.Is(err, ErrNoTrustAnchor) {
+			t.Errorf("DevBuild=%q opted out of the trust anchor", flag)
+		}
 	}
 }
 

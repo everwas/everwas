@@ -1,4 +1,4 @@
-module github.com/openrmm/agent
+module github.com/rsp2k/openrmm/agent
 
 go 1.26.5
 

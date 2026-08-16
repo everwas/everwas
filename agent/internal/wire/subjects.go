@@ -54,3 +54,15 @@ func ShellIn(agentID, sessionID string) string {
 func ShellResize(agentID, sessionID string) string {
 	return fmt.Sprintf("agents.%s.shell.%s.rsz", agentID, sessionID)
 }
+
+// InboxPrefix is this agent's private reply namespace.
+//
+// The NATS default (_INBOX) is shared by every client in the account, so a
+// grant covering it lets any one agent receive every other agent's request
+// replies and pull-consumer deliveries, which includes the job envelope with
+// the script body about to run as root. The server grants only
+// _INBOX_{agent_id}.>, so the client MUST be configured with a matching
+// prefix or it cannot receive replies to its own requests.
+//
+// Mirrors server/src/openrmm/natsio/subjects.py:agent_inbox_prefix.
+func InboxPrefix(agentID string) string { return "_INBOX_" + agentID }

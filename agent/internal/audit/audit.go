@@ -10,7 +10,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/wire"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 // Event names. Kept as constants so a typo fails the build, not the audit log.

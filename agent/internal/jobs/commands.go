@@ -6,9 +6,9 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/audit"
-	"github.com/openrmm/agent/internal/sched"
-	"github.com/openrmm/agent/internal/shell"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/sched"
+	"github.com/rsp2k/openrmm/agent/internal/shell"
 )
 
 // reply is the shape every command answers with. Replies are bare JSON, not

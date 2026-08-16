@@ -17,7 +17,7 @@ import (
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
 
-	"github.com/openrmm/agent/internal/wire"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 const interval = 60 * time.Second

@@ -16,10 +16,24 @@ import (
 )
 
 // EmbeddedPublicKey is the release signing key, injected at build time with
-// -ldflags "-X github.com/openrmm/agent/internal/update.EmbeddedPublicKey=..."
+// -ldflags "-X github.com/rsp2k/openrmm/agent/internal/update.EmbeddedPublicKey=..."
 // It holds the base64 body of a minisign public key (the second line of a
 // .pub file), not the whole file.
+//
+// It is the trust anchor for the entire self-update path. A build without
+// one cannot update, by design: see TrustedKeys.
 var EmbeddedPublicKey = ""
+
+// DevBuild opts a build out of the embedded-key requirement, for local
+// development only. Set it with
+// -ldflags "-X github.com/rsp2k/openrmm/agent/internal/update.DevBuild=true".
+//
+// It exists so the escape hatch is EXPLICIT and greppable in a build
+// command, rather than being the accidental consequence of leaving a key
+// variable empty. A build with DevBuild=true will install an artifact signed
+// by whatever key the server names, which is fine on a laptop and must never
+// ship.
+var DevBuild = ""
 
 // Wire sizes of the minisign primitives.
 const (
@@ -49,6 +63,7 @@ var (
 	ErrBadSignature       = errors.New("update: signature verification failed")
 	ErrChecksumMismatch   = errors.New("update: sha256 checksum mismatch")
 	ErrNoPublicKey        = errors.New("update: no signing public key available")
+	ErrNoTrustAnchor      = errors.New("update: this build has no embedded signing key, so it cannot verify an update")
 )
 
 // PublicKey is a parsed minisign public key.
@@ -209,9 +224,23 @@ func VerifyAny(pubs []PublicKey, message, signature []byte) error {
 }
 
 // TrustedKeys parses the embedded key plus any rotated keys handed to the
-// agent at enrollment. Blank entries are skipped so callers can pass an empty
-// EmbeddedPublicKey in dev builds. Duplicate key ids collapse to one.
+// agent at enrollment. Duplicate key ids collapse to one.
+//
+// It FAILS when EmbeddedPublicKey is empty, and that is the whole point.
+// The rotated keys in extra arrive from the server, and the invariant the
+// update path is built on is that they are trusted IN ADDITION TO the
+// embedded key, never instead of it, so a compromised server cannot name its
+// own signing key. That invariant is vacuous when there is no embedded key:
+// skipping the blank entry and carrying on left a build that would trust
+// whatever the server supplied, which is a worse position than having no
+// update mechanism at all.
+//
+// A build that genuinely wants no anchor has to say so, with
+// -ldflags "-X ...update.DevBuild=true".
 func TrustedKeys(extra ...string) ([]PublicKey, error) {
+	if strings.TrimSpace(EmbeddedPublicKey) == "" && strings.TrimSpace(DevBuild) != "true" {
+		return nil, ErrNoTrustAnchor
+	}
 	seen := make(map[[keyIDLen]byte]bool)
 	var keys []PublicKey
 	for _, s := range append([]string{EmbeddedPublicKey}, extra...) {

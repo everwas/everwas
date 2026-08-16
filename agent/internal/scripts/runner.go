@@ -19,7 +19,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
 )
 
 const (

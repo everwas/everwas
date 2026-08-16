@@ -14,7 +14,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 const (
@@ -89,9 +90,14 @@ func (m *Module) Open(sessionID, shellName string, cols, rows uint16, requestedB
 }
 
 // OpenSession starts a session from a full spec.
+//
+// The session id is validated first, before anything is spawned. It is
+// interpolated into three subscribe subjects, so a wildcard in it either
+// wiretaps every other session or kills this agent's NATS connection for
+// good. Refusing costs one reply; accepting costs the machine.
 func (m *Module) OpenSession(spec OpenSpec) error {
-	if spec.SessionID == "" {
-		return fmt.Errorf("session_id is required")
+	if err := wire.CheckIdentifier("session_id", spec.SessionID); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

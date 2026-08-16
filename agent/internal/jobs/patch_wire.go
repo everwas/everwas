@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openrmm/agent/internal/audit"
-	"github.com/openrmm/agent/internal/inventory"
-	"github.com/openrmm/agent/internal/patch"
-	"github.com/openrmm/agent/internal/scripts"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/inventory"
+	"github.com/rsp2k/openrmm/agent/internal/patch"
+	"github.com/rsp2k/openrmm/agent/internal/scripts"
 )
 
 // Audit event names for patch work. These belong next to the others in

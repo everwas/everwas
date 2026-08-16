@@ -208,18 +208,31 @@ func TestApplyValidatesRequest(t *testing.T) {
 	}
 }
 
+// TestApplyRefusesToUpdateWithoutATrustAnchor checks the refusal reaches all
+// the way out to Apply, including when the server offers its own key: an
+// update request is not allowed to supply the thing that would validate it.
 func TestApplyRequiresATrustAnchor(t *testing.T) {
-	orig := EmbeddedPublicKey
-	t.Cleanup(func() { EmbeddedPublicKey = orig })
-	EmbeddedPublicKey = ""
+	origKey, origDev := EmbeddedPublicKey, DevBuild
+	t.Cleanup(func() { EmbeddedPublicKey, DevBuild = origKey, origDev })
+	EmbeddedPublicKey, DevBuild = "", ""
 
+	attacker := newTestKey(t, 0xf0)
 	_, err := Apply(context.Background(), Request{
 		Version:      "2.0.0",
 		ArtifactURL:  "https://example.invalid/agent",
 		SHA256:       "ab",
 		SignatureURL: "https://example.invalid/agent.minisig",
+		PublicKeys:   []string{attacker.pub},
 	}, Options{StateDir: t.TempDir(), TargetPath: filepath.Join(t.TempDir(), "agent"), CurrentVersion: "1.0.0"})
-	assertStep(t, err, StepKeys, ErrNoPublicKey)
+	assertStep(t, err, StepKeys, ErrNoTrustAnchor)
+
+	_, err = Apply(context.Background(), Request{
+		Version:      "2.0.0",
+		ArtifactURL:  "https://example.invalid/agent",
+		SHA256:       "ab",
+		SignatureURL: "https://example.invalid/agent.minisig",
+	}, Options{StateDir: t.TempDir(), TargetPath: filepath.Join(t.TempDir(), "agent"), CurrentVersion: "1.0.0"})
+	assertStep(t, err, StepKeys, ErrNoTrustAnchor)
 }
 
 func assertStep(t *testing.T, err error, want Step, wantErr error) {

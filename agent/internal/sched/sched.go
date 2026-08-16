@@ -16,7 +16,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 // parser accepts standard 5-field cron plus @daily-style descriptors.
@@ -84,7 +85,18 @@ func (s *Scheduler) Entries() []Entry {
 // Sync replaces the cached schedule and persists it. Entries seen for the
 // first time are marked as fired now, so a newly added nightly job does not
 // immediately "catch up" a run it was never supposed to do.
+//
+// A document with an unusable entry_id is rejected whole rather than in
+// part. Every entry id ends up inside a job id, and from there inside three
+// publish subjects, so one bad id would poison the fleet's connection the
+// first time that entry fired: hours later, with nothing pointing back at
+// the sync that caused it.
 func (s *Scheduler) Sync(doc Document) (int, error) {
+	for _, e := range doc.Entries {
+		if err := wire.CheckIdentifier("entry_id", e.EntryID); err != nil {
+			return s.Version(), err
+		}
+	}
 	now := time.Now()
 	s.mu.Lock()
 	lastFired := map[string]int64{}

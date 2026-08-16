@@ -1,7 +1,7 @@
 # nfpm config for building the deb and rpm by hand:
 #
 #   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
-#     -ldflags "-s -w -X github.com/openrmm/agent/internal/cli.Version=$VERSION" \
+#     -ldflags "-s -w -X github.com/rsp2k/openrmm/agent/internal/cli.Version=$VERSION" \
 #     -o dist/openrmm-agent ./cmd/openrmm-agent
 #   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p deb -t dist/
 #   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p rpm -t dist/
@@ -18,7 +18,7 @@ section: admin
 priority: optional
 maintainer: OpenRMM <agents@openrmm.invalid>
 vendor: OpenRMM
-homepage: https://github.com/openrmm/agent
+homepage: https://github.com/rsp2k/openrmm/agent
 license: Apache-2.0
 description: |
   OpenRMM remote monitoring and management agent.

@@ -23,3 +23,14 @@ func TestSubjectsMatchContract(t *testing.T) {
 		}
 	}
 }
+
+func TestInboxPrefixIsPerAgent(t *testing.T) {
+	// Must match the server's agent_inbox_prefix exactly, or the agent cannot
+	// receive replies to its own requests.
+	if got := InboxPrefix("abc"); got != "_INBOX_abc" {
+		t.Errorf("InboxPrefix = %q, want %q", got, "_INBOX_abc")
+	}
+	if InboxPrefix("aaa") == InboxPrefix("bbb") {
+		t.Error("inbox prefixes must differ per agent")
+	}
+}

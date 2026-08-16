@@ -8,13 +8,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
-	"github.com/openrmm/agent/internal/agentcore"
-	"github.com/openrmm/agent/internal/config"
-	"github.com/openrmm/agent/internal/conn"
-	"github.com/openrmm/agent/internal/enroll"
-	"github.com/openrmm/agent/internal/update"
+	"github.com/rsp2k/openrmm/agent/internal/agentcore"
+	"github.com/rsp2k/openrmm/agent/internal/config"
+	"github.com/rsp2k/openrmm/agent/internal/conn"
+	"github.com/rsp2k/openrmm/agent/internal/enroll"
+	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // Version is injected at build time via -ldflags.
@@ -94,15 +95,26 @@ func cmdRun() int {
 		return 1
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	nc, err := conn.Connect(cfg, log)
+	// A closed NATS connection is unrecoverable and silent: the agent keeps
+	// running and heartbeating while being unable to receive anything. Dying
+	// is the only way back, so the connection tells us and we exit non-zero
+	// for the service manager to restart.
+	deaf := make(chan struct{})
+	var deafOnce sync.Once
+	nc, err := conn.Connect(cfg, log, func() {
+		deafOnce.Do(func() { close(deaf) })
+	})
 	if err != nil {
 		log.Error("nats connect", "err", err)
 		return 1
 	}
 	log.Info("agent started", "agent_id", cfg.AgentID, "version", Version, "nats_url", cfg.NATSURL)
+
+	ctx, cancel := context.WithCancel(signalCtx)
+	defer cancel()
 
 	sup := &agentcore.Supervisor{
 		NC:       nc,
@@ -113,13 +125,43 @@ func cmdRun() int {
 	}
 	sup.Start(ctx)
 
-	<-ctx.Done()
-	log.Info("shutting down")
+	wentDeaf := waitForShutdown(ctx, deaf)
+	cancel()
+	if wentDeaf {
+		log.Error("nats connection is closed and cannot recover, exiting for restart")
+	} else {
+		log.Info("shutting down")
+	}
 	sup.Wait()
+	if wentDeaf {
+		// The conn is already closed; there is nothing to drain, and the exit
+		// code is what makes the service manager act.
+		return 1
+	}
 	if err := nc.Drain(); err != nil {
 		log.Warn("nats drain", "err", err)
 	}
 	return 0
+}
+
+// waitForShutdown blocks until the agent should stop, reporting whether it
+// is stopping because the connection went deaf rather than because it was
+// asked to.
+//
+// A clean shutdown closes the conn itself, which fires the same callback, so
+// being asked to stop always wins. The explicit ctx check comes first
+// because a select with two ready cases picks at random, and a SIGTERM that
+// arrives alongside the close must not be reported as a crash.
+func waitForShutdown(ctx context.Context, deaf <-chan struct{}) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-deaf:
+		return true
+	}
 }
 
 func cmdStatus() int {

@@ -8,7 +8,7 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
 
-	"github.com/openrmm/agent/internal/sysinfo"
+	"github.com/rsp2k/openrmm/agent/internal/sysinfo"
 )
 
 type hardware struct {

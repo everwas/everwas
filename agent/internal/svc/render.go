@@ -23,7 +23,7 @@ func RenderSystemdUnit(cfg InstallConfig) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
 	b.WriteString("Description=" + Description + "\n")
-	b.WriteString("Documentation=https://github.com/openrmm/agent\n")
+	b.WriteString("Documentation=https://github.com/rsp2k/openrmm/agent\n")
 	b.WriteString("After=network-online.target\n")
 	b.WriteString("Wants=network-online.target\n")
 	b.WriteString("\n[Service]\n")

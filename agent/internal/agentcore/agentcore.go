@@ -13,15 +13,15 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/openrmm/agent/internal/audit"
-	"github.com/openrmm/agent/internal/heartbeat"
-	"github.com/openrmm/agent/internal/inventory"
-	"github.com/openrmm/agent/internal/jobs"
-	"github.com/openrmm/agent/internal/sched"
-	"github.com/openrmm/agent/internal/scripts"
-	"github.com/openrmm/agent/internal/shell"
-	"github.com/openrmm/agent/internal/telemetry"
-	"github.com/openrmm/agent/internal/update"
+	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/heartbeat"
+	"github.com/rsp2k/openrmm/agent/internal/inventory"
+	"github.com/rsp2k/openrmm/agent/internal/jobs"
+	"github.com/rsp2k/openrmm/agent/internal/sched"
+	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/rsp2k/openrmm/agent/internal/shell"
+	"github.com/rsp2k/openrmm/agent/internal/telemetry"
+	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 const (

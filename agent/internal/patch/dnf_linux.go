@@ -76,23 +76,22 @@ func (m *dnfManager) Install(ctx context.Context, ids []string, progress func(In
 	}
 	defer m.gate.release()
 
-	specs := make([]string, 0, len(ids))
-	idBySpec := make(map[string]string, len(ids))
-	for _, id := range ids {
-		spec, err := dnfInstallSpec(id)
-		if err != nil {
-			res.fail(id, err)
-			continue
-		}
-		specs = append(specs, spec)
-		idBySpec[spec] = id
+	// Scan first and install only what dnf is actually offering, the way WUA
+	// and softwareupdate already do.
+	available, err := m.Scan(ctx)
+	if err != nil {
+		return res, fmt.Errorf("dnf scan before install: %w", err)
 	}
+
+	specs, idBySpec := dnfInstallPlan(ids, offeredIDs(available), &res)
 	if len(specs) == 0 {
 		return res, nil
 	}
 
 	seen := 0
-	args := append([]string{"-y", "install"}, specs...)
+	// "--" ends option parsing, so nothing in the package list can be read
+	// as a dnf flag.
+	args := append([]string{"-y", "install", "--"}, specs...)
 	cmdRes := runCmd(ctx, execOptions{
 		Timeout: installTimeout,
 		OnLine: func(line string) {

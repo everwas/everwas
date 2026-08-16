@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openrmm/agent/internal/sched"
-	"github.com/openrmm/agent/internal/scripts"
+	"github.com/rsp2k/openrmm/agent/internal/sched"
+	"github.com/rsp2k/openrmm/agent/internal/scripts"
 )
 
 func testModule(t *testing.T) *Module {
