@@ -43,14 +43,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json" },
     ...init,
   })
-  if (!res.ok) throw new ApiError(res.status)
+  if (!res.ok) throw new ApiError(res.status, await detailOf(res))
   return res.status === 204 ? (undefined as T) : res.json()
+}
+
+/** FastAPI puts the reason in `detail`. Reading it is the difference between
+ *  "an enabled rule with no channel fires into the void" and "API error 422",
+ *  and the second one tells the operator nothing about what to change. */
+async function detailOf(res: Response): Promise<string | null> {
+  try {
+    const body = await res.json()
+    if (typeof body?.detail === "string") return body.detail
+    // 422 from pydantic is a list of per-field errors.
+    if (Array.isArray(body?.detail)) {
+      return body.detail
+        .map((d: { loc?: unknown[]; msg?: string }) =>
+          [d.loc?.slice(1).join("."), d.msg].filter(Boolean).join(": "),
+        )
+        .join("; ")
+    }
+  } catch {
+    // No body, or not JSON. The status alone is all we have.
+  }
+  return null
 }
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number) {
-    super(`API error ${status}`)
+  constructor(status: number, detail?: string | null) {
+    super(detail || `API error ${status}`)
     this.status = status
   }
 }

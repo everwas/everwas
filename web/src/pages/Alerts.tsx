@@ -62,6 +62,13 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
   const [durationS, setDurationS] = useState(300)
   const [severity, setSeverity] = useState<Severity>("warning")
   const [channelIds, setChannelIds] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  // The server REFUSES an enabled rule with no channel: it would open alerts
+  // nobody is ever told about. So a channel-less rule is saved disabled rather
+  // than rejected, which is the same policy said in a way the operator can act
+  // on instead of a 422 they never see.
+  const silent = channelIds.length === 0
 
   if (!open) {
     return (
@@ -143,8 +150,8 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
         {channels.length === 0 ? (
           <p className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            No notification channels exist yet. This rule will record alerts in this
-            page but will not reach anybody.
+            No notification channels exist yet, so this rule will be saved disabled.
+            Add a channel, then enable it.
           </p>
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -165,14 +172,11 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
                 </label>
               ))}
             </div>
-            {channelIds.length === 0 && (
-              /* A rule with no channel is not an error: the alert is still
-                 recorded and visible here. It is only dangerous when the
-                 operator believes it will page someone, so say so rather than
-                 blocking the save. */
+            {silent && (
               <p className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-                Nothing selected. This rule will record alerts but notify nobody.
+                Nothing selected. The rule will be saved disabled: an enabled rule with
+                no channel opens alerts nobody is told about.
               </p>
             )}
           </div>
@@ -183,30 +187,46 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
             size="sm"
             disabled={!name}
             onClick={async () => {
-              await api.createRule({
-                name,
-                metric,
-                operator: "gt",
-                threshold: metric === "heartbeat_missed" ? 0 : threshold,
-                duration_s: durationS,
-                severity,
-                target: { all: true },
-                cooldown_s: 900,
-                enabled: true,
-                channel_ids: channelIds,
-              })
+              setError(null)
+              try {
+                await api.createRule({
+                  name,
+                  metric,
+                  operator: "gt",
+                  threshold: metric === "heartbeat_missed" ? 0 : threshold,
+                  duration_s: durationS,
+                  severity,
+                  target: { all: true },
+                  cooldown_s: 900,
+                  enabled: !silent,
+                  channel_ids: channelIds,
+                })
+              } catch (e) {
+                // The save used to fail in total silence: the request 422'd,
+                // the form stayed open, and the operator had no way to know
+                // the rule they just wrote does not exist.
+                setError(e instanceof Error ? e.message : "could not save the rule")
+                return
+              }
               setName("")
               setChannelIds([])
               setOpen(false)
               onCreated()
             }}
           >
-            {channelIds.length === 0 ? "Save without notifications" : "Save"}
+            {silent ? "Save as disabled" : "Save"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
             Cancel
           </Button>
         </div>
+
+        {error && (
+          <p className="flex items-start gap-2 text-sm text-destructive">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -498,7 +518,18 @@ export function AlertsPage() {
                             failure: it looks configured, it evaluates, it
                             records, and nobody is told. The list is where an
                             operator would otherwise never notice. */}
+                        {!r.enabled && (
+                          /* A disabled rule looked exactly like an enabled one
+                             in this list, so a rule saved disabled because it
+                             had no channel read as working monitoring. */
+                          <Badge variant="outline" className="text-muted-foreground">
+                            disabled
+                          </Badge>
+                        )}
                         {r.enabled && r.channel_ids.length === 0 && (
+                          /* Unreachable at create time (the API refuses it) but
+                             reachable by drift: deleting a channel leaves the
+                             rules that pointed at it enabled and silent. */
                           <Badge
                             variant="outline"
                             className="gap-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
