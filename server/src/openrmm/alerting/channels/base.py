@@ -13,6 +13,17 @@ import httpx
 from openrmm import __version__
 
 HTTP_TIMEOUT_S = 10.0
+# httpx timeouts are PER OPERATION, not a total budget: a server that dribbles
+# one byte every 9 seconds resets the read timer forever and holds the request
+# (and, upstream, the outbox transaction) open indefinitely. These bound each
+# phase; services.outbox wraps the whole delivery in a wall-clock ceiling,
+# which is the only thing that actually bounds a slow-loris endpoint.
+HTTP_TIMEOUT = httpx.Timeout(
+    connect=5.0,
+    read=HTTP_TIMEOUT_S,
+    write=HTTP_TIMEOUT_S,
+    pool=5.0,
+)
 USER_AGENT = f"OpenRMM/{__version__}"
 # 408 and 429 are 4xx but say "later", not "never"
 RETRYABLE_4XX = {408, 429}

@@ -3,7 +3,7 @@
 import httpx
 
 from openrmm.alerting.channels.base import (
-    HTTP_TIMEOUT_S,
+    HTTP_TIMEOUT,
     USER_AGENT,
     ChannelError,
     Notification,
@@ -31,7 +31,7 @@ class GotifyChannel:
             "message": note.body or note.title,
             "priority": PRIORITIES.get(note.severity, PRIORITIES["info"]),
         }
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_S, transport=self._transport) as client:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=self._transport) as client:
             try:
                 response = await client.post(
                     f"{self.url}/message",

@@ -170,7 +170,7 @@ async def _handle_telemetry(subject: str, data: bytes) -> None:
         await apply_telemetry(db, device_id, ts, payload)
         # Evaluate in the same transaction: an alert and its outbox rows commit
         # together with the sample that caused them.
-        await ENGINE.evaluate_telemetry(db, device_id, payload)
+        await ENGINE.evaluate_telemetry(db, device_id, payload, ts)
 
 
 async def _handle_inventory(subject: str, data: bytes) -> None:

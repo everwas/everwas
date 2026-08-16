@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import httpx
 
 from openrmm.alerting.channels.base import (
-    HTTP_TIMEOUT_S,
+    HTTP_TIMEOUT,
     USER_AGENT,
     ChannelError,
     Notification,
@@ -36,7 +36,7 @@ class WebhookChannel:
         if self.secret:
             headers[SIGNATURE_HEADER] = sign(self.secret, body)
 
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_S, transport=self._transport) as client:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=self._transport) as client:
             try:
                 response = await client.post(self.url, content=body, headers=headers)
             except httpx.HTTPError as exc:

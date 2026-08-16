@@ -1,10 +1,15 @@
 """Rule cache and target matching.
 
 Rules change rarely and are read on every telemetry sample, so they're cached
-in the dispatcher and invalidated explicitly (the API bumps a version row via
-LISTEN/NOTIFY; until then a periodic refresh keeps it honest).
+in the dispatcher. There is NO push invalidation: the only thing that refreshes
+the cache is CACHE_TTL_S expiring (or an in-process invalidate() call), so a
+rule edited through the API takes up to that long to take effect in the
+dispatcher. An earlier version of this docstring claimed the API pushed an
+invalidation via LISTEN/NOTIFY. No such mechanism was ever written, and
+believing it would have meant trusting a rule change to apply instantly.
 """
 
+import math
 import time
 import uuid
 from dataclasses import dataclass
@@ -90,18 +95,50 @@ def rule_matches_device(rule: CachedRule, device: Device) -> bool:
     return False
 
 
+def numeric(value: object) -> float | None:
+    """A telemetry field is only comparable if it is a finite real number.
+
+    The agent's payload is attacker-adjacent data, not a trusted struct. An
+    agent sending {"cpu_pct": "high"} used to reach rule.breached(), where
+    "high" > 90.0 raises TypeError inside the ingest transaction and takes the
+    telemetry sample down with it, permanently, on every redelivery. bool is
+    excluded on purpose: it is an int subclass, so True would silently compare
+    as 1.0 and read as a real measurement.
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _ratio_pct(used: object, total: object) -> float | None:
+    used_n, total_n = numeric(used), numeric(total)
+    if used_n is None or total_n is None or total_n <= 0:
+        return None
+    return used_n / total_n * 100.0
+
+
 def value_for_metric(metric: Metric, sample: dict) -> float | None:
-    """Pull the comparable value for a metric out of a telemetry sample."""
+    """Pull the comparable value for a metric out of a telemetry sample.
+
+    Returns None for anything that is missing, the wrong type, or not finite.
+    Callers may assume the result is safe to compare against a threshold.
+    """
+    if not isinstance(sample, dict):
+        return None
     if metric == Metric.cpu:
-        return sample.get("cpu_pct")
+        return numeric(sample.get("cpu_pct"))
     if metric == Metric.memory:
-        used, total = sample.get("mem_used"), sample.get("mem_total")
-        return (used / total * 100.0) if used and total else None
+        return _ratio_pct(sample.get("mem_used"), sample.get("mem_total"))
     if metric == Metric.disk:
+        disks = sample.get("disks")
+        if not isinstance(disks, list):
+            return None
         pcts = [
-            d["used"] / d["total"] * 100.0
-            for d in (sample.get("disks") or [])
-            if d.get("used") and d.get("total")
+            pct
+            for d in disks
+            if isinstance(d, dict)
+            and (pct := _ratio_pct(d.get("used"), d.get("total"))) is not None
         ]
         return max(pcts) if pcts else None
     return None

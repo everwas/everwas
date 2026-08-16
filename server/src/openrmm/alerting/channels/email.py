@@ -41,6 +41,14 @@ class EmailChannel:
                 password=settings.smtp_password or None,
                 timeout=TIMEOUT_S,
             )
+        except aiosmtplib.SMTPRecipientsRefused as exc:
+            # NOT an SMTPResponseException, so this used to fall through to the
+            # generic handler below and classify as transient: five retries
+            # over 35 minutes for an address that will never accept mail, while
+            # the operator saw "retry scheduled" and assumed it was in hand.
+            raise ChannelError(
+                f"smtp recipients refused: {_refusals(exc)}", permanent=True
+            ) from exc
         except aiosmtplib.SMTPResponseException as exc:
             # 5xx is a refusal, 4xx is a "come back later"
             raise ChannelError(
@@ -48,6 +56,17 @@ class EmailChannel:
             ) from exc
         except (aiosmtplib.SMTPException, OSError) as exc:
             raise ChannelError(f"smtp delivery failed: {exc}") from exc
+
+
+def _refusals(exc: "aiosmtplib.SMTPRecipientsRefused") -> str:
+    """Which addresses were refused, and what the server said about each."""
+    parts = []
+    for refusal in getattr(exc, "recipients", None) or []:
+        recipient = getattr(refusal, "recipient", None)
+        code = getattr(refusal, "code", None)
+        message = getattr(refusal, "message", None)
+        parts.append(f"{recipient or '?'} ({code or '?'}: {message or ''})".strip())
+    return "; ".join(parts) or str(exc)
 
 
 def subject_for(note: Notification) -> str:

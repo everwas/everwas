@@ -24,6 +24,7 @@ from openrmm.schemas.alert import (
     ChannelOut,
     OutboxOut,
 )
+from openrmm.services.outbox import outbox_health
 
 router = APIRouter()
 OPERATOR = require_role(Role.admin, Role.operator)
@@ -40,6 +41,38 @@ def _rule_out(rule: AlertRule, channel_ids: list[uuid.UUID]) -> AlertRuleOut:
     return out
 
 
+NO_CHANNELS = (
+    "an enabled rule with no notification channels fires into the void: it opens "
+    "alerts nobody is told about. Attach at least one channel, or save the rule "
+    "with enabled=false until you have one."
+)
+
+
+async def _validate_channels(db, body: AlertRuleIn) -> None:
+    """A rule that can never notify anyone is a configuration error, not a choice.
+
+    This is the quiet-failure shape the whole alerting review is about: the
+    rule fires forever, the alerts table fills up, and the operator is never
+    told because there was nowhere to tell them.
+    """
+    if body.enabled and not body.channel_ids:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, NO_CHANNELS)
+    if not body.channel_ids:
+        return
+    known = set(
+        (
+            await db.execute(
+                select(NotificationChannel.id).where(NotificationChannel.id.in_(body.channel_ids))
+            )
+        ).scalars()
+    )
+    if missing := [str(cid) for cid in body.channel_ids if cid not in known]:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"unknown notification channel(s): {', '.join(sorted(missing))}",
+        )
+
+
 # --- rules ---
 
 
@@ -51,6 +84,7 @@ async def list_rules(db: DbSession, _user: CurrentUser) -> list[AlertRuleOut]:
 
 @router.post("/rules", status_code=status.HTTP_201_CREATED, dependencies=[OPERATOR])
 async def create_rule(body: AlertRuleIn, db: DbSession, user: CurrentUser) -> AlertRuleOut:
+    await _validate_channels(db, body)
     data = body.model_dump(exclude={"channel_ids"})
     rule = AlertRule(**data)
     db.add(rule)
@@ -78,6 +112,8 @@ async def update_rule(
     rule = (await db.execute(select(AlertRule).where(AlertRule.id == rule_id))).scalar_one_or_none()
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown rule")
+    # Same check as create: an edit is just as capable of silencing a rule.
+    await _validate_channels(db, body)
     for field, value in body.model_dump(exclude={"channel_ids"}).items():
         setattr(rule, field, value)
     await db.execute(delete(RuleChannel).where(RuleChannel.rule_id == rule_id))
@@ -222,3 +258,14 @@ async def list_outbox(
         select(NotificationOutbox).order_by(NotificationOutbox.created_at.desc()).limit(limit)
     )
     return [OutboxOut.model_validate(o) for o in rows.scalars()]
+
+
+@router.get("/outbox/health")
+async def outbox_health_view(db: DbSession, _user: CurrentUser) -> dict:
+    """Queue depth, oldest undelivered age, blocked and recently-failed counts.
+
+    A notification that never arrives leaves no trace anywhere else in the UI.
+    The same numbers are available to /health/ingest via
+    openrmm.services.outbox.outbox_health.
+    """
+    return await outbox_health(db)

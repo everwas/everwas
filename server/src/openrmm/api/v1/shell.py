@@ -7,7 +7,7 @@ import structlog
 from fastapi import APIRouter, Query, WebSocket, status
 from sqlalchemy import select
 
-from openrmm.api.deps import DbSession
+from openrmm.api.deps import CurrentUser, DbSession
 from openrmm.config import get_settings
 from openrmm.db.engine import session_scope
 from openrmm.models.audit import ActorType, AuditLog
@@ -103,7 +103,17 @@ async def device_shell(
 
 
 @router.get("/sessions/recent")
-async def recent_sessions(db: DbSession, device_id: uuid.UUID | None = None) -> list[dict]:
+async def recent_sessions(
+    db: DbSession,
+    _user: CurrentUser,
+    device_id: uuid.UUID | None = None,
+) -> list[dict]:
+    """Who has had a root shell on which machine, and when.
+
+    This was the one route in the API with no authentication dependency, so
+    an anonymous caller could enumerate device UUIDs and read admin session
+    history. Every other read route takes CurrentUser; this one now does too.
+    """
     stmt = select(ShellSession).order_by(ShellSession.started_at.desc()).limit(50)
     if device_id is not None:
         stmt = stmt.where(ShellSession.device_id == device_id)

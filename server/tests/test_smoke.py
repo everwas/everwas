@@ -115,3 +115,38 @@ def test_device_tags_support_array_operators():
 
     assert "&&" in str(Device.tags.overlap(["prod"]))
     assert "@>" in str(Device.tags.contains(["prod"]))
+
+
+def test_every_route_requires_auth_except_the_documented_few():
+    """No route may ship without authentication by accident.
+
+    Regression: GET /devices/sessions/recent had no CurrentUser dependency, so
+    an anonymous caller could enumerate device UUIDs and read admin shell
+    history. Every other read route had one; this test makes the exception
+    list explicit instead of relying on nobody forgetting.
+    """
+    from fastapi.routing import APIRoute
+
+    from openrmm.api.app import create_app
+
+    # Public by design: liveness, login, logout, and agent enrollment (which
+    # authenticates with a one-time token in its body, not a session).
+    PUBLIC = {
+        "/api/v1/health",
+        "/api/v1/health/ingest",
+        "/api/v1/auth/login",
+        "/api/v1/auth/logout",
+        "/api/v1/agents/enroll",
+    }
+
+    app = create_app()
+    unguarded = []
+    for route in app.routes:
+        if not isinstance(route, APIRoute) or route.path in PUBLIC:
+            continue
+        names = {d.name for d in route.dependant.dependencies}
+        flat = str(route.dependant.dependencies) + str(names)
+        if "current_user" not in flat and "check" not in flat:
+            unguarded.append(f"{sorted(route.methods)} {route.path}")
+
+    assert not unguarded, f"routes without authentication: {unguarded}"

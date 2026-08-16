@@ -91,7 +91,7 @@ All JSON messages share:
 | `agents.{id}.inventory.{kind}` | JetStream `INVENTORY` (per-subject max-msgs 1) | kind ∈ `hardware` `software` `processes` `services` `patchstate`; full snapshot + `snapshot_hash` |
 | `agents.{id}.jobs.{job_id}.progress` | core NATS | `{seq, pct, phase, note}` |
 | `agents.{id}.jobs.{job_id}.output` | JetStream `JOBOUT` (max-age 24 h) | chunks: `{stream: "stdout"\|"stderr", seq, data: <base64 ≤256KiB>, eof}`; per-job cap 8 MiB then truncate + flag |
-| `agents.{id}.jobs.{job_id}.result` | JetStream `RESULTS` | terminal: `{status, exit_code, duration_ms, truncated}` |
+| `agents.{id}.jobs.{job_id}.result` | JetStream `RESULTS` | terminal: `{status, exit_code, duration_ms, truncated}`. Patch jobs additionally carry `installed[]`, `failed{}`, `reboot_required` (omitted by script jobs). The job result is the authoritative record of what happened; the audit event carries the same facts but job state must not depend on a separate best-effort stream. |
 | `agents.{id}.events` | JetStream `EVENTS` | audit: `enrolled`, `shell.opened/closed`, `script.executed`, `patch.installed`, `agent.updated`, `sched.misfire_skipped`, `policy.violation` |
 | `agents.{id}.shell.{sid}.out` | core NATS, **raw bytes** | PTY output, frames ≤ 32 KiB |
 | `agents.{id}.shell.{sid}.ctl` | core NATS | agent-side control: `{event: "closed"\|"error"\|"gap", …}` |

@@ -3,7 +3,7 @@
 import httpx
 
 from openrmm.alerting.channels.base import (
-    HTTP_TIMEOUT_S,
+    HTTP_TIMEOUT,
     USER_AGENT,
     ChannelError,
     Notification,
@@ -36,7 +36,7 @@ class NtfyChannel:
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 
-        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_S, transport=self._transport) as client:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT, transport=self._transport) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/{self.topic}",

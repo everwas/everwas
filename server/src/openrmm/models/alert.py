@@ -54,6 +54,10 @@ class ChannelKind(enum.StrEnum):
 class OutboxStatus(enum.StrEnum):
     pending = "pending"
     sent = "sent"
+    # Undeliverable under the CURRENT configuration (channel missing, disabled,
+    # or misconfigured). Not terminal: the drainer keeps retrying it slowly, so
+    # repairing the channel delivers the backlog instead of finding it gone.
+    blocked = "blocked"
     failed = "failed"
 
 
