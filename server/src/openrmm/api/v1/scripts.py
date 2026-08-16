@@ -1,16 +1,24 @@
 import hashlib
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+import structlog
+from croniter import croniter
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from openrmm.api.deps import CurrentUser, DbSession, require_role
-from openrmm.models.script import RunStatus, Script, ScriptRun
+from openrmm.dispatcher.schedule_sync import invalidate_schedule_cache
+from openrmm.models.device import Device
+from openrmm.models.script import RunStatus, Script, ScriptRun, ScriptSchedule
 from openrmm.models.user import Role
 from openrmm.natsio.client import get_nats
 from openrmm.schemas.script import (
     RunBatchOut,
     RunRequest,
+    ScheduleIn,
+    ScheduleOut,
     ScriptIn,
     ScriptOut,
     ScriptRunOut,
@@ -18,11 +26,13 @@ from openrmm.schemas.script import (
 from openrmm.services.jobs import (
     TargetError,
     cancel_run,
+    device_matches_target,
     queue_script_run,
     resolve_targets,
 )
 
 router = APIRouter()
+log = structlog.get_logger()
 
 OPERATOR = require_role(Role.admin, Role.operator)
 
@@ -133,3 +143,95 @@ async def cancel(run_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> Script
     await cancel_run(db, get_nats(), run)
     await db.commit()
     return ScriptRunOut.model_validate(run)
+
+
+# --------------------------------------------------------------------------
+# Schedules
+# --------------------------------------------------------------------------
+#
+# A schedule is not dispatched from here. It is pushed to the agents it
+# targets, which fire it from their own cache on their own clock, so it runs
+# on a machine that is off the network at 02:00. Nothing in this file talks to
+# an agent: the dispatcher reconciles each device on its next heartbeat by
+# comparing the version the agent reports against the one its entries hash to.
+
+
+@router.get("/schedules")
+async def list_schedules(db: DbSession, _user: CurrentUser) -> list[ScheduleOut]:
+    rows = await db.execute(select(ScriptSchedule).order_by(ScriptSchedule.name))
+    return [ScheduleOut.model_validate(s) for s in rows.scalars()]
+
+
+@router.post("/schedules", status_code=status.HTTP_201_CREATED, dependencies=[OPERATOR])
+async def create_schedule(body: ScheduleIn, db: DbSession, _user: CurrentUser) -> ScheduleOut:
+    if (await db.get(Script, body.script_id)) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown script")
+    schedule = ScriptSchedule(**body.model_dump())
+    db.add(schedule)
+    await db.commit()
+    invalidate_schedule_cache()
+    log.info("schedule created", schedule_id=str(schedule.id), cron=schedule.cron)
+    return ScheduleOut.model_validate(schedule)
+
+
+@router.put("/schedules/{schedule_id}", dependencies=[OPERATOR])
+async def update_schedule(
+    schedule_id: uuid.UUID, body: ScheduleIn, db: DbSession, _user: CurrentUser
+) -> ScheduleOut:
+    schedule = await db.get(ScriptSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown schedule")
+    if (await db.get(Script, body.script_id)) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown script")
+    for field, value in body.model_dump().items():
+        setattr(schedule, field, value)
+    await db.commit()
+    invalidate_schedule_cache()
+    return ScheduleOut.model_validate(schedule)
+
+
+@router.delete(
+    "/schedules/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[OPERATOR]
+)
+async def delete_schedule(schedule_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> None:
+    schedule = await db.get(ScriptSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown schedule")
+    await db.delete(schedule)
+    await db.commit()
+    invalidate_schedule_cache()
+    # The agents holding this entry find out on their next heartbeat: their
+    # reported version no longer matches, so a document without it is pushed.
+    log.info("schedule deleted", schedule_id=str(schedule_id))
+
+
+@router.get("/schedules/{schedule_id}/preview")
+async def preview_schedule(schedule_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> dict:
+    """Which devices this schedule targets, and when it fires next.
+
+    A cron expression plus a target selector is two things an operator cannot
+    check by reading. Getting either wrong means a job that silently runs
+    nowhere, or on everything.
+    """
+    schedule = await db.get(ScriptSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown schedule")
+
+    devices = (await db.execute(select(Device))).scalars().all()
+    matched = [d for d in devices if device_matches_target(d, schedule.target or {})]
+
+    tz = ZoneInfo(schedule.tz or "UTC")
+    itr = croniter(schedule.cron, datetime.now(tz))
+    upcoming = [itr.get_next(datetime).isoformat() for _ in range(5)]
+
+    return {
+        "schedule_id": str(schedule_id),
+        "matches": len(matched),
+        "devices": [{"id": str(d.id), "hostname": d.hostname} for d in matched[:50]],
+        "next_fires": upcoming,
+        "jitter_s": schedule.jitter_s,
+        "detail": (
+            f"fires on {len(matched)} device(s); each spreads its start over "
+            f"{schedule.jitter_s}s, deterministically per device"
+        ),
+    }

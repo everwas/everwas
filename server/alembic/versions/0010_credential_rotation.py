@@ -21,6 +21,7 @@ just two permanent credentials.
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "0010"

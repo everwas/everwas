@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from openrmm.models.script import RunStatus, RunTrigger, ShellKind
 
@@ -61,3 +61,55 @@ class RunBatchOut(BaseModel):
     batch_id: uuid.UUID
     queued: int
     run_ids: list[uuid.UUID]
+
+
+class ScheduleIn(BaseModel):
+    """A cron schedule. Validated here so a bad one is a 422 to the operator
+    rather than an entry every agent in the fleet quietly refuses."""
+
+    name: str = Field(min_length=1, max_length=120)
+    script_id: uuid.UUID
+    cron: str = Field(min_length=1, max_length=120)
+    tz: str = "UTC"
+    target: dict = Field(default_factory=lambda: {"all": True})
+    jitter_s: int = Field(default=0, ge=0, le=3600)
+    misfire_grace_s: int = Field(default=3600, ge=0, le=86400)
+    enabled: bool = True
+
+    @field_validator("cron")
+    @classmethod
+    def _cron_parses(cls, v: str) -> str:
+        # croniter, not the agent's parser, but both accept standard 5-field
+        # cron plus @descriptors. The agent re-validates and reports anything
+        # it still refuses in the sched.sync reply.
+        from croniter import croniter
+
+        if not croniter.is_valid(v):
+            raise ValueError(f"{v!r} is not a valid cron expression")
+        return v
+
+    @field_validator("tz")
+    @classmethod
+    def _tz_exists(cls, v: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"unknown timezone {v!r}") from exc
+        return v
+
+
+class ScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    script_id: uuid.UUID
+    cron: str
+    tz: str
+    target: dict
+    jitter_s: int
+    misfire_grace_s: int
+    enabled: bool
+    last_run_at: datetime | None

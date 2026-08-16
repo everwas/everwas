@@ -90,7 +90,7 @@ All JSON messages share:
 | `agents.{id}.telemetry` | JetStream `TELEMETRY` (max-age 48 h) | every 60 s; CPU/mem/swap/load, per-mount disk, net, service states (delta) |
 | `agents.{id}.inventory.{kind}` | JetStream `INVENTORY` (per-subject max-msgs 1) | kind ∈ `hardware` `software` `processes` `services` `patchstate`; full snapshot + `snapshot_hash` |
 | `agents.{id}.jobs.{job_id}.progress` | core NATS | `{seq, pct, phase, note}` |
-| `agents.{id}.jobs.{job_id}.output` | JetStream `JOBOUT` (max-age 24 h) | chunks: `{stream: "stdout"\|"stderr", seq, data: <base64 ≤256KiB>, eof}`; per-job cap 8 MiB then truncate + flag |
+| `agents.{id}.jobs.{job_id}.output` | JetStream `JOBOUT` (max-age 24 h) | chunks: `{stream: "stdout"\|"stderr", seq, data: <base64 ≤256KiB>, eof}`; per-job cap 8 MiB then truncate + flag. Scheduled runs also carry `entry_id` (see Scheduled jobs). |
 | `agents.{id}.jobs.{job_id}.result` | JetStream `RESULTS` | terminal: `{status, exit_code, duration_ms, truncated}`. Patch jobs additionally carry `installed[]`, `failed{}`, `reboot_required` (omitted by script jobs). The job result is the authoritative record of what happened; the audit event carries the same facts but job state must not depend on a separate best-effort stream. |
 | `agents.{id}.events` | JetStream `EVENTS` | audit: `enrolled`, `shell.opened/closed`, `script.executed`, `patch.installed`, `agent.updated`, `sched.misfire_skipped`, `policy.violation` |
 | `agents.{id}.shell.{sid}.out` | core NATS, **raw bytes** | PTY output, frames ≤ 32 KiB |
@@ -132,9 +132,44 @@ Core NATS does not buffer for slow consumers, so backpressure is explicit:
 
 ## Scheduled jobs
 
-Schedules fire from the agent's local cache while offline. Scheduled runs use
-`job_id = sched:{entry_id}:{fire_ts}` — idempotent server-side if reported twice.
-Jitter is deterministic: `hash(agent_id, entry_id) % jitter_s`.
+Schedules fire from the agent's local cache, on the agent's clock, including
+while it is offline. Nothing about a scheduled run is dispatched at fire time.
+
+**Job id**: `uuid5(SCHED_NAMESPACE, "{entry_id}:{unix_unjittered_fire_ts}")`,
+where `SCHED_NAMESPACE` is `06cadeed-8a30-50ab-87f5-7a27b043ba2d`. Both sides
+derive it independently and must agree exactly, so each has a test asserting
+the same vector (`TestJobIDMatchesTheServersDerivation` in Go,
+`test_matches_the_agents_derivation` in Python). It is a UUID because results
+ingest parses every job id as one; the earlier `sched:{entry}:{ts}` form parsed
+as nothing and its results were logged as unknown runs and dropped. Deriving it
+from the fire time is what makes a doubly-reported run idempotent.
+
+Jitter is deterministic: `hash(agent_id, entry_id) % jitter_s`, so a fleet
+spreads itself the same way every night and a given box is predictable.
+
+**`entry_id` travels back on output chunks AND on the result.** The server has
+no row for a scheduled run — it never queued one — so the entry is the only
+thing that says which schedule a result belongs to. It is on the chunks too
+because output arrives before the result: adopting the run only at the result
+would keep the exit code and discard the whole of the job's stdout.
+
+**Reconciliation, not push-on-change.** Every heartbeat carries the
+`schedule_version` the agent holds. The server computes what that device's
+version should be and pushes `cmd.{id}.sched.sync` when they differ. A push on
+change alone is lost whenever the agent is offline or restarting, and nothing
+notices; comparing every heartbeat means a device that missed an update fixes
+itself within one heartbeat of coming back.
+
+The version is derived from the entries themselves (crc32 of the canonical
+JSON, masked to 31 bits), NOT a counter: there is no state to drift, a
+dispatcher restart recomputes the same answer and resyncs nobody, and editing
+one schedule does not change the version of devices it does not target. **An
+empty entry list is version 0**, matching what a fresh agent reports, so a
+fleet with no schedules is never pushed anything.
+
+The `sched.sync` reply carries `rejected: [{entry_id, reason}]` for entries the
+agent will not schedule (a cron it cannot parse, an unknown timezone). The
+server must not go on believing those will fire.
 
 ## JetStream streams (created and owned by the server)
 

@@ -153,7 +153,7 @@ func (r *Runner) PublishResult(jobID string, res Result) {
 // PublishStderr sends one stderr chunk and both EOF markers, so a job that
 // never spawned a process still terminates its output stream cleanly.
 func (r *Runner) PublishStderr(jobID, text string) {
-	sink := newChunkSink(jobID, r.chunkOut)
+	sink := newChunkSink(jobID, "", r.chunkOut)
 	if err := sink.write(StreamStderr, []byte(text)); err != nil {
 		r.warn("job stderr publish", "job_id", jobID, "err", err)
 	}

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.device import Device
-from openrmm.models.script import RunStatus, ScriptRun
+from openrmm.models.script import RunStatus, RunTrigger, ScriptRun, ScriptSchedule
 
 log = structlog.get_logger()
 
@@ -51,6 +51,11 @@ async def apply_job_output(
     db: AsyncSession, device_id: uuid.UUID, job_id: uuid.UUID, data: dict
 ) -> None:
     run = await _run_for(db, job_id, device_id)
+    if run is None:
+        # Output arrives BEFORE the result, so a scheduled run's row does not
+        # exist yet. Adopting here rather than waiting is the difference
+        # between having a nightly job's output and having only its exit code.
+        run = await _adopt_scheduled_run(db, device_id, job_id, data)
     if run is None:
         return
     try:
@@ -114,6 +119,8 @@ async def apply_job_result(
     if run is None:
         if await _apply_patch_job_result(db, device_id, job_id, data):
             return
+        run = await _adopt_scheduled_run(db, device_id, job_id, data)
+    if run is None:
         log.warning("result for unknown run", job_id=str(job_id))
         return
     status = data.get("status", "failed")
@@ -133,6 +140,62 @@ async def apply_job_result(
         status=run.status.value,
         exit_code=run.exit_code,
     )
+
+
+async def _adopt_scheduled_run(
+    db: AsyncSession, device_id: uuid.UUID, job_id: uuid.UUID, data: dict
+) -> ScriptRun | None:
+    """Create the row for a scheduled run the server never queued.
+
+    A scheduled fire comes out of the AGENT's cache, possibly while it was
+    offline, so no server ever assigned it a job id or wrote a run row. The
+    result therefore arrives for an id nothing knows about, and it used to be
+    logged as an unknown run and dropped: a nightly job could run correctly on
+    every machine in the fleet for a month and leave no record anywhere.
+
+    The agent echoes `entry_id` back for exactly this, and the job id is a
+    UUIDv5 over (entry, unjittered fire time). Recomputing it from the entry
+    is what proves this result really belongs to that schedule rather than
+    being an arbitrary id someone published.
+    """
+    entry_id = data.get("entry_id")
+    if not entry_id:
+        return None
+    try:
+        schedule_id = uuid.UUID(str(entry_id))
+    except ValueError:
+        log.warning("scheduled result with a malformed entry_id", entry_id=entry_id)
+        return None
+
+    schedule = await db.get(ScriptSchedule, schedule_id)
+    if schedule is None:
+        # The schedule was deleted while a fire was in flight. Worth saying:
+        # the run really happened on a real machine.
+        log.warning(
+            "result for a schedule that no longer exists",
+            entry_id=str(schedule_id),
+            job_id=str(job_id),
+        )
+        return None
+
+    run = ScriptRun(
+        id=job_id,
+        script_id=schedule.script_id,
+        device_id=device_id,
+        trigger=RunTrigger.schedule,
+        status=RunStatus.running,
+        requested_by=f"schedule:{schedule.name or schedule.id}",
+    )
+    db.add(run)
+    await db.flush()
+    schedule.last_run_at = datetime.now(UTC)
+    log.info(
+        "scheduled run adopted",
+        job_id=str(job_id),
+        entry_id=str(schedule_id),
+        device_id=str(device_id),
+    )
+    return run
 
 
 async def _apply_agent_version(

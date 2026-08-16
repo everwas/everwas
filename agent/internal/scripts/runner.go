@@ -69,6 +69,12 @@ type JobSpec struct {
 	TimeoutS    int               `json:"timeout_s"`
 	Env         map[string]string `json:"env"`
 	RequestedBy string            `json:"requested_by"`
+
+	// EntryID is set only for scheduled runs. The server never assigned this
+	// job an id, because the fire came out of the agent's own cache while it
+	// may well have been offline, so the entry is the only thing that says
+	// WHICH schedule this result belongs to.
+	EntryID string `json:"entry_id,omitempty"`
 }
 
 // Result is the terminal message published on …jobs.{job_id}.result.
@@ -87,6 +93,12 @@ type Result struct {
 	Installed      []string          `json:"installed,omitempty"`
 	Failed         map[string]string `json:"failed,omitempty"`
 	RebootRequired bool              `json:"reboot_required,omitempty"`
+
+	// Scheduled runs only. Echoed straight back from the job spec: the
+	// server has no row for this run yet and cannot look one up by job id, so
+	// without this the result arrives for an id nothing knows about and is
+	// dropped as an unknown run.
+	EntryID string `json:"entry_id,omitempty"`
 
 	// agent.update jobs only.
 	//
@@ -150,11 +162,12 @@ func (r *Runner) Run(ctx context.Context, job JobSpec, publish ProgressFunc) Res
 		publish = func(int, string, string) {}
 	}
 	started := time.Now()
-	sink := newChunkSink(job.JobID, r.chunkOut)
+	sink := newChunkSink(job.JobID, job.EntryID, r.chunkOut)
 
 	res := r.execute(ctx, job, publish, sink)
 	res.DurationMS = time.Since(started).Milliseconds()
 	res.Truncated = sink.isTruncated()
+	res.EntryID = job.EntryID
 
 	if err := sink.eof(StreamStdout); err != nil {
 		r.warn("job output eof", "job_id", job.JobID, "err", err)

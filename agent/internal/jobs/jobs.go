@@ -227,6 +227,10 @@ func (m *Module) RunScheduled(_ context.Context, jobID string, entry sched.Entry
 		}
 	}
 	spec.JobID = jobID
+	// Always the scheduler's, never the payload's: the payload is server
+	// supplied and an entry that named a different one would file its results
+	// against somebody else's schedule.
+	spec.EntryID = entry.EntryID
 	if spec.Kind == "" {
 		spec.Kind = entry.Kind
 	}

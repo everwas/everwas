@@ -28,6 +28,13 @@ type Chunk struct {
 	Seq    int    `json:"seq"`
 	Data   []byte `json:"data"`
 	EOF    bool   `json:"eof"`
+
+	// EntryID is set only for scheduled runs, and carried on every chunk
+	// rather than just the terminal result because OUTPUT ARRIVES FIRST. The
+	// server has no row for a scheduled run until something tells it which
+	// schedule the id belongs to, so without this the whole of a nightly
+	// job's stdout is discarded before the result turns up to create it.
+	EntryID string `json:"entry_id,omitempty"`
 }
 
 // chunkSink frames process output into Chunks. seq is a single sequence
@@ -35,6 +42,7 @@ type Chunk struct {
 // exactly as the agent saw it.
 type chunkSink struct {
 	jobID    string
+	entryID  string
 	maxChunk int
 	capBytes int
 	emit     func(Chunk) error
@@ -46,9 +54,10 @@ type chunkSink struct {
 	stopped   bool
 }
 
-func newChunkSink(jobID string, emit func(Chunk) error) *chunkSink {
+func newChunkSink(jobID, entryID string, emit func(Chunk) error) *chunkSink {
 	return &chunkSink{
 		jobID:    jobID,
+		entryID:  entryID,
 		maxChunk: MaxChunkBytes,
 		capBytes: MaxJobOutputBytes,
 		emit:     emit,
@@ -91,11 +100,12 @@ func (s *chunkSink) eof(stream string) error {
 func (s *chunkSink) send(stream string, data []byte, eof bool) error {
 	s.seq++
 	return s.emit(Chunk{
-		JobID:  s.jobID,
-		Stream: stream,
-		Seq:    s.seq,
-		Data:   data,
-		EOF:    eof,
+		JobID:   s.jobID,
+		Stream:  stream,
+		Seq:     s.seq,
+		Data:    data,
+		EOF:     eof,
+		EntryID: s.entryID,
 	})
 }
 

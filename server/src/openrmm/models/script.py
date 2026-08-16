@@ -56,15 +56,32 @@ class Script(Base):
 
 
 class ScriptSchedule(Base):
+    """A cron schedule pushed to the agents it targets.
+
+    The agent fires these from its own local cache, so they run while it is
+    offline and its clock, not the server's, decides when. Everything the
+    agent needs to do that lives here and is mirrored into the sched.sync
+    document (see openrmm.services.schedules).
+    """
+
     __tablename__ = "script_schedules"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), default="")
     script_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scripts.id", ondelete="CASCADE"))
     cron: Mapped[str] = mapped_column(String(120))
+    # IANA name. The agent embeds tzdata (CGO_ENABLED=0 builds have no system
+    # zoneinfo), so "America/Denver" resolves there whatever the host has.
+    tz: Mapped[str] = mapped_column(String(64), default="UTC")
     target: Mapped[dict] = mapped_column(JSONB, default=dict)
     jitter_s: Mapped[int] = mapped_column(Integer, default=0)
+    # How late a missed fire may still run. A machine that was asleep at 02:00
+    # should not start a patch scan at 09:00 in front of whoever opened the
+    # lid; past the grace the agent skips it and says so in an audit event.
+    misfire_grace_s: Mapped[int] = mapped_column(Integer, default=3600)
     enabled: Mapped[bool] = mapped_column(default=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ScriptRun(Base):

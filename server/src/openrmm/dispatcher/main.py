@@ -27,6 +27,10 @@ SWEEP_INTERVAL_S = 30
 
 
 async def heartbeat_consumer(nc: nats.NATS) -> None:
+    from openrmm.dispatcher.schedule_sync import ScheduleSyncer, set_syncer
+
+    syncer = ScheduleSyncer(nc)
+    set_syncer(syncer)
     sub = await nc.subscribe("agents.*.heartbeat", queue="dispatcher")
     log.info("heartbeat consumer subscribed")
     async for msg in sub.messages:
@@ -45,6 +49,20 @@ async def heartbeat_consumer(nc: nats.NATS) -> None:
                     await ENGINE.resolve_for_device(db, device)
         except Exception:
             log.exception("heartbeat apply failed", agent_id=str(agent_id))
+            continue
+
+        if device is None:
+            continue
+        # Outside the session on purpose: this makes a NATS round trip to the
+        # agent, and holding a database connection across it would tie up the
+        # pool for the whole fleet on one slow machine. Reading device
+        # attributes out here is only safe because the sessionmaker sets
+        # expire_on_commit=False; with the default, target matching would hit
+        # a lazy refresh on a closed session.
+        try:
+            await syncer.check(device, data.get("schedule_version"))
+        except Exception:
+            log.exception("schedule reconcile failed", agent_id=str(agent_id))
 
 
 async def offline_sweep(settings: Settings) -> None:

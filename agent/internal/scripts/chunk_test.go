@@ -10,7 +10,7 @@ import (
 func collect(t *testing.T, maxChunk, capBytes int) (*chunkSink, *[]Chunk) {
 	t.Helper()
 	var got []Chunk
-	s := newChunkSink("job-1", func(c Chunk) error {
+	s := newChunkSink("job-1", "", func(c Chunk) error {
 		// copy: the runner reuses its read buffer
 		c.Data = append([]byte(nil), c.Data...)
 		got = append(got, c)

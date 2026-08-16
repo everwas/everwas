@@ -78,6 +78,28 @@ export class ApiError extends Error {
 
 export type ShellKind = "bash" | "sh" | "zsh" | "powershell" | "pwsh" | "cmd" | "python"
 
+export type Schedule = {
+  id: string
+  name: string
+  script_id: string
+  cron: string
+  tz: string
+  target: Record<string, unknown>
+  jitter_s: number
+  misfire_grace_s: number
+  enabled: boolean
+  last_run_at: string | null
+}
+
+/** What /schedules/{id}/preview answers: a cron plus a target selector are
+ *  two things nobody can check by reading them. */
+export type SchedulePreview = {
+  matches: number
+  devices: { id: string; hostname: string }[]
+  next_fires: string[]
+  detail: string
+}
+
 export type Script = {
   id: string
   name: string
@@ -222,6 +244,17 @@ export const api = {
     request<{ payload: Record<string, unknown> | null; updated_at: string | null }>(
       `/api/v1/devices/${id}/snapshots/${kind}`,
     ),
+
+  schedules: () => request<Schedule[]>("/api/v1/scripts/schedules"),
+  createSchedule: (body: Partial<Schedule>) =>
+    request<Schedule>("/api/v1/scripts/schedules", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteSchedule: (id: string) =>
+    request<void>(`/api/v1/scripts/schedules/${id}`, { method: "DELETE" }),
+  previewSchedule: (id: string) =>
+    request<SchedulePreview>(`/api/v1/scripts/schedules/${id}/preview`),
 
   scripts: () => request<Script[]>("/api/v1/scripts"),
   createScript: (body: Partial<Script>) =>
