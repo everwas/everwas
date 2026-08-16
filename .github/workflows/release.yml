@@ -1,0 +1,152 @@
+name: Release
+
+# The agent's whole self-update path (download, sha256, minisign verify,
+# atomic swap, health probe, rollback) has been working and tested for a
+# while with nothing to point it at: .goreleaser.yaml was complete and no
+# workflow ever ran it, so there were no signed artifacts anywhere.
+#
+# Tags are CalVer: v2026.08.16, or v2026.08.16.1 for a same-day fix.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and sign without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # creating the release and uploading assets
+
+jobs:
+  # The tests that already run on every push, repeated here against the exact
+  # commit being released. A tag can be pushed to something CI never saw, and
+  # "it passed on main" is not the same statement as "this artifact is good".
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  agent:
+    needs: verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser reads tags for the changelog
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - name: Write the signing key
+        # The secret is a file on disk for the length of one job. minisign has
+        # no way to take a key on stdin, and RUNNER_TEMP is not in the
+        # workspace so it cannot be picked up by an archive glob.
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY is not set. A release without a"\
+                 "signature cannot be installed by any agent: the update path"\
+                 "verifies against the embedded public key and fails closed."
+            exit 1
+          fi
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
+          chmod 600 "$RUNNER_TEMP/minisign.key"
+
+      - name: Check the trust anchor is present
+        env:
+          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+        run: |
+          if [ -z "$OPENRMM_UPDATE_PUBKEY" ]; then
+            echo "::error::OPENRMM_UPDATE_PUBKEY is not set. Binaries built"\
+                 "without it fail closed on ErrNoTrustAnchor and can never"\
+                 "self-update, which is only discovered on the fleet."
+            exit 1
+          fi
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+          MINISIGN_SECRET_KEY_FILE: ${{ runner.temp }}/minisign.key
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          workdir: agent
+          args: >-
+            release --clean
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--snapshot --skip=publish' || '' }}
+
+      # Proves the release is installable BEFORE anyone points a fleet at it.
+      # A signature that verifies nowhere is the failure this catches, and it
+      # is otherwise found one agent at a time.
+      - name: Verify a signature the way an agent would
+        env:
+          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+        run: |
+          set -euo pipefail
+          artifact=$(ls dist/*_linux_amd64*.tar.gz | head -1)
+          echo "untrusted comment: openrmm release key" > "$RUNNER_TEMP/pub"
+          echo "$OPENRMM_UPDATE_PUBKEY" >> "$RUNNER_TEMP/pub"
+          minisign -V -p "$RUNNER_TEMP/pub" -m "$artifact"
+          echo "verified $artifact against the embedded trust anchor"
+
+      - name: Shred the key
+        if: always()
+        run: shred -u "$RUNNER_TEMP/minisign.key" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: dist
+          path: agent/dist/*
+          retention-days: 7
+
+  images:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: openrmm-server
+            context: .
+            dockerfile: docker/server.Dockerfile
+          - image: openrmm-web
+            context: .
+            dockerfile: docker/web.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

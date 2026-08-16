@@ -78,6 +78,26 @@ export class ApiError extends Error {
 
 export type ShellKind = "bash" | "sh" | "zsh" | "powershell" | "pwsh" | "cmd" | "python"
 
+export type UserRow = {
+  id: string
+  email: string
+  role: "admin" | "operator" | "viewer"
+  is_active: boolean
+  created_at: string
+}
+
+export type ApiKeyRow = {
+  id: string
+  name: string
+  key_id: string
+  scopes: string[]
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
+}
+
+export type SiteRow = { id: string; name: string; created_at: string }
+
 export type ActorType = "user" | "api_key" | "agent" | "system"
 
 export type AuditEntry = {
@@ -97,6 +117,16 @@ export type AuditPage = {
   entries: AuditEntry[]
   has_more: boolean
   next_before: string | null
+}
+
+export type ShellSessionRow = {
+  id: string
+  device_id: string
+  started_at: string
+  ended_at: string | null
+  close_reason: string | null
+  recording_path: string | null
+  bytes_out: number
 }
 
 export type Schedule = {
@@ -265,6 +295,42 @@ export const api = {
     request<{ payload: Record<string, unknown> | null; updated_at: string | null }>(
       `/api/v1/devices/${id}/snapshots/${kind}`,
     ),
+
+  shellSessions: (deviceId?: string) =>
+    request<ShellSessionRow[]>(
+      `/api/v1/devices/sessions/recent${deviceId ? `?device_id=${deviceId}` : ""}`,
+    ),
+  /** The player fetches this URL itself, so this is a path not a body. */
+  recordingUrl: (sessionId: string) =>
+    `/api/v1/devices/sessions/${sessionId}/recording`,
+
+  users: () => request<UserRow[]>("/api/v1/admin/users"),
+  createUser: (body: { email: string; password: string; role: string }) =>
+    request<UserRow>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(body) }),
+  setUserRole: (id: string, role: string) =>
+    request<UserRow>(`/api/v1/admin/users/${id}/role`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+  setUserActive: (id: string, active: boolean) =>
+    request<UserRow>(`/api/v1/admin/users/${id}/${active ? "enable" : "disable"}`, {
+      method: "POST",
+    }),
+
+  apiKeys: () => request<ApiKeyRow[]>("/api/v1/admin/api-keys"),
+  apiKeyScopes: () => request<string[]>("/api/v1/admin/api-keys/scopes"),
+  createApiKey: (body: { name: string; scopes: string[]; ttl_days: number | null }) =>
+    request<{ key: ApiKeyRow; secret: string }>("/api/v1/admin/api-keys", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  revokeApiKey: (id: string) =>
+    request<void>(`/api/v1/admin/api-keys/${id}`, { method: "DELETE" }),
+
+  sites: () => request<SiteRow[]>("/api/v1/admin/sites"),
+  createSite: (name: string) =>
+    request<SiteRow>("/api/v1/admin/sites", { method: "POST", body: JSON.stringify({ name }) }),
+  deleteSite: (id: string) => request<void>(`/api/v1/admin/sites/${id}`, { method: "DELETE" }),
 
   audit: (params: {
     action?: string

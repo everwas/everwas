@@ -8,9 +8,11 @@ import {
   type Fact,
   type FactKind,
   type ScriptRun,
+  type ShellSessionRow,
   type SnapshotKind,
   type TelemetryPoint,
 } from "@/lib/api"
+import { SessionPlayer } from "@/components/SessionPlayer"
 import { DeviceTerminal } from "@/components/Terminal"
 import { TelemetryChart } from "@/components/TelemetryChart"
 import { RunStatusBadge } from "@/pages/Scripts"
@@ -26,7 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const TABS = ["software", "hardware", "processes", "services", "terminal", "runs"] as const
+const TABS = ["software", "hardware", "processes", "services", "terminal", "runs", "sessions"] as const
 type Tab = (typeof TABS)[number]
 
 const TIME_MACHINE_MAX_HOURS = 7 * 24
@@ -146,6 +148,8 @@ export function DeviceDetailPage() {
   const [facts, setFacts] = useState<Fact[]>([])
   const [snapshotRows, setSnapshotRows] = useState<Record<string, unknown>[]>([])
   const [runs, setRuns] = useState<ScriptRun[]>([])
+  const [sessions, setSessions] = useState<ShellSessionRow[]>([])
+  const [playing, setPlaying] = useState<string | null>(null)
 
   // time machine: hoursBack = 0 means "now"
   const [timeMachine, setTimeMachine] = useState(false)
@@ -170,6 +174,8 @@ export function DeviceDetailPage() {
       })
     } else if (tab === "runs") {
       api.runs(id).then(setRuns).catch(() => {})
+    } else if (tab === "sessions") {
+      api.shellSessions(id).then(setSessions).catch(() => {})
     } else if (tab !== "terminal") {
       api.facts(id, tab, asOf).then(setFacts).catch(() => {})
     }
@@ -279,7 +285,63 @@ export function DeviceDetailPage() {
           </div>
         )}
 
-        {tab === "terminal" ? (
+        {tab === "sessions" ? (
+          <div className="flex flex-col gap-4 p-4">
+            {sessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No shell sessions on this device yet.
+              </p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Ended</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Output</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sessions.map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell className="text-xs">
+                          {new Date(s.started_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {s.ended_at ? new Date(s.ended_at).toLocaleTimeString() : "open"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {s.close_reason ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {s.bytes_out.toLocaleString()} B
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {s.recording_path ? (
+                            <Button
+                              size="sm"
+                              variant={playing === s.id ? "secondary" : "outline"}
+                              onClick={() => setPlaying(playing === s.id ? null : s.id)}
+                            >
+                              {playing === s.id ? "Close" : "Replay"}
+                            </Button>
+                          ) : (
+                            /* Recording is opt-in per deployment, so say which
+                               it is rather than showing a dead button. */
+                            <span className="text-xs text-muted-foreground">not recorded</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {playing && <SessionPlayer key={playing} src={api.recordingUrl(playing)} />}
+              </>
+            )}
+          </div>
+        ) : tab === "terminal" ? (
           <div className="pt-4">
             <DeviceTerminal deviceId={id!} />
           </div>

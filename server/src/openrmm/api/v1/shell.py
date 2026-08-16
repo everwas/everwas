@@ -1,10 +1,12 @@
+import asyncio
 import contextlib
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
-from fastapi import APIRouter, Query, WebSocket, status
+from fastapi import APIRouter, HTTPException, Query, WebSocket, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 
 from openrmm.api.deps import CurrentUser, DbSession
@@ -130,3 +132,51 @@ async def recent_sessions(
         }
         for s in rows.scalars()
     ]
+
+
+@router.get("/sessions/{session_id}/recording")
+async def session_recording(
+    session_id: uuid.UUID, db: DbSession, _user: CurrentUser
+) -> FileResponse:
+    """Serve one asciicast v2 recording.
+
+    Every session has been recorded since M3 and nothing has ever been able to
+    read one back, so the files accumulated as evidence that could only be
+    found by somebody with shell access to the server.
+
+    The path is rebuilt from the session id rather than taken from the stored
+    `recording_path`. That column is written by the bridge and read here, and
+    a value that ever became attacker-influenced would be a straight path
+    traversal out of the recordings directory. Deriving it means the only
+    input is a UUID that FastAPI has already parsed.
+    """
+    session = await db.get(ShellSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown session")
+    if session.recording_path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "this session was not recorded")
+
+    def _resolve() -> Path | None:
+        root = Path(get_settings().recordings_dir).resolve()
+        path = (root / f"{session_id}.cast").resolve()
+        # is_relative_to is belt and braces given the id is a parsed UUID, but
+        # the check costs nothing and the failure it prevents is reading any
+        # file on the box.
+        return path if path.is_relative_to(root) and path.is_file() else None
+
+    # Off-thread. A stat and a read are blocking syscalls, and doing them on
+    # the loop stalls every other request this worker is serving; that is the
+    # same mistake the asciicast recorder made on the write side.
+    path = await asyncio.to_thread(_resolve)
+    if path is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "recording is missing")
+
+    log.info("recording served", session_id=str(session_id), actor=_user.email)
+    # FileResponse streams through anyio rather than reading the whole file
+    # into memory, which matters because a long session is megabytes.
+    return FileResponse(
+        path,
+        media_type="application/x-asciicast",
+        filename=f"{session_id}.cast",
+        content_disposition_type="inline",
+    )

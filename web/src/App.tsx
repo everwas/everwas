@@ -6,6 +6,7 @@ import {
   LogOut,
   MonitorSmartphone,
   ScrollText,
+  Settings2,
   ShieldCheck,
   TerminalSquare,
 } from "lucide-react"
@@ -17,16 +18,19 @@ import { DeviceDetailPage } from "@/pages/DeviceDetail"
 import { DevicesPage } from "@/pages/Devices"
 import { LoginPage } from "@/pages/Login"
 import { AuditPage } from "@/pages/Audit"
+import { OverviewPage } from "@/pages/Overview"
+import { SettingsPage } from "@/pages/Settings"
 import { PatchesPage } from "@/pages/Patches"
 import { ScriptsPage } from "@/pages/Scripts"
 
 const nav = [
-  { label: "Overview", icon: LayoutGrid, to: null },
+  { label: "Overview", icon: LayoutGrid, to: "/overview" },
   { label: "Devices", icon: MonitorSmartphone, to: "/" },
   { label: "Alerts", icon: Activity, to: "/alerts" },
   { label: "Scripts", icon: TerminalSquare, to: "/scripts" },
   { label: "Patches", icon: ShieldCheck, to: "/patches" },
   { label: "Audit", icon: ScrollText, to: "/audit" },
+  { label: "Settings", icon: Settings2, to: "/settings" },
 ]
 
 export default function App() {
@@ -110,7 +114,9 @@ export default function App() {
           <Route path="/scripts" element={<ScriptsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/patches" element={<PatchesPage />} />
+          <Route path="/overview" element={<OverviewPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Routes>
       </main>
     </div>

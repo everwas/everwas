@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Callable so a release can re-run the exact same checks against the commit
+  # being tagged. A tag can point at something CI never saw, and "it passed on
+  # main" is a different statement from "this artifact is good".
+  workflow_call:
 
 jobs:
   server:
