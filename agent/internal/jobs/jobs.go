@@ -6,7 +6,10 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -21,6 +24,11 @@ import (
 // consumerRetry is how long we wait before rebinding the durable consumer
 // after a JetStream failure.
 const consumerRetry = 10 * time.Second
+
+// EventJobPanicked is emitted when a job dies of a panic. It belongs next to
+// the other names in internal/audit; it lives here until that constant block
+// is extended, same as the patch events.
+const EventJobPanicked = "job.panicked"
 
 // Module wires the job consumer and command handler to the other modules.
 type Module struct {
@@ -39,10 +47,29 @@ type Module struct {
 
 	// RefreshInventory runs an out-of-band inventory snapshot.
 	RefreshInventory func(context.Context) error
+
+	// The in-flight registry: one cancellation hook per running job, a
+	// bounded set of worker slots, and the parent context every dispatched
+	// job derives from. See inflight.go.
+	mu       sync.Mutex
+	inflight map[string]*jobHandle
+	slots    chan struct{}
+	base     context.Context
+	stopJobs context.CancelFunc
+	stopping bool
+	wg       sync.WaitGroup
+
+	// Shutdown timings; zero means the defaults. Tests shorten them.
+	shutdownGrace time.Duration
+	cancelGrace   time.Duration
 }
 
-// Run subscribes to commands and consumes the job queue until ctx is done.
+// Run subscribes to commands and consumes the job queue until ctx is done,
+// then brings every running job to a terminal state before returning.
 func (m *Module) Run(ctx context.Context) error {
+	m.startJobs()
+	defer m.drainJobs()
+
 	sub, err := m.NC.Subscribe(wire.CmdWildcard(m.AgentID), m.handleCommand)
 	if err != nil {
 		return err
@@ -72,6 +99,43 @@ func (m *Module) Run(ctx context.Context) error {
 	}
 }
 
+// runJob is the only path that executes a job.
+//
+// Every dispatch goes through the recover: a job runs on its own goroutine,
+// outside the supervisor's runRecovered, and it is where server-supplied
+// data gets parsed. An unrecovered panic there takes the whole agent down,
+// and because a panic can beat the ack, JetStream then redelivers the same
+// job and crash-loops every agent that receives it.
+func (m *Module) runJob(ctx context.Context, spec scripts.JobSpec) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.jobPanicked(spec, r, debug.Stack())
+		}
+	}()
+	m.execute(ctx, spec)
+}
+
+// jobPanicked ends a panicked job cleanly: the operator gets the reason on
+// the job's own output stream and a terminal result, so the job stops rather
+// than hanging while the agent restarts.
+func (m *Module) jobPanicked(spec scripts.JobSpec, cause any, stack []byte) {
+	m.Log.Error("panic while running a job", "job_id", spec.JobID,
+		"kind", spec.Kind, "panic", cause, "stack", string(stack))
+	if m.Scripts != nil {
+		m.Scripts.PublishStderr(spec.JobID,
+			fmt.Sprintf("openrmm-agent: job failed with an internal error: %v\n", cause))
+		m.Scripts.PublishResult(spec.JobID, scripts.Result{
+			Status:   scripts.StatusFailed,
+			ExitCode: -1,
+		})
+	}
+	m.Audit.Emit(EventJobPanicked, map[string]any{
+		"job_id": spec.JobID,
+		"kind":   spec.Kind,
+		"panic":  fmt.Sprint(cause),
+	})
+}
+
 // execute dispatches one decoded job. It runs on its own goroutine: the
 // JetStream message was already acked by the time we get here.
 func (m *Module) execute(ctx context.Context, spec scripts.JobSpec) {
@@ -82,10 +146,28 @@ func (m *Module) execute(ctx context.Context, spec scripts.JobSpec) {
 	case scripts.KindInventoryRefresh:
 		m.runInventoryRefresh(ctx, spec, progress)
 	case scripts.KindPatchScan, scripts.KindPatchInstall:
-		m.Patch.Execute(ctx, spec, progress)
+		m.runPatch(ctx, spec, progress)
 	default:
 		m.unsupportedJob(spec, progress)
 	}
+}
+
+// runPatch fills in the dependencies the module can supply itself before
+// handing over. PatchDeps publishes nothing when its Runner is nil, and a
+// patch job that publishes nothing is a job the console shows as running
+// forever; a half-wired build must still produce a terminal result.
+func (m *Module) runPatch(ctx context.Context, spec scripts.JobSpec, progress scripts.ProgressFunc) {
+	deps := m.Patch
+	if deps.Runner == nil {
+		deps.Runner = m.Scripts
+	}
+	if deps.Audit == nil {
+		deps.Audit = m.Audit
+	}
+	if deps.Log == nil {
+		deps.Log = m.Log
+	}
+	deps.Execute(ctx, spec, progress)
 }
 
 func (m *Module) runInventoryRefresh(ctx context.Context, spec scripts.JobSpec, progress scripts.ProgressFunc) {
@@ -123,7 +205,11 @@ func (m *Module) unsupportedJob(spec scripts.JobSpec, progress scripts.ProgressF
 
 // RunScheduled is the sched.RunFunc: a schedule entry's payload is a job
 // spec, with the job id fixed by the schedule for server-side idempotency.
-func (m *Module) RunScheduled(ctx context.Context, jobID string, entry sched.Entry, fireAt time.Time) {
+//
+// The scheduler's context is deliberately not the job's parent. Shutdown is
+// handled once, by the module, so a scheduled job is not cut off the moment
+// the scheduler task notices the signal.
+func (m *Module) RunScheduled(_ context.Context, jobID string, entry sched.Entry, fireAt time.Time) {
 	spec := scripts.JobSpec{Kind: entry.Kind}
 	if len(entry.Payload) > 0 {
 		if err := json.Unmarshal(entry.Payload, &spec); err != nil {
@@ -138,7 +224,19 @@ func (m *Module) RunScheduled(ctx context.Context, jobID string, entry sched.Ent
 	if spec.RequestedBy == "" {
 		spec.RequestedBy = "schedule:" + entry.EntryID
 	}
+	// Scheduled runs take a worker slot and a registry entry like any other
+	// job, so they are cancellable, counted against the concurrency cap, and
+	// reported at shutdown. ctx is the scheduler's; the job's own context
+	// comes from the registry.
+	jobCtx, release, err := m.reserve(jobID, spec.Kind)
+	if err != nil {
+		m.Log.Warn("scheduled job not started", "job_id", jobID,
+			"entry_id", entry.EntryID, "err", err)
+		return
+	}
+	defer release()
+
 	m.Log.Info("running scheduled job", "job_id", jobID, "entry_id", entry.EntryID,
 		"kind", spec.Kind, "scheduled_for", fireAt.UTC())
-	m.execute(ctx, spec)
+	m.runJob(jobCtx, spec)
 }

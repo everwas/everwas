@@ -13,8 +13,8 @@ openrmm-agent.exe install --server https://rmm.example.com --token YOUR_TOKEN
 
 That copies the binary to `C:\Program Files\OpenRMM\Agent\openrmm-agent.exe`,
 enrolls the host, registers the `openrmm-agent` service with the Service
-Control Manager (start type automatic, restart on failure at 5s, 30s and 60s),
-and starts it.
+Control Manager (start type automatic, restart on failure at 5s and 30s, then
+a recovery command at 60s that restores the previous binary), and starts it.
 
 Verify the checksum first. From the same directory as the downloaded zip and
 the release's `SHA256SUMS`:
@@ -56,9 +56,33 @@ precisely so that clean exit counts as a restart trigger.
 
 If a scanner or backup agent holds a handle and the rename is refused, the
 updater falls back to spawning the staged binary with a hidden
-`update-finalize --pid N --target PATH --staged PATH` subcommand. That helper
-waits for the old process to exit, performs the swap from outside, and starts
-the service again.
+`update-finalize --pid N --target PATH --staged PATH --state-dir DIR --version V`
+subcommand. That helper waits for the old process to exit, performs the swap
+from outside, and starts the service again.
+
+The handoff is reported as **finalizing**, which is not the same as applied:
+the host is still running the old binary until the helper says otherwise. The
+helper writes its outcome to `update-state.json` on every exit path, including
+the one where it gave up waiting for the old process, so a finalize that never
+happened shows up as `finalize_failed` rather than as silence.
+
+## Rollback on Windows
+
+There is no `ExecStartPre` in the SCM, so the equivalent of the unix guard is
+the third recovery action:
+
+```
+cmd.exe /C move /Y "...\openrmm-agent.old.exe" "...\openrmm-agent.exe" && sc.exe start openrmm-agent
+```
+
+Two failed starts get restarts; the third runs that command, which puts the
+previous binary back. It runs from the SCM rather than from the agent, which
+is the point: it works when the new build cannot execute at all. Inspect it
+with `sc.exe qfailure openrmm-agent`.
+
+The previous binary is NOT deleted when a build is declared healthy. One spare
+generation is the only recovery path on a host whose agent is the thing that
+would otherwise have to fetch a fix.
 
 ## Deferred: MSI / WiX
 

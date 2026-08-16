@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -106,6 +107,62 @@ func TestRunnerTimeoutKillsProcessGroup(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Errorf("took %s; the background child kept the pipes open", elapsed)
+	}
+}
+
+// TestRunnerCompletesWithASetsidDescendant is the regression for the drain
+// deadlock. The old code waited for both output pipes to reach EOF before
+// calling Wait, on the theory that the process-group SIGKILL always closes
+// them. It does not: a descendant that calls setsid leaves the group, keeps
+// the inherited write end open, and the job never completes. No timeout, no
+// result, no cleanup of the staged script body, and the running map grows a
+// permanent entry.
+//
+// The existing timeout test could not catch this because `sh -c "sleep 30"`
+// is exec-replaced by the shell, so there is no descendant at all.
+func TestRunnerCompletesWithASetsidDescendant(t *testing.T) {
+	if _, err := Resolve("bash"); err != nil {
+		t.Skipf("no shell: %v", err)
+	}
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skipf("no setsid: %v", err)
+	}
+	r, output := newTestRunner(t)
+	r.drainGrace = 500 * time.Millisecond
+
+	done := make(chan Result, 1)
+	go func() {
+		done <- r.Run(context.Background(), JobSpec{
+			JobID: "j-setsid",
+			Shell: "bash",
+			// The setsid child leaves the process group with stdout still
+			// open. It outlives the kill by design; that is the point.
+			Body:     "setsid sleep 30 & echo hello; sleep 30",
+			TimeoutS: 1,
+		}, nil)
+	}()
+
+	select {
+	case res := <-done:
+		if res.Status != StatusTimeout {
+			t.Errorf("status = %s, want %s", res.Status, StatusTimeout)
+		}
+		if !strings.Contains(output(), "hello") {
+			t.Errorf("output %q lost the data written before the kill", output())
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("the job never reported: a descendant outside the process group held the pipes open")
+	}
+
+	if running := r.Running(); len(running) != 0 {
+		t.Errorf("running map still holds %v", running)
+	}
+	entries, err := os.ReadDir(filepath.Join(r.StateDir, "work"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read work dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("the staged script body survived: %d entries left", len(entries))
 	}
 }
 

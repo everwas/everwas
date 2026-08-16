@@ -1,11 +1,17 @@
 [Unit]
 Description=OpenRMM remote monitoring and management agent
-Documentation=https://github.com/openrmm/agent
+Documentation=https://github.com/rsp2k/openrmm/agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
+# The rollback guard runs OUTSIDE the agent, which is the only way to
+# recover a build that cannot execute at all: wrong architecture, missing
+# symbol, panic in package init, a config the new binary cannot parse.
+# None of those ever reach the agent's own crash counter. The leading '-'
+# and the /bin/sh wrapper mean a missing guard can never block startup.
+ExecStartPre=-/bin/sh /usr/local/lib/openrmm/agent-guard.sh check /usr/local/bin/openrmm-agent
 ExecStart=/usr/local/bin/openrmm-agent run
 Restart=always
 RestartSec=5
@@ -16,8 +22,15 @@ RestartSec=5
 NoNewPrivileges=false
 ProtectHome=read-only
 PrivateTmp=true
+
+# Package managers run in a transient scope (systemd-run --scope), so they
+# are NOT members of this cgroup: a restart of the agent during a patch
+# window would otherwise SIGKILL dpkg mid-transaction and leave the package
+# database for a human to repair. TimeoutStopSec is generous for the
+# fallback case, where systemd-run is unavailable and the transaction
+# really is in this cgroup.
 KillMode=mixed
-TimeoutStopSec=30
+TimeoutStopSec=300
 
 [Install]
 WantedBy=multi-user.target

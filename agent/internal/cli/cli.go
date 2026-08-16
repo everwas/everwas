@@ -70,6 +70,24 @@ func cmdEnroll(args []string) int {
 
 func cmdRun() int {
 	log := newLogger()
+
+	// Rollback runs FIRST, before anything that can fail. A build that broke
+	// config parsing crash loops on config.Load() forever, and a rollback
+	// sitting below that line is never reached, fleet-wide, with the previous
+	// good binary sitting right beside it. The state dir is resolvable without
+	// reading any config, so this check has no prerequisites.
+	stateDir, err := config.Dir()
+	if err != nil {
+		log.Error("resolve state dir", "err", err)
+		return 1
+	}
+	if rolledBack, rbErr := update.CheckAndRollback(stateDir); rbErr != nil {
+		log.Warn("update rollback check", "err", rbErr)
+	} else if rolledBack {
+		log.Error("update rolled back after repeated crashes, restarting previous version")
+		return 1
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("load config", "err", err)
@@ -77,21 +95,6 @@ func cmdRun() int {
 	}
 	if !cfg.Enrolled() {
 		log.Error("not enrolled; run `openrmm-agent enroll --server URL --token TOKEN` first")
-		return 1
-	}
-
-	stateDir, err := config.Dir()
-	if err != nil {
-		log.Error("resolve state dir", "err", err)
-		return 1
-	}
-
-	// Before anything else: if the build we just updated to has crash looped,
-	// put the previous binary back and exit so the service manager starts it.
-	if rolledBack, err := update.CheckAndRollback(stateDir); err != nil {
-		log.Warn("update rollback check", "err", err)
-	} else if rolledBack {
-		log.Error("update rolled back after repeated crashes, restarting previous version")
 		return 1
 	}
 

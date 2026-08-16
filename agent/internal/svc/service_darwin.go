@@ -30,6 +30,11 @@ func Install(cfg InstallConfig) error {
 	if err := os.MkdirAll(filepath.Join(cfg.Prefix, MacLogDir), 0o755); err != nil {
 		return fmt.Errorf("svc: create log dir: %w", err)
 	}
+	// The daemon starts the guard, which execs the agent, so the guard has to
+	// exist before the plist that names it is loaded.
+	if err := writeGuard(cfg.Prefix); err != nil {
+		return fmt.Errorf("svc: write %s: %w", GuardPath(cfg.Prefix), err)
+	}
 	if err := writeFileAtomic(plist, []byte(RenderLaunchdPlist(cfg)), 0o644); err != nil {
 		return fmt.Errorf("svc: write %s: %w", plist, err)
 	}
@@ -59,6 +64,9 @@ func Uninstall() error {
 	}
 	if err := os.Remove(plist); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("svc: remove %s: %w", plist, err)
+	}
+	if err := removeGuard(prefix); err != nil {
+		return fmt.Errorf("svc: remove %s: %w", GuardPath(prefix), err)
 	}
 	return nil
 }

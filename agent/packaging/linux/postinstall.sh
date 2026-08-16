@@ -24,9 +24,25 @@ fi
 
 systemctl daemon-reload || true
 
+# Restart from OUTSIDE this transaction's cgroup when we can. If the agent is
+# the thing being upgraded during one of its own patch jobs, a plain
+# `systemctl restart` tears down the cgroup that contains the dpkg run calling
+# this very script, which SIGKILLs the package manager mid-transaction. A
+# transient timer unit is owned by systemd, not by us, so it survives.
+restart_agent() {
+    if command -v systemd-run >/dev/null 2>&1; then
+        if systemd-run --collect --quiet --on-active=5 \
+            --unit=openrmm-agent-restart \
+            systemctl try-restart openrmm-agent >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    systemctl try-restart openrmm-agent || true
+}
+
 if [ -s "$STATE_FILE" ]; then
     if is_upgrade "$@"; then
-        systemctl restart openrmm-agent || true
+        restart_agent
     else
         systemctl enable --now openrmm-agent || true
     fi

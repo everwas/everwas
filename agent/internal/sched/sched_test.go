@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ func TestSyncPersistsAndReloads(t *testing.T) {
 	s := testScheduler(t, nil)
 	doc := Document{ScheduleVersion: 7, Entries: []Entry{daily("nightly", 3600)}}
 
-	version, err := s.Sync(doc)
+	version, _, err := s.Sync(doc)
 	if err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -83,7 +84,7 @@ func TestLoadMissingFileIsEmptySchedule(t *testing.T) {
 // immediately "catch up" the 3am run it was never scheduled for.
 func TestSyncDoesNotBackdateNewEntries(t *testing.T) {
 	s := testScheduler(t, nil)
-	if _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 86400)}}); err != nil {
+	if _, _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 86400)}}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 	last, ok := s.lastFired("nightly")
@@ -105,12 +106,12 @@ func TestSyncDoesNotBackdateNewEntries(t *testing.T) {
 func TestSyncKeepsFireHistory(t *testing.T) {
 	s := testScheduler(t, nil)
 	fired := time.Now().Add(-4 * time.Hour).Truncate(time.Second)
-	if _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 60)}}); err != nil {
+	if _, _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 60)}}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 	s.markFired("nightly", fired)
 
-	if _, err := s.Sync(Document{ScheduleVersion: 2, Entries: []Entry{daily("nightly", 60)}}); err != nil {
+	if _, _, err := s.Sync(Document{ScheduleVersion: 2, Entries: []Entry{daily("nightly", 60)}}); err != nil {
 		t.Fatalf("re-Sync: %v", err)
 	}
 	got, ok := s.lastFired("nightly")
@@ -121,11 +122,11 @@ func TestSyncKeepsFireHistory(t *testing.T) {
 
 func TestSyncDropsRemovedEntries(t *testing.T) {
 	s := testScheduler(t, nil)
-	if _, err := s.Sync(Document{ScheduleVersion: 1,
+	if _, _, err := s.Sync(Document{ScheduleVersion: 1,
 		Entries: []Entry{daily("a", 60), daily("b", 60)}}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if _, err := s.Sync(Document{ScheduleVersion: 2, Entries: []Entry{daily("a", 60)}}); err != nil {
+	if _, _, err := s.Sync(Document{ScheduleVersion: 2, Entries: []Entry{daily("a", 60)}}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, ok := s.lastFired("b"); ok {
@@ -161,7 +162,7 @@ func TestCatchUpDecisions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := testScheduler(t, nil)
-			if _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{tt.entry}}); err != nil {
+			if _, _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{tt.entry}}); err != nil {
 				t.Fatalf("Sync: %v", err)
 			}
 			s.markFired(tt.entry.EntryID, tt.lastFired)
@@ -200,10 +201,11 @@ func TestFireDueDispatchesJobID(t *testing.T) {
 	s := testScheduler(t, func(_ context.Context, jobID string, e Entry, at time.Time) {
 		calls <- call{jobID, e.EntryID, at}
 	})
-	if _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 60)}}); err != nil {
+	if _, _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{daily("nightly", 60)}}); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	base := time.Date(2026, 8, 15, 3, 0, 0, 0, time.UTC)
+	// Due a moment ago: an ordinary on-time fire, not a misfire.
+	base := time.Now().Add(-5 * time.Second).Truncate(time.Second)
 	s.pq = fireHeap{{entryID: "nightly", base: base, at: base}}
 
 	s.fireDue(context.Background(), time.Now())
@@ -225,6 +227,104 @@ func TestFireDueDispatchesJobID(t *testing.T) {
 	}
 	if last, ok := s.lastFired("nightly"); !ok || !last.Equal(base) {
 		t.Errorf("last fired = %v, want %s", last, base)
+	}
+}
+
+// TestFireDueAppliesTheMisfireGrace is the regression for a grace that was
+// only enforced at startup. Go timers are monotonic: a laptop suspended at
+// 22:00 and resumed at 09:00 finds the 22:30 timer already ready and fired
+// the nightly job immediately, in front of the user, even with
+// misfire_grace_s: 0 meaning "this is worthless late".
+func TestFireDueAppliesTheMisfireGrace(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name    string
+		graceS  int
+		lateBy  time.Duration
+		wantRun bool
+	}{
+		{"an on-time fire runs", 0, 2 * time.Second, true},
+		{"eleven hours late with no grace is skipped", 0, 11 * time.Hour, false},
+		{"eleven hours late outside a one hour grace is skipped", 3600, 11 * time.Hour, false},
+		{"ten minutes late inside a one hour grace runs", 3600, 10 * time.Minute, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fired := make(chan string, 1)
+			s := testScheduler(t, func(_ context.Context, jobID string, _ Entry, _ time.Time) {
+				fired <- jobID
+			})
+			entry := daily("nightly", tt.graceS)
+			if _, _, err := s.Sync(Document{ScheduleVersion: 1, Entries: []Entry{entry}}); err != nil {
+				t.Fatalf("Sync: %v", err)
+			}
+			base := now.Add(-tt.lateBy).Truncate(time.Second)
+			s.pq = fireHeap{{entryID: "nightly", base: base, at: base}}
+
+			s.fireDue(context.Background(), now)
+			select {
+			case jobID := <-fired:
+				if !tt.wantRun {
+					t.Fatalf("a fire %s late ran anyway: %s", tt.lateBy, jobID)
+				}
+			case <-time.After(time.Second):
+				if tt.wantRun {
+					t.Fatal("a fire inside its grace window never ran")
+				}
+			}
+			// Skipped or not, the fire must be recorded, or the same missed
+			// occurrence is re-evaluated on every pass.
+			if last, ok := s.lastFired("nightly"); !ok || last.Before(base) {
+				t.Errorf("last fired = %v, want at least %s", last, base)
+			}
+			// The next occurrence is queued either way; an entry must not
+			// stop scheduling itself because one fire was late.
+			if len(s.pq) != 1 {
+				t.Errorf("queue holds %d items, want the next occurrence", len(s.pq))
+			}
+		})
+	}
+}
+
+// TestSyncRejectsUnschedulableEntries is the regression for entries that
+// were persisted and answered `accepted: true`, then parsed hours later,
+// logged as bad and skipped forever. The server went on believing the
+// schedule was in force.
+func TestSyncRejectsUnschedulableEntries(t *testing.T) {
+	s := testScheduler(t, nil)
+	badCron := daily("bad-cron", 60)
+	badCron.Cron = "not a cron"
+	badTZ := daily("bad-tz", 60)
+	badTZ.TZ = "Mars/Olympus"
+
+	version, rejected, err := s.Sync(Document{
+		ScheduleVersion: 5,
+		Entries:         []Entry{daily("nightly", 60), badCron, badTZ},
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if version != 5 {
+		t.Errorf("version = %d, want 5", version)
+	}
+	if len(rejected) != 2 {
+		t.Fatalf("rejected = %+v, want the two unschedulable entries", rejected)
+	}
+	byID := map[string]string{}
+	for _, r := range rejected {
+		byID[r.EntryID] = r.Reason
+	}
+	if !strings.Contains(byID["bad-cron"], "cron") {
+		t.Errorf("bad-cron reason = %q, want it to name the cron", byID["bad-cron"])
+	}
+	if !strings.Contains(byID["bad-tz"], "timezone") {
+		t.Errorf("bad-tz reason = %q, want it to name the timezone", byID["bad-tz"])
+	}
+	// The good entry still applies, and the rejected ones are not cached as
+	// though they were going to run.
+	entries := s.Entries()
+	if len(entries) != 1 || entries[0].EntryID != "nightly" {
+		t.Errorf("cached entries = %+v, want only the schedulable one", entries)
 	}
 }
 
@@ -319,12 +419,12 @@ func TestSyncRejectsUnusableEntryIDs(t *testing.T) {
 		t.Run(strconv.Quote(id), func(t *testing.T) {
 			s := testScheduler(t, nil)
 			good := Document{ScheduleVersion: 3, Entries: []Entry{daily("nightly", 3600)}}
-			if _, err := s.Sync(good); err != nil {
+			if _, _, err := s.Sync(good); err != nil {
 				t.Fatalf("Sync(good): %v", err)
 			}
 
 			bad := Document{ScheduleVersion: 4, Entries: []Entry{daily("nightly", 3600), daily(id, 3600)}}
-			_, syncErr := s.Sync(bad)
+			_, _, syncErr := s.Sync(bad)
 			if syncErr == nil {
 				t.Fatalf("Sync accepted entry_id %q", id)
 			}

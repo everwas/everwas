@@ -28,6 +28,12 @@ const (
 	// pingTimeout is two missed 30 s server pings plus slack.
 	pingTimeout = 65 * time.Second
 
+	// firstPingGrace is how long a new session waits for the bridge's first
+	// ping. Generous, because the console is still attaching, but finite:
+	// a bridge that dies before it ever pings must not leave a root PTY
+	// running until the idle timeout.
+	firstPingGrace = 90 * time.Second
+
 	// disconnectGrace is how long a PTY survives a NATS outage.
 	disconnectGrace = 60 * time.Second
 

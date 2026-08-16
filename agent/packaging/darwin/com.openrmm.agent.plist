@@ -6,8 +6,9 @@
   <string>com.openrmm.agent</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Library/OpenRMM/Agent/openrmm-agent</string>
-    <string>run</string>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>[ -x &#39;/Library/OpenRMM/Agent/agent-guard.sh&#39; ] &amp;&amp; &#39;/Library/OpenRMM/Agent/agent-guard.sh&#39; check &#39;/Library/OpenRMM/Agent/openrmm-agent&#39;; exec &#39;/Library/OpenRMM/Agent/openrmm-agent&#39; &#39;run&#39;</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

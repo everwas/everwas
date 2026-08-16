@@ -87,9 +87,28 @@ func (m *wuaManager) Install(ctx context.Context, ids []string, progress func(In
 	if len(ids) == 0 {
 		return newInstallResult(), nil
 	}
-	return installViaCOM(ctx, m.thread(), &m.gate, ids, func(res *InstallResult) error {
+	pre := newInstallResult()
+	ids, err := prepareInstall(ctx, ids, &pre)
+	if err != nil {
+		return pre, err
+	}
+	if len(ids) == 0 {
+		return pre, nil
+	}
+	res, err := installViaCOM(ctx, m.thread(), &m.gate, ids, func(res *InstallResult) error {
 		return m.install(ids, res, progress)
 	})
+	// Carry across anything refused before the COM thread was involved, so
+	// the caller still accounts for every id it asked about.
+	for id, reason := range pre.Failed {
+		if res.Failed == nil {
+			res.Failed = map[string]string{}
+		}
+		if _, seen := res.Failed[id]; !seen {
+			res.Failed[id] = reason
+		}
+	}
+	return res, err
 }
 
 // install runs entirely on the COM thread.

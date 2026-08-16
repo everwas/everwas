@@ -37,6 +37,13 @@ contents:
     file_info:
       mode: 0644
 
+  # The external rollback guard, referenced from the unit's ExecStartPre. It
+  # is what recovers a build that cannot execute at all.
+  - src: ./packaging/agent-guard.sh
+    dst: /usr/local/lib/openrmm/agent-guard.sh
+    file_info:
+      mode: 0755
+
   # Identity lives here (agent.json holds the NATS secret), so 0700 root.
   - dst: /etc/openrmm
     type: dir

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -90,9 +91,9 @@ func (s *session) start(cols, rows uint16) error {
 		subject string
 		handler nats.MsgHandler
 	}{
-		{wire.ShellIn(s.agentID, s.id), s.onInput},
-		{wire.ShellResize(s.agentID, s.id), s.onResize},
-		{wire.ShellCtl(s.agentID, s.id), s.onCtl},
+		{wire.ShellIn(s.agentID, s.id), s.guard("in", s.onInput)},
+		{wire.ShellResize(s.agentID, s.id), s.guard("resize", s.onResize)},
+		{wire.ShellCtl(s.agentID, s.id), s.guard("ctl", s.onCtl)},
 	}
 	for _, sp := range subs {
 		sub, err := s.nc.Subscribe(sp.subject, sp.handler)
@@ -204,6 +205,22 @@ func (s *session) publishFrames(data []byte) {
 	}
 }
 
+// guard wraps a subscription callback. These run on the NATS library's
+// goroutine with no supervisor above them, and they are where server-supplied
+// frames get parsed, so a panic here would take the whole agent down and
+// with it every other session and job. One bad frame kills the frame.
+func (s *session) guard(name string, fn nats.MsgHandler) nats.MsgHandler {
+	return func(msg *nats.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				s.log.Error("panic in shell handler", "session_id", s.id,
+					"handler", name, "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
+		fn(msg)
+	}
+}
+
 func (s *session) onInput(msg *nats.Msg) {
 	if len(msg.Data) == 0 {
 		return
@@ -300,9 +317,16 @@ func (s *session) checkTimeouts(now time.Time) (string, bool) {
 	if now.Sub(s.lastInput) > s.idleTimeout {
 		return reasonIdle, true
 	}
-	// The ping deadline only applies once the server has proved it pings;
-	// otherwise a bridge that never pings would kill every session at 65 s.
-	if s.sawPing && now.Sub(s.lastPing) > pingTimeout {
+	// The watchdog is armed from session start, not by the first ping. Being
+	// armed by the party it watches meant a bridge that died before its
+	// first ping left a root PTY open with nobody attached until the idle
+	// timeout, fifteen minutes later. A new session gets a longer window
+	// because the console may still be attaching.
+	since, deadline := s.lastPing, pingTimeout
+	if !s.sawPing {
+		since, deadline = s.startedAt, firstPingGrace
+	}
+	if now.Sub(since) > deadline {
 		return reasonServerGone, true
 	}
 	return "", false

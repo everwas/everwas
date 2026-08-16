@@ -34,23 +34,39 @@ func NeedsFinalizer() bool { return true }
 // on the running image. It launches the staged binary with a hidden
 // "update-finalize" subcommand that waits for this process to exit, performs
 // the swap from outside, and starts the service again.
-func SpawnFinalizer(staged, target string) error {
+//
+// stateDir and version are passed through so the finalizer can write its own
+// outcome where the agent will find it. Without that, a finalizer that times
+// out waiting for the parent exits into the void and the host stays on the
+// old version with nobody the wiser.
+func SpawnFinalizer(staged, target, stateDir, version string) (int, error) {
 	if staged == "" || target == "" {
-		return fmt.Errorf("%w: empty staged or target path", ErrSwap)
+		return 0, fmt.Errorf("%w: empty staged or target path", ErrSwap)
 	}
-	cmd := exec.Command(staged, //nolint:gosec // staged is signature verified before we get here
+	args := []string{
 		"update-finalize",
 		"--pid", strconv.Itoa(os.Getpid()),
 		"--target", target,
 		"--staged", staged,
-	)
+	}
+	if stateDir != "" {
+		args = append(args, "--state-dir", stateDir)
+	}
+	if version != "" {
+		args = append(args, "--version", version)
+	}
+	cmd := exec.Command(staged, args...) //nolint:gosec // staged is signature verified before we get here
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: windows.CREATE_NO_WINDOW | windows.DETACHED_PROCESS,
 	}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("%w: spawn finalizer: %v", ErrSwap, err)
+		return 0, fmt.Errorf("%w: spawn finalizer: %v", ErrSwap, err)
 	}
+	pid := cmd.Process.Pid
 	// Do not Wait: the finalizer outlives us by design.
-	return cmd.Process.Release()
+	if err := cmd.Process.Release(); err != nil {
+		return pid, fmt.Errorf("%w: release finalizer: %v", ErrSwap, err)
+	}
+	return pid, nil
 }

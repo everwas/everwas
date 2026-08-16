@@ -71,9 +71,10 @@ func (d PatchDeps) Execute(ctx context.Context, spec scripts.JobSpec, progress s
 	defer cancel()
 
 	var (
-		summary string
-		err     error
-		failed  int
+		summary   string
+		err       error
+		failed    int
+		installed patch.InstallResult
 	)
 	switch spec.Kind {
 	case scripts.KindPatchScan:
@@ -93,6 +94,7 @@ func (d PatchDeps) Execute(ctx context.Context, spec scripts.JobSpec, progress s
 		var out patch.InstallResult
 		out, err = HandlePatchInstall(ctx, d, ids, progress)
 		failed = len(out.Failed)
+		installed = out
 		summary = installSummary(ids, out, err)
 		d.emit(EventPatchInstalled, map[string]any{
 			"job_id":          spec.JobID,
@@ -109,6 +111,15 @@ func (d PatchDeps) Execute(ctx context.Context, spec scripts.JobSpec, progress s
 
 	res := patchResult(err, failed)
 	res.DurationMS = time.Since(started).Milliseconds()
+	// The job result is the authoritative record of what happened. Carrying
+	// only status/exit_code left the server storing an empty installed list
+	// for a job that had genuinely installed something, so an operator could
+	// not tell WHICH updates landed without reading the audit stream.
+	if spec.Kind == scripts.KindPatchInstall {
+		res.Installed = installed.Installed
+		res.Failed = installed.Failed
+		res.RebootRequired = installed.RebootRequired
+	}
 
 	// One PublishStderr call per job: it emits both EOF markers, so a
 	// second call would reopen a stream the server has already closed.

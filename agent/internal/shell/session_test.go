@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
+
 	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
@@ -21,6 +23,41 @@ func newTestSession(connected bool) *session {
 		flow:        newFlowController(),
 		buf:         newRing(RingBytes),
 		connected:   func() bool { return connected },
+		// A real session always has this: start sets it before any monitor
+		// tick, and the ping watchdog measures from it.
+		startedAt: time.Now(),
+	}
+}
+
+// TestPingWatchdogIsArmedFromSessionStart is the regression for a watchdog
+// armed by the party it watches. The deadline used to apply only once a ping
+// had been seen, so a bridge that died before its first ping left a root PTY
+// open, unattached, until the fifteen minute idle timeout.
+func TestPingWatchdogIsArmedFromSessionStart(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name      string
+		startedAt time.Time
+		wantClose bool
+	}{
+		{"a new session waits for the first ping", now.Add(-10 * time.Second), false},
+		{"still inside the first-ping grace", now.Add(-firstPingGrace + time.Second), false},
+		{"a bridge that never pinged is torn down", now.Add(-firstPingGrace - time.Second), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestSession(true)
+			s.startedAt = tt.startedAt
+			s.lastInput = now
+			// No ping was ever received: lastPing is the zero time.
+			reason, closed := s.checkTimeouts(now)
+			if closed != tt.wantClose {
+				t.Fatalf("checkTimeouts = %q/%v, want closed=%v", reason, closed, tt.wantClose)
+			}
+			if closed && reason != reasonServerGone {
+				t.Errorf("reason = %q, want %q", reason, reasonServerGone)
+			}
+		})
 	}
 }
 
@@ -69,11 +106,21 @@ func TestCheckTimeouts(t *testing.T) {
 			},
 		},
 		{
-			name: "a server that never pinged is not assumed dead", connected: true,
+			name: "a new session is given time for the first ping", connected: true,
 			setup: func(s *session) {
 				s.lastInput = now
+				s.startedAt = now.Add(-30 * time.Second)
 				s.lastPing, s.sawPing = time.Time{}, false
 			},
+		},
+		{
+			name: "a server that never pings is torn down after the grace", connected: true,
+			setup: func(s *session) {
+				s.lastInput = now
+				s.startedAt = now.Add(-firstPingGrace - time.Second)
+				s.lastPing, s.sawPing = time.Time{}, false
+			},
+			wantReason: reasonServerGone, wantClose: true,
 		},
 		{
 			name: "disconnect inside the grace window keeps the pty", connected: false,
@@ -121,6 +168,35 @@ func TestCheckTimeoutsClearsDisconnectOnReconnect(t *testing.T) {
 	defer s.mu.Unlock()
 	if !s.disconnectedAt.IsZero() {
 		t.Error("disconnect timestamp survived the reconnect")
+	}
+}
+
+// TestSubscriptionCallbacksContainPanics is the regression for handlers that
+// ran naked on the NATS library's goroutine. They parse server-supplied
+// frames with no supervisor above them, so a panic took the whole agent
+// down: every other session, every running job. Here the session has no PTY,
+// which is what a real handler hitting unexpected state looks like.
+func TestSubscriptionCallbacksContainPanics(t *testing.T) {
+	s := newTestSession(true)
+	handlers := map[string]nats.MsgHandler{
+		"in":     s.onInput,
+		"resize": s.onResize,
+		"ctl":    s.onCtl,
+	}
+	payloads := map[string][]byte{
+		"in":     []byte("ls\n"),
+		"resize": []byte(`{"cols":80,"rows":24}`),
+		"ctl":    []byte(`{"ack":10}`),
+	}
+	for name, fn := range handlers {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("a panic in the %s handler escaped to the NATS goroutine: %v", name, r)
+				}
+			}()
+			s.guard(name, fn)(&nats.Msg{Data: payloads[name]})
+		})
 	}
 }
 

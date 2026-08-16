@@ -90,6 +90,13 @@ func (m *aptManager) Install(ctx context.Context, ids []string, progress func(In
 	if len(ids) == 0 {
 		return res, nil
 	}
+	ids, err := prepareInstall(ctx, ids, &res)
+	if err != nil {
+		return res, err
+	}
+	if len(ids) == 0 {
+		return res, nil
+	}
 	if !m.gate.acquire() {
 		return res, ErrBusy
 	}
@@ -120,19 +127,25 @@ func (m *aptManager) Install(ctx context.Context, ids []string, progress func(In
 		"--",
 	}, specs...)
 
-	cmdRes, err := m.runInstall(ctx, args, len(specs), progress)
-	if err != nil {
-		for _, id := range idByName {
-			res.fail(id, err)
-		}
-		res.RebootRequired = fileExists(rebootRequiredFlag)
-		return res, err
-	}
+	cmdRes, runErr := m.runInstall(ctx, args, len(specs), progress)
 
-	// Verify against dpkg rather than trusting the exit code: apt can
-	// succeed overall while a single package was held back, and the
-	// operator needs per-update truth.
-	installed := m.installedVersions(ctx, want)
+	// Ask dpkg what actually landed, on the failure path as well as the
+	// success path.
+	attributeAptResult(want, idByName, m.installedVersions(ctx, want), runErr, cmdRes.tail(3), &res)
+	res.RebootRequired = fileExists(rebootRequiredFlag)
+	if runErr != nil && len(res.Installed) == 0 {
+		return res, runErr
+	}
+	return res, nil
+}
+
+// attributeAptResult decides, per requested update, what happened. It takes
+// dpkg's answer rather than apt's exit code because apt exits non-zero when
+// ANY package in the transaction fails: attributing that to every id reports
+// updates as not installed while dpkg has them on disk. The audit event is
+// the change control record, and it used to be wrong in exactly the case an
+// auditor cares about.
+func attributeAptResult(want, idByName, installed map[string]string, runErr error, tail string, res *InstallResult) {
 	for name, version := range want {
 		id := idByName[name]
 		switch got, ok := installed[name]; {
@@ -140,12 +153,12 @@ func (m *aptManager) Install(ctx context.Context, ids []string, progress func(In
 			res.Installed = append(res.Installed, id)
 		case ok:
 			res.fail(id, fmt.Errorf("installed version is %s, wanted %s", got, version))
+		case runErr != nil:
+			res.fail(id, fmt.Errorf("%w (dpkg does not have %s)", runErr, name))
 		default:
-			res.fail(id, errors.New("package not installed after apt-get install: "+cmdRes.tail(3)))
+			res.fail(id, errors.New("package not installed after apt-get install: "+tail))
 		}
 	}
-	res.RebootRequired = fileExists(rebootRequiredFlag)
-	return res, nil
 }
 
 // runInstall executes apt-get, waiting out dpkg lock contention with
@@ -158,6 +171,13 @@ func (m *aptManager) runInstall(ctx context.Context, args []string, total int, p
 		seen := 0
 		res := runCmd(ctx, execOptions{
 			Timeout: installTimeout,
+			// A dpkg transaction that is killed halfway needs a human with
+			// `dpkg --configure -a`, so the deadline reports a timeout and
+			// lets the transaction finish. The scope keeps it out of the
+			// agent's cgroup, so restarting the agent does not kill it
+			// either.
+			Scope:     true,
+			LetFinish: true,
 			OnLine: func(line string) {
 				phase, ok := aptProgressPhase(line)
 				if !ok {
@@ -202,7 +222,12 @@ func (m *aptManager) installedVersions(ctx context.Context, want map[string]stri
 	for name := range want {
 		args = append(args, name)
 	}
-	res := runCmd(ctx, execOptions{Timeout: quickTimeout}, "dpkg-query", args...)
+	// Detached from the job's context on purpose: the answer matters most
+	// when the install was cut short, and a dead parent context would leave
+	// us reporting "not installed" for packages dpkg already has.
+	vctx, cancel := verifyContext(ctx)
+	defer cancel()
+	res := runCmd(vctx, execOptions{Timeout: quickTimeout}, "dpkg-query", args...)
 	// dpkg-query exits 1 when any named package is unknown, but still
 	// prints the ones it does know, so the output is used regardless.
 	return parseDpkgVersions(res.Stdout)

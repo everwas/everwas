@@ -71,6 +71,13 @@ func (m *dnfManager) Install(ctx context.Context, ids []string, progress func(In
 	if len(ids) == 0 {
 		return res, nil
 	}
+	ids, err := prepareInstall(ctx, ids, &res)
+	if err != nil {
+		return res, err
+	}
+	if len(ids) == 0 {
+		return res, nil
+	}
 	if !m.gate.acquire() {
 		return res, ErrBusy
 	}
@@ -94,6 +101,11 @@ func (m *dnfManager) Install(ctx context.Context, ids []string, progress func(In
 	args := append([]string{"-y", "install", "--"}, specs...)
 	cmdRes := runCmd(ctx, execOptions{
 		Timeout: installTimeout,
+		// An rpm transaction killed halfway needs a human with `rpm --rebuilddb`
+		// or worse, so the deadline reports a timeout and lets it finish, and
+		// the scope keeps it out of the agent's cgroup.
+		Scope:     true,
+		LetFinish: true,
 		OnLine: func(line string) {
 			phase, ok := dnfProgressPhase(line)
 			if !ok {
@@ -148,7 +160,11 @@ func (m *dnfManager) installedSpecs(ctx context.Context, specs []string) map[str
 		return present
 	}
 	args := append([]string{"-q", "--qf", "%{NAME}-%{EVR}.%{ARCH}\n"}, specs...)
-	res := runCmd(ctx, execOptions{Timeout: quickTimeout}, "rpm", args...)
+	// Detached from the job's context: what rpm has on disk is the truth we
+	// need most when the install was cut short.
+	vctx, cancel := verifyContext(ctx)
+	defer cancel()
+	res := runCmd(vctx, execOptions{Timeout: quickTimeout}, "rpm", args...)
 	found := map[string]bool{}
 	for line := range strings.Lines(res.Stdout) {
 		found[strings.TrimSpace(line)] = true

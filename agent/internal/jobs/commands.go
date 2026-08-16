@@ -2,6 +2,8 @@ package jobs
 
 import (
 	"encoding/json"
+	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/nats-io/nats.go"
@@ -15,15 +17,31 @@ import (
 // envelopes: request/reply is core NATS, already correlated, and the server
 // bridge reads these fields directly.
 type reply struct {
-	Accepted        bool   `json:"accepted"`
-	Error           string `json:"error,omitempty"`
-	JobID           string `json:"job_id,omitempty"`
-	SessionID       string `json:"session_id,omitempty"`
-	ScheduleVersion int    `json:"schedule_version,omitempty"`
-	Cancelled       *bool  `json:"cancelled,omitempty"`
+	Accepted        bool              `json:"accepted"`
+	Error           string            `json:"error,omitempty"`
+	JobID           string            `json:"job_id,omitempty"`
+	SessionID       string            `json:"session_id,omitempty"`
+	ScheduleVersion int               `json:"schedule_version,omitempty"`
+	Cancelled       *bool             `json:"cancelled,omitempty"`
+	Rejected        []sched.Rejection `json:"rejected,omitempty"`
 }
 
+// handleCommand is a NATS callback, so it runs on the library's goroutine
+// with no supervisor above it: a panic parsing a server-supplied payload
+// would take the process down. Recover, answer the caller, keep serving.
 func (m *Module) handleCommand(msg *nats.Msg) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.Log.Error("panic in command handler", "subject", msg.Subject,
+				"panic", r, "stack", string(debug.Stack()))
+			m.respond(msg, reply{Accepted: false,
+				Error: fmt.Sprintf("agent internal error: %v", r)})
+		}
+	}()
+	m.dispatchCommand(msg)
+}
+
+func (m *Module) dispatchCommand(msg *nats.Msg) {
 	op := strings.TrimPrefix(msg.Subject, "cmd."+m.AgentID+".")
 	data := commandData(msg.Data)
 
@@ -84,7 +102,10 @@ func (m *Module) cmdJobCancel(data []byte) reply {
 	if err := json.Unmarshal(data, &req); err != nil {
 		return reply{Accepted: false, Error: "bad job.cancel payload: " + err.Error()}
 	}
-	cancelled := m.Scripts.Cancel(req.JobID)
+	// The module's registry, not the script runner's: a patch install never
+	// registered with the runner, so cancelling a four hour install that was
+	// running as root answered "job not running" while it went on running.
+	cancelled := m.CancelJob(req.JobID)
 	if !cancelled {
 		return reply{Accepted: false, JobID: req.JobID, Cancelled: &cancelled,
 			Error: "job not running"}
@@ -101,19 +122,40 @@ func (m *Module) cmdSchedSync(data []byte) reply {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return reply{Accepted: false, Error: "bad sched.sync payload: " + err.Error()}
 	}
-	version, err := m.Sched.Sync(doc)
+	version, rejected, err := m.Sched.Sync(doc)
 	if err != nil {
 		// The schedule is live in memory even if the disk write failed; say
 		// so rather than pretending the sync did not happen.
 		m.Log.Warn("schedule persist failed", "version", version, "err", err)
-		return reply{Accepted: false, ScheduleVersion: version, Error: err.Error()}
+		return reply{Accepted: false, ScheduleVersion: version,
+			Rejected: rejected, Error: err.Error()}
 	}
 	m.Audit.Emit(audit.ScheduleSynced, map[string]any{
 		"schedule_version": version,
-		"entries":          len(doc.Entries),
+		"entries":          len(doc.Entries) - len(rejected),
+		"rejected":         len(rejected),
 	})
+	if len(rejected) > 0 {
+		// Not accepted: the rest of the schedule is in force, but the server
+		// must not go on believing these entries will fire.
+		m.Log.Warn("schedule entries rejected", "version", version,
+			"rejected", rejected)
+		return reply{Accepted: false, ScheduleVersion: version, Rejected: rejected,
+			Error: rejectionSummary(rejected)}
+	}
 	m.Log.Info("schedule synced", "version", version, "entries", len(doc.Entries))
 	return reply{Accepted: true, ScheduleVersion: version}
+}
+
+// rejectionSummary names the entries in the error string too, for a server
+// that only reads `error`.
+func rejectionSummary(rejected []sched.Rejection) string {
+	parts := make([]string, 0, len(rejected))
+	for _, r := range rejected {
+		parts = append(parts, r.EntryID+": "+r.Reason)
+	}
+	return fmt.Sprintf("%d schedule entries cannot be scheduled and were dropped: %s",
+		len(rejected), strings.Join(parts, "; "))
 }
 
 func (m *Module) respond(msg *nats.Msg, r reply) {

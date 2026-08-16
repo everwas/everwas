@@ -138,11 +138,18 @@ func CmdUninstall(args []string) int {
 // the old agent to exit, swaps the staged binary into place, and starts the
 // service again. It is spawned by the updater on Windows, where the in-place
 // rename can be refused; it is never meant to be run by hand.
+//
+// Every exit path writes an outcome to the update state file. The finalizer
+// is the only witness to whether the swap happened: when it gave up silently,
+// the host stayed on the old version while the console showed the update as
+// applied.
 func CmdUpdateFinalize(args []string) int {
 	fs := flag.NewFlagSet("update-finalize", flag.ContinueOnError)
 	pid := fs.Int("pid", 0, "pid of the agent process to wait for")
 	target := fs.String("target", "", "path of the binary to replace")
 	staged := fs.String("staged", "", "path of the verified replacement binary")
+	stateDir := fs.String("state-dir", "", "agent state directory, for reporting the outcome")
+	version := fs.String("version", "", "version being finalized, for the log line")
 	timeout := fs.Duration("timeout", 2*time.Minute, "how long to wait for the old process to exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -152,19 +159,47 @@ func CmdUpdateFinalize(args []string) int {
 		return 2
 	}
 
+	dir := *stateDir
+	if dir == "" {
+		// A finalizer with no state dir cannot report anything, which is the
+		// failure mode this whole function exists to close.
+		if resolved, err := config.Dir(); err == nil {
+			dir = resolved
+		} else {
+			fmt.Fprintf(os.Stderr, "update-finalize: resolve state dir: %v\n", err)
+		}
+	}
+	report := func(failure error) {
+		if dir == "" {
+			return
+		}
+		if err := update.NewTracker(dir).FinalizeOutcome(failure); err != nil {
+			fmt.Fprintf(os.Stderr, "update-finalize: record outcome: %v\n", err)
+		}
+	}
+
 	ctx := context.Background()
 	if *pid > 0 {
 		if err := update.WaitForExit(ctx, *pid, *timeout); err != nil {
+			// The old agent is still holding its image. Nothing was swapped,
+			// so say so: the alternative is a host that never updates and a
+			// server that thinks it did.
+			report(fmt.Errorf("waiting for agent pid %d: %w", *pid, err))
 			fmt.Fprintf(os.Stderr, "update-finalize: %v\n", err)
 			return 1
 		}
 	}
 
 	if _, err := update.Swap(*target, *staged); err != nil {
+		report(fmt.Errorf("swap %s: %w", *target, err))
 		fmt.Fprintf(os.Stderr, "update-finalize: %v\n", err)
 		return 1
 	}
-	fmt.Printf("swapped %s\n", *target)
+	fmt.Printf("swapped %s (version %s)\n", *target, *version)
+	// The swap is what the update was for, so record success before the
+	// service start: a service that will not start is a rollback question,
+	// not an "did the swap happen" question.
+	report(nil)
 
 	if err := svc.Start(); err != nil {
 		// The service manager may already have restarted the agent through

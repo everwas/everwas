@@ -18,25 +18,35 @@ func TestShouldRollbackDecision(t *testing.T) {
 	}
 
 	cases := []struct {
-		name string
-		st   State
-		want bool
+		name     string
+		st       State
+		external []time.Time
+		want     bool
 	}{
-		{"no update pending", State{}, false},
-		{"first start", withStarts(base, ago(10*time.Second)), false},
-		{"one crash", withStarts(base, ago(40*time.Second), ago(10*time.Second)), false},
-		{"two crashes in window", withStarts(base, ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), true},
-		{"crashes outside window", withStarts(base, ago(10*time.Minute), ago(9*time.Minute), ago(5*time.Second)), false},
+		{"no update pending", State{}, nil, false},
+		{"first start", withStarts(base, ago(10*time.Second)), nil, false},
+		{"one crash", withStarts(base, ago(40*time.Second), ago(10*time.Second)), nil, false},
+		{"two crashes in window", withStarts(base, ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), nil, true},
+		{"crashes outside window", withStarts(base, ago(10*time.Minute), ago(9*time.Minute), ago(5*time.Second)), nil, false},
 		{"already healthy", withStarts(func() State { s := base; s.Healthy = true; return s }(),
-			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), false},
+			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), nil, false},
 		{"already rolled back", withStarts(func() State { s := base; s.RolledBack = true; return s }(),
-			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), false},
+			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), nil, false},
 		{"no backup recorded", withStarts(func() State { s := base; s.Backup = ""; return s }(),
-			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), false},
-		{"clock skew, starts in the future", withStarts(base, now.Add(time.Hour), now.Add(2*time.Hour), now.Add(3*time.Hour)), false},
+			ago(90*time.Second), ago(50*time.Second), ago(5*time.Second)), nil, false},
+		{"clock skew, starts in the future", withStarts(base, now.Add(time.Hour), now.Add(2*time.Hour), now.Add(3*time.Hour)), nil, false},
+
+		// The build that never runs is the one that needs rolling back most:
+		// a wrong-architecture binary, a panic in package init, or a config
+		// format the new build cannot parse never reaches RecordStart, so its
+		// own counter stays at zero forever. The external guard counts those.
+		{"guard counted the starts the binary could not", base,
+			[]time.Time{ago(90 * time.Second), ago(50 * time.Second), ago(5 * time.Second)}, true},
+		{"guard counts do not add to the binary's own", withStarts(base, ago(50*time.Second), ago(5*time.Second)),
+			[]time.Time{ago(50 * time.Second), ago(5 * time.Second)}, false},
 	}
 	for _, c := range cases {
-		if got := shouldRollback(c.st, now); got != c.want {
+		if got := shouldRollback(c.st, c.external, now); got != c.want {
 			t.Errorf("%s: shouldRollback = %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -126,7 +136,11 @@ func TestCheckAndRollbackNoopWithoutPendingUpdate(t *testing.T) {
 	}
 }
 
-func TestMarkHealthyDeletesBackup(t *testing.T) {
+// TestMarkHealthyKeepsBackup pins the recovery path. Deleting the previous
+// binary at the end of probation makes every defect that shows up later
+// unrecoverable: there is no other copy of a working agent on the host, and
+// the broken one is the thing that would have to fetch it.
+func TestMarkHealthyKeepsBackup(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
 	target := fakeBinary(t, binDir, "openrmm-agent", "new build")
@@ -146,8 +160,15 @@ func TestMarkHealthyDeletesBackup(t *testing.T) {
 		t.Fatalf("MarkHealthy: %v", err)
 	}
 
-	if _, err := os.Stat(backup); !os.IsNotExist(err) {
-		t.Errorf("backup should be deleted once healthy, stat err = %v", err)
+	if got := readFile(t, backup); got != "old build" {
+		t.Errorf("backup = %q, want the previous build kept for recovery", got)
+	}
+	// The guard's files go away with the probation, so a restart weeks later
+	// is not counted against an update that is long over.
+	for _, name := range []string{ProbationFileName, StartsFileName} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s should be gone once healthy, stat err = %v", name, err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, healthMarkerName)); err != nil {
 		t.Errorf("health marker missing: %v", err)

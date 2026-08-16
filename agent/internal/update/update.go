@@ -36,6 +36,12 @@ func stepErr(step Step, err error) error { return &Error{Step: step, Err: err} }
 // ErrAlreadyCurrent means the requested version is the one already running.
 var ErrAlreadyCurrent = errors.New("update: already running the requested version")
 
+// ErrVersionDenied means this host already rolled this version back. Without
+// it the server keeps asking for the version the agent just restored itself
+// from, and every host in the fleet downloads, swaps, crashes and rolls back
+// on a loop against the same artifact.
+var ErrVersionDenied = errors.New("update: this version was rolled back on this host")
+
 // Request is an update instruction, normally delivered over NATS.
 type Request struct {
 	Version     string `json:"version"`
@@ -49,6 +55,11 @@ type Request struct {
 	// trusted in addition to EmbeddedPublicKey, never instead of it, so a
 	// server compromise cannot swap the trust anchor on its own.
 	PublicKeys []string `json:"public_keys,omitempty"`
+
+	// Force re-applies a version this host previously rolled back, and
+	// overrides an outstanding finalizer. It is an operator decision, so it
+	// has to be said out loud in the request rather than inferred.
+	Force bool `json:"force,omitempty"`
 }
 
 // Options are the local knobs Apply needs.
@@ -70,8 +81,20 @@ type Result struct {
 	Bytes      int64
 	// Finalizing is true when the swap was handed to an external helper
 	// process (the Windows fallback) and completes after this process exits.
+	// It is NOT success: the host is still on the old version until the
+	// helper reports back, so the server has to keep tracking it.
 	Finalizing bool
+	// FinalizerPID identifies the helper, so an operator can tell whether it
+	// is still running.
+	FinalizerPID int
+	// Status is the wire status for this outcome: StatusApplied when the
+	// swap is done, StatusFinalizing when it was handed off.
+	Status string
 }
+
+// StatusApplied is the terminal status of a completed in-process swap. The
+// other status values live in rollback.go next to the state they describe.
+const StatusApplied = "applied"
 
 const maxSignatureBytes = 8 << 10
 
@@ -100,6 +123,17 @@ func Apply(ctx context.Context, req Request, opts Options) (*Result, error) {
 	}
 	if opts.CurrentVersion != "" && req.Version == opts.CurrentVersion {
 		return nil, ErrAlreadyCurrent
+	}
+
+	// Both of these are checked BEFORE anything is downloaded. A fleet that
+	// has already rejected this version must not fetch the artifact again to
+	// find that out.
+	tracker := NewTracker(opts.StateDir)
+	if !req.Force && tracker.IsDenied(req.Version) {
+		return nil, stepErr(StepValidate, fmt.Errorf("%w: %s (send force to override)", ErrVersionDenied, req.Version))
+	}
+	if prior, err := tracker.Load(); err == nil && prior.Finalizing && !req.Force {
+		return nil, stepErr(StepValidate, fmt.Errorf("%w: version %s", ErrFinalizePending, prior.PendingVersion))
 	}
 
 	target := opts.TargetPath
@@ -156,7 +190,6 @@ func Apply(ctx context.Context, req Request, opts Options) (*Result, error) {
 	}
 	log.Info("update artifact verified", "version", req.Version, "bytes", n)
 
-	tracker := NewTracker(opts.StateDir)
 	backup := BackupPath(target)
 	if err := tracker.BeginUpdate(req.Version, opts.CurrentVersion, target, backup); err != nil {
 		discard(staged)
@@ -167,16 +200,29 @@ func Apply(ctx context.Context, req Request, opts Options) (*Result, error) {
 	if swapErr != nil {
 		if NeedsFinalizer() {
 			log.Warn("in-place swap refused, handing off to finalizer", "err", swapErr)
-			if fErr := SpawnFinalizer(staged, target); fErr == nil {
+			pid, fErr := SpawnFinalizer(staged, target, opts.StateDir, req.Version)
+			if fErr == nil {
+				// The swap has NOT happened yet. Record it as finalizing so
+				// nothing here declares the update applied, and so a
+				// finalizer that gives up leaves a trail instead of silence.
+				if err := tracker.BeginFinalize(pid); err != nil {
+					log.Error("could not record the finalizer handoff", "err", err)
+				}
 				return &Result{
-					Version:    req.Version,
-					Target:     target,
-					Backup:     backup,
-					StagedPath: staged,
-					Bytes:      n,
-					Finalizing: true,
+					Version:      req.Version,
+					Target:       target,
+					Backup:       backup,
+					StagedPath:   staged,
+					Bytes:        n,
+					Finalizing:   true,
+					FinalizerPID: pid,
+					Status:       StatusFinalizing,
 				}, nil
 			}
+			// Both failures matter: the swap error says why the in-place
+			// path was refused, the spawn error says why the fallback was
+			// not available either.
+			swapErr = errors.Join(swapErr, fErr)
 		}
 		// No swap happened, so there is nothing on probation.
 		_ = tracker.Clear()
@@ -192,6 +238,7 @@ func Apply(ctx context.Context, req Request, opts Options) (*Result, error) {
 		Backup:     res.Backup,
 		StagedPath: staged,
 		Bytes:      n,
+		Status:     StatusApplied,
 	}, nil
 }
 

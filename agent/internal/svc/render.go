@@ -28,6 +28,12 @@ func RenderSystemdUnit(cfg InstallConfig) string {
 	b.WriteString("Wants=network-online.target\n")
 	b.WriteString("\n[Service]\n")
 	b.WriteString("Type=simple\n")
+	b.WriteString("# The rollback guard runs OUTSIDE the agent, which is the only way to\n")
+	b.WriteString("# recover a build that cannot execute at all: wrong architecture, missing\n")
+	b.WriteString("# symbol, panic in package init, a config the new binary cannot parse.\n")
+	b.WriteString("# None of those ever reach the agent's own crash counter. The leading '-'\n")
+	b.WriteString("# and the /bin/sh wrapper mean a missing guard can never block startup.\n")
+	b.WriteString("ExecStartPre=-" + systemdGuardExec(cfg) + "\n")
 	b.WriteString("ExecStart=" + systemdExec(cfg) + "\n")
 	b.WriteString("Restart=always\n")
 	b.WriteString("RestartSec=5\n")
@@ -41,8 +47,15 @@ func RenderSystemdUnit(cfg InstallConfig) string {
 	b.WriteString("NoNewPrivileges=false\n")
 	b.WriteString("ProtectHome=read-only\n")
 	b.WriteString("PrivateTmp=true\n")
+	b.WriteString("\n")
+	b.WriteString("# Package managers run in a transient scope (systemd-run --scope), so they\n")
+	b.WriteString("# are NOT members of this cgroup: a restart of the agent during a patch\n")
+	b.WriteString("# window would otherwise SIGKILL dpkg mid-transaction and leave the package\n")
+	b.WriteString("# database for a human to repair. TimeoutStopSec is generous for the\n")
+	b.WriteString("# fallback case, where systemd-run is unavailable and the transaction\n")
+	b.WriteString("# really is in this cgroup.\n")
 	b.WriteString("KillMode=mixed\n")
-	b.WriteString("TimeoutStopSec=30\n")
+	b.WriteString("TimeoutStopSec=300\n")
 	b.WriteString("\n[Install]\n")
 	b.WriteString("WantedBy=multi-user.target\n")
 	return b.String()
@@ -55,6 +68,18 @@ func systemdExec(cfg InstallConfig) string {
 	parts := make([]string, 0, len(cfg.Args)+1)
 	for _, w := range append([]string{cfg.BinaryPath}, cfg.Args...) {
 		parts = append(parts, systemdQuote(w))
+	}
+	return strings.Join(parts, " ")
+}
+
+// systemdGuardExec renders the ExecStartPre line. It goes through /bin/sh
+// rather than executing the guard directly so that a host where the guard was
+// never installed fails on a shell that always exists, which combined with the
+// '-' prefix keeps the agent starting.
+func systemdGuardExec(cfg InstallConfig) string {
+	parts := []string{"/bin/sh", LinuxGuardPath, "check", cfg.BinaryPath}
+	for i, p := range parts {
+		parts[i] = systemdQuote(p)
 	}
 	return strings.Join(parts, " ")
 }
@@ -79,7 +104,7 @@ func RenderLaunchdPlist(cfg InstallConfig) string {
 	b.WriteString("<dict>\n")
 	b.WriteString("  <key>Label</key>\n  <string>" + xmlEscape(LaunchdLabel) + "</string>\n")
 	b.WriteString("  <key>ProgramArguments</key>\n  <array>\n")
-	for _, arg := range append([]string{cfg.BinaryPath}, cfg.Args...) {
+	for _, arg := range launchdProgramArguments(cfg) {
 		b.WriteString("    <string>" + xmlEscape(arg) + "</string>\n")
 	}
 	b.WriteString("  </array>\n")
@@ -96,6 +121,31 @@ func RenderLaunchdPlist(cfg InstallConfig) string {
 	}
 	b.WriteString("</dict>\n</plist>\n")
 	return b.String()
+}
+
+// launchdProgramArguments wraps the agent in the rollback guard. launchd has
+// no ExecStartPre, so the guard has to be what launchd starts, and it execs
+// the agent when it is done: same pid, so KeepAlive still watches the agent
+// rather than a wrapper.
+//
+// The guard is invoked through a shell test rather than directly. A daemon
+// whose ProgramArguments[0] does not exist never starts at all, and "the
+// rollback guard is missing" must not be a way to lose the agent.
+func launchdProgramArguments(cfg InstallConfig) []string {
+	agent := append([]string{cfg.BinaryPath}, cfg.Args...)
+	quoted := make([]string, 0, len(agent))
+	for _, a := range agent {
+		quoted = append(quoted, shQuote(a))
+	}
+	guard := shQuote(DarwinGuardPath)
+	line := "[ -x " + guard + " ] && " + guard + " check " + shQuote(cfg.BinaryPath) +
+		"; exec " + strings.Join(quoted, " ")
+	return []string{"/bin/sh", "-c", line}
+}
+
+// shQuote makes a value safe inside a single shell word.
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func xmlEscape(s string) string {

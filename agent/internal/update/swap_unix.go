@@ -10,7 +10,9 @@ func BackupPath(target string) string { return target + ".old" }
 // SpawnFinalizer exists so callers can be platform agnostic. Unix never needs
 // a helper process: the swap completes in place and the service manager
 // restarts the agent after it exits.
-func SpawnFinalizer(staged, target string) error { return ErrNoFinalizer }
+func SpawnFinalizer(staged, target, stateDir, version string) (int, error) {
+	return 0, ErrNoFinalizer
+}
 
 // NeedsFinalizer reports whether SpawnFinalizer is a usable fallback here.
 func NeedsFinalizer() bool { return false }

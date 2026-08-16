@@ -598,7 +598,11 @@ func TestIntegrationSchedSyncAndFire(t *testing.T) {
 	}
 }
 
-func TestIntegrationUnsupportedJobKind(t *testing.T) {
+// TestIntegrationPatchJobWithoutABackendStillReports: the patch handler is
+// wired but has no update backend, which is what a build for an OS with no
+// supported package manager looks like. It must still publish a terminal
+// result; a patch job that reports nothing shows as running forever.
+func TestIntegrationPatchJobWithoutABackendStillReports(t *testing.T) {
 	h := newHarness(t)
 	const jobID = "01J-INT-PATCH"
 	results := make(chan scripts.Result, 1)

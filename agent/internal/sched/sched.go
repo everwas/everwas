@@ -82,25 +82,48 @@ func (s *Scheduler) Entries() []Entry {
 	return out
 }
 
+// Rejection names an entry the agent will not schedule, and why. The server
+// has to be told: an entry it believes is in force but the agent silently
+// drops is a backup or a patch window that never runs.
+type Rejection struct {
+	EntryID string `json:"entry_id"`
+	Reason  string `json:"reason"`
+}
+
 // Sync replaces the cached schedule and persists it. Entries seen for the
 // first time are marked as fired now, so a newly added nightly job does not
 // immediately "catch up" a run it was never supposed to do.
+//
+// Every entry is parsed here, and one that cannot be scheduled is dropped
+// and named in the returned rejections. Deferring the parse to the first
+// fire meant a bad cron or an unknown timezone was logged on the agent and
+// skipped forever while the reply said accepted.
 //
 // A document with an unusable entry_id is rejected whole rather than in
 // part. Every entry id ends up inside a job id, and from there inside three
 // publish subjects, so one bad id would poison the fleet's connection the
 // first time that entry fired: hours later, with nothing pointing back at
 // the sync that caused it.
-func (s *Scheduler) Sync(doc Document) (int, error) {
+func (s *Scheduler) Sync(doc Document) (int, []Rejection, error) {
 	for _, e := range doc.Entries {
 		if err := wire.CheckIdentifier("entry_id", e.EntryID); err != nil {
-			return s.Version(), err
+			return s.Version(), nil, err
 		}
 	}
+	kept := make([]Entry, 0, len(doc.Entries))
+	var rejected []Rejection
+	for _, e := range doc.Entries {
+		if _, _, err := s.schedule(e); err != nil {
+			rejected = append(rejected, Rejection{EntryID: e.EntryID, Reason: err.Error()})
+			continue
+		}
+		kept = append(kept, e)
+	}
+
 	now := time.Now()
 	s.mu.Lock()
 	lastFired := map[string]int64{}
-	for _, e := range doc.Entries {
+	for _, e := range kept {
 		if prev, ok := s.st.LastFired[e.EntryID]; ok {
 			lastFired[e.EntryID] = prev
 		} else {
@@ -109,7 +132,7 @@ func (s *Scheduler) Sync(doc Document) (int, error) {
 	}
 	s.st = state{
 		ScheduleVersion: doc.ScheduleVersion,
-		Entries:         doc.Entries,
+		Entries:         kept,
 		LastFired:       lastFired,
 	}
 	version := s.st.ScheduleVersion
@@ -117,10 +140,10 @@ func (s *Scheduler) Sync(doc Document) (int, error) {
 	s.mu.Unlock()
 
 	if err := saveState(s.path, st); err != nil {
-		return version, err
+		return version, rejected, err
 	}
 	s.signal()
-	return version, nil
+	return version, rejected, nil
 }
 
 // Run drives the schedule until ctx is cancelled.
@@ -152,6 +175,13 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 // fireDue pops and runs everything whose jittered time has arrived.
+//
+// The misfire grace applies here too, not only to the fires missed while the
+// agent was down. Go timers are monotonic, so a laptop suspended at 22:00
+// and resumed at 09:00 finds its 22:30 timer instantly ready and would fire
+// a nightly patch job at 09:00 in front of the user, misfire_grace_s: 0 and
+// all. Being late is the same condition whether the process restarted or the
+// machine slept.
 func (s *Scheduler) fireDue(ctx context.Context, now time.Time) {
 	for {
 		item, ok := s.peek()
@@ -163,9 +193,38 @@ func (s *Scheduler) fireDue(ctx context.Context, now time.Time) {
 		if !ok {
 			continue // removed by a sync between scheduling and firing
 		}
-		s.dispatch(ctx, entry, item.base)
+		if s.tooLate(entry, item, now) {
+			s.skipLate(entry, item, now)
+		} else {
+			s.dispatch(ctx, entry, item.base)
+		}
 		s.push(entry, now)
 	}
+}
+
+// tooLate reports whether a due item has slipped past its grace window.
+// Anything inside fireSlack is ordinary timer noise, not a misfire.
+func (s *Scheduler) tooLate(e Entry, item fireItem, now time.Time) bool {
+	if now.Sub(item.at) <= fireSlack {
+		return false
+	}
+	return decideMisfire(item.base, now, e.MisfireGraceS) == misfireSkip
+}
+
+// skipLate records and audits a fire the agent deliberately did not run.
+func (s *Scheduler) skipLate(e Entry, item fireItem, now time.Time) {
+	s.markFired(e.EntryID, item.base)
+	s.aud.Emit(audit.SchedMisfireSkip, map[string]any{
+		"entry_id":        e.EntryID,
+		"kind":            e.Kind,
+		"missed_count":    1,
+		"scheduled_for":   item.base.UTC(),
+		"misfire_grace_s": e.MisfireGraceS,
+		"late_by_s":       int64(now.Sub(item.base).Seconds()),
+	})
+	s.log.Warn("schedule fire skipped, too late", "entry_id", e.EntryID,
+		"scheduled_for", item.base.UTC(), "late_by_s", int64(now.Sub(item.base).Seconds()),
+		"misfire_grace_s", e.MisfireGraceS)
 }
 
 // dispatch records the fire, persists it, and hands the run to the caller.

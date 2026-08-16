@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -21,6 +22,18 @@ const (
 	scanTimeout    = 15 * time.Minute
 	installTimeout = 2 * time.Hour
 	quickTimeout   = 60 * time.Second
+
+	// killGrace is how long a process group gets between SIGTERM and
+	// SIGKILL.
+	killGrace = 10 * time.Second
+
+	// waitDelay bounds two kinds of unexpected delay in Wait: a child that
+	// does not exit after being signalled, and a child that exits but leaves
+	// its stdout pipe held open by a GRANDCHILD. The second one is what
+	// wedged this function past its own timeout: apt-get is killed, the dpkg
+	// it spawned inherits the pipe, and the drain goroutine waits forever on
+	// an fd nobody is going to close.
+	waitDelay = 20 * time.Second
 )
 
 // cmdResult is the outcome of one command. ExitCode is -1 when the process
@@ -59,12 +72,24 @@ type execOptions struct {
 	// OnLine, if set, is called for every complete stdout line as it
 	// arrives, so long installs can report progress before they finish.
 	OnLine func(string)
+
+	// Scope runs the command in a transient systemd scope, outside the
+	// agent's own cgroup, so restarting the agent does not take the package
+	// manager with it. It is a no-op where systemd-run is unavailable.
+	Scope bool
+
+	// LetFinish leaves the child running when the deadline passes instead of
+	// signalling it. A dpkg or rpm transaction that is killed halfway leaves
+	// a package database only a human can repair, so for those the timeout
+	// is reported and the transaction is allowed to complete. Everything
+	// else, including the retry that follows, treats the run as failed.
+	LetFinish bool
 }
 
 // runCmd executes a command with a scrubbed environment and returns its
-// output and exit code. Context cancellation kills the process: every call
-// site passes the job's context, so a cancelled patch job does not leave a
-// package manager running.
+// output and exit code. Context cancellation kills the whole process GROUP,
+// not just the direct child, so a cancelled patch job does not leave a
+// package manager holding a lock.
 //
 // A non-zero exit is NOT an error here. Package managers use exit codes as
 // data (dnf check-update returns 100 when updates exist), so the caller
@@ -77,18 +102,27 @@ func runCmd(ctx context.Context, opts execOptions, name string, args ...string) 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	runName, runArgs := name, args
+	if opts.Scope {
+		runName, runArgs, _ = scopeCommand(name, args)
+	}
+
+	var cmd *exec.Cmd
+	if opts.LetFinish {
+		// No context wiring at all: cancellation must not signal this child.
+		cmd = exec.Command(runName, runArgs...) //nolint:gosec // fixed binaries, validated args
+	} else {
+		cmd = exec.CommandContext(ctx, runName, runArgs...) //nolint:gosec // fixed binaries, validated args
+		cmd.Cancel = func() error { return terminateGroup(cmd) }
+		cmd.WaitDelay = waitDelay
+	}
+	setProcAttr(cmd)
 	cmd.Env = scrubEnv(os.Environ(), noninteractiveEnv(opts.Env))
 	// Package managers that find no terminal on stdin stop asking questions.
 	cmd.Stdin = nil
 
-	var stderr bytes.Buffer
+	var stdout, stderr syncBuffer
 	cmd.Stderr = &stderr
-
-	if opts.OnLine == nil {
-		out, err := cmd.Output()
-		return finish(ctx, string(out), stderr.String(), err)
-	}
 
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -97,33 +131,87 @@ func runCmd(ctx context.Context, opts execOptions, name string, args ...string) 
 	if err := cmd.Start(); err != nil {
 		return cmdResult{ExitCode: -1, Err: err}
 	}
-	var (
-		stdout bytes.Buffer
-		wg     sync.WaitGroup
-	)
-	wg.Add(1)
+
+	drained := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(drained)
 		scan := bufio.NewScanner(pipe)
 		scan.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scan.Scan() {
 			line := scan.Text()
 			stdout.WriteString(line)
-			stdout.WriteByte('\n')
-			opts.OnLine(line)
+			stdout.WriteString("\n")
+			if opts.OnLine != nil {
+				opts.OnLine(line)
+			}
 		}
-		// A scanner error (line too long, pipe closed by a kill) loses the
-		// tail of the output but must not lose the exit status.
-		if err := scan.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+		// A scanner error (line too long, or the pipe closed underneath us
+		// by the WaitDelay timer) loses the tail of the output but must not
+		// lose the exit status.
+		if err := scan.Err(); err != nil &&
+			!errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, os.ErrClosed) {
 			stderr.WriteString("openrmm-agent: output read: " + err.Error() + "\n")
 		}
 	}()
-	wg.Wait()
-	// Wait AFTER the pipe is drained and BEFORE the buffers are read: Wait
-	// is what joins the goroutine exec.Cmd uses to fill cmd.Stderr, so
-	// reading stderr any earlier races with it.
-	waitErr := cmd.Wait()
-	return finish(ctx, stdout.String(), stderr.String(), waitErr)
+
+	done := make(chan error, 1)
+	go func() {
+		// Wait AFTER the pipe is drained: Wait closes it, and it also joins
+		// the goroutine exec.Cmd uses to fill cmd.Stderr.
+		<-drained
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case waitErr := <-done:
+		return finish(ctx, stdout.String(), stderr.String(), waitErr)
+	case <-ctx.Done():
+		if !opts.LetFinish {
+			// The group has been signalled through Cancel, and WaitDelay
+			// closes the pipes if a grandchild is still holding them, so
+			// this wait is bounded whatever the child does.
+			waitErr := <-done
+			return finish(ctx, stdout.String(), stderr.String(), waitErr)
+		}
+		// Let the transaction finish. Half an install is a host somebody has
+		// to repair by hand, so the job reports a timeout while the package
+		// manager keeps its lock until it is done.
+		go func() { <-done }()
+		stderr.WriteString(fmt.Sprintf(
+			"openrmm-agent: deadline reached, %s was left running so the transaction is not interrupted\n", name))
+		return cmdResult{
+			Stdout:   stdout.String(),
+			Stderr:   stderr.String(),
+			ExitCode: -1,
+			Err:      ctx.Err(),
+		}
+	}
+}
+
+// syncBuffer is a bytes.Buffer that can be read while a goroutine is still
+// writing to it. A LetFinish run returns before its child has exited, so the
+// drain goroutine outlives the call.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) WriteString(str string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.WriteString(str)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 // finish turns a wait error into a cmdResult, mapping a context deadline
@@ -147,6 +235,14 @@ func finish(ctx context.Context, stdout, stderr string, err error) cmdResult {
 		res.Err = err
 		return res
 	}
+}
+
+// verifyContext derives the context for a "what actually landed" query. It
+// deliberately survives the parent's cancellation with a short deadline of
+// its own: asking dpkg or rpm what is installed is how the audit event stops
+// guessing, and it matters most in the case where the install was cut short.
+func verifyContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), quickTimeout)
 }
 
 // have reports whether a binary is on PATH.

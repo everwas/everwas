@@ -49,6 +49,10 @@ SCRIPTS="$STAGE/scripts"
 mkdir -p "$ROOT$INSTALL_DIR" "$ROOT/Library/LaunchDaemons" "$ROOT/Library/Logs/OpenRMM" "$SCRIPTS" "$OUTDIR"
 
 install -m 0755 "$BINARY" "$ROOT$INSTALL_DIR/openrmm-agent"
+# The daemon starts the guard, which execs the agent. Without this file the
+# agent still runs (the plist tests for it first), but a build that cannot
+# execute at all has no way back.
+install -m 0755 "$SCRIPT_DIR/../agent-guard.sh" "$ROOT$INSTALL_DIR/agent-guard.sh"
 install -m 0644 "$SCRIPT_DIR/com.openrmm.agent.plist" "$ROOT/Library/LaunchDaemons/$IDENTIFIER.plist"
 
 cat > "$SCRIPTS/postinstall" <<'POSTINSTALL'

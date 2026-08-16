@@ -11,6 +11,11 @@ import (
 // missed, not how many times.
 const maxScan = 20000
 
+// fireSlack is how late a running agent's timer may be before the fire is
+// treated as a misfire rather than as ordinary scheduling noise. Without it
+// a grace of 0, which means "worthless late", would skip every normal fire.
+const fireSlack = 60 * time.Second
+
 type misfireAction int
 
 const (

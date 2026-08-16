@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -233,6 +234,92 @@ func TestApplyRequiresATrustAnchor(t *testing.T) {
 		SignatureURL: "https://example.invalid/agent.minisig",
 	}, Options{StateDir: t.TempDir(), TargetPath: filepath.Join(t.TempDir(), "agent"), CurrentVersion: "1.0.0"})
 	assertStep(t, err, StepKeys, ErrNoTrustAnchor)
+}
+
+// TestApplyRefusesADeniedVersion is the H3 regression at the pipeline level.
+// After a rollback the agent is on v1 and the server still wants v2; without
+// a denylist every host downloads, swaps, crashes and rolls back on a loop,
+// all of them hammering the artifact server on the way round.
+func TestApplyRefusesADeniedVersion(t *testing.T) {
+	k := newTestKey(t, 0x11)
+	orig := EmbeddedPublicKey
+	t.Cleanup(func() { EmbeddedPublicKey = orig })
+	EmbeddedPublicKey = k.pub
+
+	body := []byte("the build that already failed here")
+	var fetches atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		if strings.HasSuffix(r.URL.Path, ".minisig") {
+			_, _ = w.Write(k.sign(body, "", algEdDSA))
+			return
+		}
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	stateDir := t.TempDir()
+	binDir := t.TempDir()
+	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	if err := NewTracker(stateDir).Deny("2.0.0"); err != nil {
+		t.Fatalf("Deny: %v", err)
+	}
+
+	req := Request{
+		Version:      "2.0.0",
+		ArtifactURL:  srv.URL + "/agent",
+		SHA256:       sha256hex(body),
+		SignatureURL: srv.URL + "/agent.minisig",
+	}
+	opts := Options{
+		StateDir:       stateDir,
+		TargetPath:     target,
+		CurrentVersion: "1.0.0",
+		Downloader:     &Downloader{AllowInsecureHTTP: true},
+	}
+
+	_, err := Apply(context.Background(), req, opts)
+	assertStep(t, err, StepValidate, ErrVersionDenied)
+	if n := fetches.Load(); n != 0 {
+		t.Errorf("a denied version fetched the artifact %d times, want 0", n)
+	}
+	assertUntouched(t, target, stateDir)
+
+	// An operator who knows better can still say so, once, explicitly.
+	forced := req
+	forced.Force = true
+	if _, err := Apply(context.Background(), forced, opts); err != nil {
+		t.Fatalf("forced Apply: %v", err)
+	}
+	if got := readFile(t, target); got != string(body) {
+		t.Errorf("target = %q, want the forced update applied", got)
+	}
+}
+
+// TestApplyRefusesWhileFinalizing keeps a second update from stacking on top
+// of a swap that has not happened yet.
+func TestApplyRefusesWhileFinalizing(t *testing.T) {
+	k := newTestKey(t, 0x12)
+	orig := EmbeddedPublicKey
+	t.Cleanup(func() { EmbeddedPublicKey = orig })
+	EmbeddedPublicKey = k.pub
+
+	stateDir := t.TempDir()
+	tr := NewTracker(stateDir)
+	if err := tr.BeginUpdate("2.0.0", "1.0.0", "/bin/agent", "/bin/agent.old"); err != nil {
+		t.Fatalf("BeginUpdate: %v", err)
+	}
+	if err := tr.BeginFinalize(4242); err != nil {
+		t.Fatalf("BeginFinalize: %v", err)
+	}
+
+	_, err := Apply(context.Background(), Request{
+		Version:      "2.1.0",
+		ArtifactURL:  "https://example.invalid/agent",
+		SHA256:       "ab",
+		SignatureURL: "https://example.invalid/agent.minisig",
+	}, Options{StateDir: stateDir, TargetPath: filepath.Join(t.TempDir(), "agent"), CurrentVersion: "1.0.0"})
+	assertStep(t, err, StepValidate, ErrFinalizePending)
 }
 
 func assertStep(t *testing.T, err error, want Step, wantErr error) {

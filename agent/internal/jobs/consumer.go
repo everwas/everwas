@@ -23,6 +23,12 @@ const (
 
 	// maxAckPending bounds how many jobs the server may push at us at once.
 	maxAckPending = 16
+
+	// maxDeliver bounds redelivery. Unset means unlimited, so a job that
+	// kills the agent on the way in comes back forever. Three attempts is
+	// enough to survive an ack lost to a reconnect and few enough that a
+	// poisonous job ends up on the dead letter path instead of in a loop.
+	maxDeliver = 3
 )
 
 // consume binds (or creates) this agent's durable pull consumer and runs it
@@ -38,8 +44,10 @@ func (m *Module) consume(ctx context.Context) error {
 	}
 	cc, err := cons.Consume(m.handleJob, jetstream.ConsumeErrHandler(
 		func(_ jetstream.ConsumeContext, err error) {
-			// Pull errors are transient (server restart, no responders while
-			// the stream is being recreated); the library keeps retrying.
+			// Most pull errors are transient and the library retries them.
+			// Some are not: on a deleted consumer or a bad request it calls
+			// this handler once and then stops the subscription for good.
+			// That is why the wait below watches Closed as well.
 			m.Log.Warn("job consumer pull error", "err", err)
 		}))
 	if err != nil {
@@ -49,8 +57,23 @@ func (m *Module) consume(ctx context.Context) error {
 	m.Log.Info("job consumer ready", "stream", StreamJobs,
 		"durable", m.durableName(), "subject", wire.JobsQueue(m.AgentID))
 
-	<-ctx.Done()
-	return ctx.Err()
+	return waitConsumer(ctx, cc.Closed())
+}
+
+// waitConsumer blocks until the agent is stopping or the consumer stops
+// itself, and returns an error in the second case so the caller rebinds.
+//
+// Parking on ctx.Done() alone was the defect: a terminal pull error (the
+// JOBS stream recreated by a restore or a retention change, which deletes
+// the consumer) makes the library stop the subscription permanently. The
+// agent went on heartbeating healthy while executing nothing, forever.
+func waitConsumer(ctx context.Context, closed <-chan struct{}) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-closed:
+		return errors.New("job consumer was stopped by the client after a terminal pull error")
+	}
 }
 
 // durableName is the per-agent consumer name the server also uses when it
@@ -79,6 +102,7 @@ func (m *Module) bindConsumer(ctx context.Context, js jetstream.JetStream) (jets
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		AckWait:       ackWait,
 		MaxAckPending: maxAckPending,
+		MaxDeliver:    maxDeliver,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 	})
 }
@@ -107,20 +131,45 @@ func (m *Module) handleJob(msg jetstream.Msg) {
 		return
 	}
 
-	ctx := m.jobContext()
+	// Take a worker slot and register the job BEFORE acking. Blocking here
+	// is deliberate: the library delivers to this callback one message at a
+	// time, so an agent with every slot busy stops acking and MaxAckPending
+	// becomes real backpressure instead of a number.
+	ctx, release, err := m.reserve(spec.JobID, spec.Kind)
+	switch {
+	case errors.Is(err, errJobRunning):
+		// A redelivery of a job we are already running, which happens
+		// whenever an ack is lost to a blip longer than ack_wait. A second
+		// execution would share work/{job_id}/ with the first: one truncates
+		// the other's script, one removes the directory under the other, and
+		// for patch.install it is two concurrent package manager runs.
+		m.Log.Warn("duplicate delivery of a running job, dropping",
+			"job_id", spec.JobID, "kind", spec.Kind)
+		if aerr := msg.Ack(); aerr != nil {
+			m.Log.Warn("job ack", "job_id", spec.JobID, "err", aerr)
+		}
+		return
+	case err != nil:
+		// Shutting down. Leave it on the stream for the next process rather
+		// than starting work we cannot finish.
+		m.Log.Warn("job not started", "job_id", spec.JobID, "err", err)
+		if nerr := msg.Nak(); nerr != nil {
+			m.Log.Warn("job nak", "job_id", spec.JobID, "err", nerr)
+		}
+		return
+	}
+
 	m.Log.Info("job accepted", "job_id", spec.JobID, "kind", spec.Kind,
 		"requested_by", spec.RequestedBy)
-	go m.execute(ctx, spec)
+	go func() {
+		defer release()
+		m.runJob(ctx, spec)
+	}()
 
 	if err := msg.Ack(); err != nil {
 		m.Log.Warn("job ack", "job_id", spec.JobID, "err", err)
 	}
 }
-
-// jobContext is the lifetime of a dispatched job. It is deliberately not the
-// consumer context: a job keeps running (and reporting) while the agent
-// shuts down its subscriptions, and its own timeout ends it.
-func (m *Module) jobContext() context.Context { return context.Background() }
 
 // decodeJob accepts both an envelope-wrapped job and a bare job object.
 func decodeJob(raw []byte) (scripts.JobSpec, error) {

@@ -10,6 +10,8 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
+
+	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // recoveryResetPeriod is how long the SCM waits with no failures before it
@@ -17,7 +19,8 @@ import (
 const recoveryResetPeriod = uint32(24 * 60 * 60)
 
 // Install registers the agent with the Service Control Manager, sets it to
-// start automatically, and configures restart-on-failure at 5s, 30s and 60s.
+// start automatically, and configures recovery: restart at 5s and 30s, then a
+// command at 60s that restores the previous binary.
 // An existing service is updated in place rather than recreated so its SID
 // and any operator ACL changes survive an upgrade.
 func Install(cfg InstallConfig) error {
@@ -66,10 +69,17 @@ func Install(cfg InstallConfig) error {
 		defer s.Close()
 	}
 
+	// The third action is the Windows stand-in for the unix ExecStartPre
+	// guard: two restarts, then a command that puts the previous binary back.
+	// It runs from the SCM, not from the agent, which is what makes it work
+	// when the new build cannot execute at all.
+	if err := s.SetRecoveryCommand(recoveryCommand(cfg)); err != nil {
+		return fmt.Errorf("svc: set recovery command: %w", err)
+	}
 	if err := s.SetRecoveryActions([]mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
-		{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
+		{Type: mgr.RunCommand, Delay: 60 * time.Second},
 	}, recoveryResetPeriod); err != nil {
 		return fmt.Errorf("svc: set recovery actions: %w", err)
 	}
@@ -84,6 +94,18 @@ func Install(cfg InstallConfig) error {
 		return fmt.Errorf("svc: start service: %w", err)
 	}
 	return nil
+}
+
+// recoveryCommand restores the previous binary and starts the service again.
+// A failed move (there is no backup) leaves the start out, because there is
+// nothing to start into.
+//
+// It is a cmd.exe one liner rather than a call back into the agent on
+// purpose: the agent is the thing that could not run.
+func recoveryCommand(cfg InstallConfig) string {
+	target := cfg.BinaryPath
+	backup := update.BackupPath(target)
+	return fmt.Sprintf(`cmd.exe /C move /Y "%s" "%s" && sc.exe start %s`, backup, target, Name)
 }
 
 // binaryPathName renders the quoted "exe args" string the SCM stores.

@@ -71,14 +71,21 @@ func (m *softwareUpdateManager) Install(ctx context.Context, ids []string, progr
 	if len(ids) == 0 {
 		return res, nil
 	}
+	ids, err := prepareInstall(ctx, ids, &res)
+	if err != nil {
+		return res, err
+	}
+	if len(ids) == 0 {
+		return res, nil
+	}
 	if !m.gate.acquire() {
 		return res, ErrBusy
 	}
 	defer m.gate.release()
 
-	available, err := m.Scan(ctx)
-	if err != nil {
-		return res, err
+	available, scanErr := m.Scan(ctx)
+	if scanErr != nil {
+		return res, scanErr
 	}
 	byID := make(map[string]Update, len(available))
 	for _, u := range available {
@@ -102,6 +109,10 @@ func (m *softwareUpdateManager) Install(ctx context.Context, ids []string, progr
 		})
 		out := runCmd(ctx, execOptions{
 			Timeout: installTimeout,
+			// A softwareupdate run that is killed partway leaves macOS with
+			// a half staged update, so the deadline is reported rather than
+			// enforced with a signal.
+			LetFinish: true,
 			OnLine: func(string) {
 				emitProgress(progress, InstallProgress{
 					UpdateID: id, Phase: PhaseInstall, Pct: pctOf(i, len(ids)),

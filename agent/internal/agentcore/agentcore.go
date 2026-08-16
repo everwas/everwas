@@ -5,6 +5,7 @@ package agentcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -94,13 +95,34 @@ func (s *Supervisor) Start(ctx context.Context) {
 		{"sched", func(ctx context.Context, _ *slog.Logger) error {
 			return scheduler.Run(ctx)
 		}},
-		// Marks this build healthy after a sustained connection, which is what
-		// retires the previous binary after a self-update.
 		{"patchstate", func(ctx context.Context, _ *slog.Logger) error {
 			return patches.Run(ctx)
 		}},
+		// Confirms a freshly updated build actually WORKS before the previous
+		// one stops being the fallback. "Stayed alive 60 seconds" was not
+		// evidence: the supervisor restarts crashed tasks forever, so a build
+		// whose jobs module panicked on every start still cleared that bar.
+		// The flush proves the connection answers in both directions; the
+		// patchstate publish proves a real unit of work completes end to end.
 		{"update-health", func(ctx context.Context, log *slog.Logger) error {
-			return update.WatchHealth(ctx, s.StateDir, log)
+			return update.Watch(ctx, update.WatchConfig{
+				StateDir: s.StateDir,
+				Log:      log,
+				Probe: func(ctx context.Context) error {
+					ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					if !s.NC.IsConnected() {
+						return errors.New("nats connection is not established")
+					}
+					if err := s.NC.FlushWithContext(ctx); err != nil {
+						return fmt.Errorf("nats round trip: %w", err)
+					}
+					if _, err := patches.RefreshNow(ctx); err != nil {
+						return fmt.Errorf("patchstate publish: %w", err)
+					}
+					return nil
+				},
+			})
 		}},
 	}
 	for _, t := range tasks {

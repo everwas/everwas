@@ -22,6 +22,12 @@ func Install(cfg InstallConfig) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	// The guard goes down first: the unit's ExecStartPre points at it, and a
+	// unit that references a guard which is not there yet is a unit that
+	// starts without its rollback path.
+	if err := writeGuard(cfg.Prefix); err != nil {
+		return fmt.Errorf("svc: write %s: %w", GuardPath(cfg.Prefix), err)
+	}
 	unit := UnitPath(cfg.Prefix)
 	if err := writeFileAtomic(unit, []byte(RenderSystemdUnit(cfg)), 0o644); err != nil {
 		return fmt.Errorf("svc: write %s: %w", unit, err)
@@ -51,6 +57,9 @@ func Uninstall() error {
 	}
 	if err := os.Remove(unit); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("svc: remove %s: %w", unit, err)
+	}
+	if err := removeGuard(prefix); err != nil {
+		return fmt.Errorf("svc: remove %s: %w", GuardPath(prefix), err)
 	}
 	if prefix == "" {
 		if err := systemctl("daemon-reload"); err != nil {

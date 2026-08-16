@@ -76,8 +76,12 @@ func RestoreBackup(target string) error {
 	return os.Chmod(target, 0o755)
 }
 
-// RemoveBackup deletes the saved previous binary. Called once the new build
-// has proven itself.
+// RemoveBackup deletes the saved previous binary.
+//
+// Nothing in the update path calls this. Probation ending does NOT retire the
+// backup: one spare generation costs about twenty megabytes and is the only
+// recovery an operator has for a defect that shows up after the probation
+// window. The next Swap overwrites it, so exactly one generation is kept.
 func RemoveBackup(target string) error {
 	err := os.Remove(BackupPath(target))
 	if err != nil && !os.IsNotExist(err) {

@@ -43,6 +43,7 @@ type chunkSink struct {
 	seq       int
 	written   int
 	truncated bool
+	stopped   bool
 }
 
 func newChunkSink(jobID string, emit func(Chunk) error) *chunkSink {
@@ -59,7 +60,7 @@ func newChunkSink(jobID string, emit func(Chunk) error) *chunkSink {
 func (s *chunkSink) write(stream string, p []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(p) == 0 || s.truncated {
+	if len(p) == 0 || s.truncated || s.stopped {
 		return nil
 	}
 	// Only flag truncation when bytes are actually dropped: a write that
@@ -96,6 +97,16 @@ func (s *chunkSink) send(stream string, data []byte, eof bool) error {
 		Data:   data,
 		EOF:    eof,
 	})
+}
+
+// stop drops any further data. It is called when a job is reported while a
+// reader is still blocked on a pipe some descendant holds open: that reader
+// must not publish output after the stream's EOF marker. eof still works,
+// so the streams are always closed cleanly.
+func (s *chunkSink) stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopped = true
 }
 
 // isTruncated reports whether the per-job cap was reached.

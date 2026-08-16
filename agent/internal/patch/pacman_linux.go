@@ -50,6 +50,13 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 	if len(ids) == 0 {
 		return res, nil
 	}
+	ids, err := prepareInstall(ctx, ids, &res)
+	if err != nil {
+		return res, err
+	}
+	if len(ids) == 0 {
+		return res, nil
+	}
 	if !m.gate.acquire() {
 		return res, ErrBusy
 	}
@@ -58,9 +65,9 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 	// Scan first and install only what is actually pending. An approval is
 	// permission to take a specific pending update, not a standing licence to
 	// name any package, and a scan that fails is a reason to do nothing.
-	available, err := m.Scan(ctx)
-	if err != nil {
-		return res, fmt.Errorf("pacman scan before install: %w", err)
+	available, scanErr := m.Scan(ctx)
+	if scanErr != nil {
+		return res, fmt.Errorf("pacman scan before install: %w", scanErr)
 	}
 
 	before := m.installedVersions(ctx, nil)
@@ -75,6 +82,10 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 	args := append([]string{"-S", "--noconfirm", "--needed", "--"}, names...)
 	cmdRes := runCmd(ctx, execOptions{
 		Timeout: installTimeout,
+		// Same reasoning as apt and dnf: an interrupted transaction is worse
+		// than a late one.
+		Scope:     true,
+		LetFinish: true,
 		OnLine: func(line string) {
 			phase := PhaseInstall
 			if strings.Contains(line, "downloading") {
@@ -86,29 +97,33 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 		},
 	}, "pacman", args...)
 
+	// Ask pacman what changed even when the run failed. A failed transaction
+	// still installs some of the set, and reporting all of them as failed is
+	// the same lie apt used to tell.
+	var runErr error
 	if cmdRes.Err != nil {
-		err := fmt.Errorf("pacman -S: %w", cmdRes.Err)
-		for _, id := range idByName {
-			res.fail(id, err)
-		}
-		return res, err
+		runErr = fmt.Errorf("pacman -S: %w", cmdRes.Err)
 	}
-
 	after := m.installedVersions(ctx, names)
 	for name, id := range idByName {
 		got, ok := after[name]
 		switch {
 		case ok && got != before[name]:
 			res.Installed = append(res.Installed, id)
-		case ok && cmdRes.ExitCode == 0:
+		case ok && runErr == nil && cmdRes.ExitCode == 0:
 			// Already current: --needed makes this a no-op success.
 			res.Installed = append(res.Installed, id)
+		case runErr != nil:
+			res.fail(id, runErr)
 		default:
 			res.fail(id, fmt.Errorf("pacman -S exited %d: %s", cmdRes.ExitCode, cmdRes.tail(6)))
 		}
 	}
 	rebootNeeded, _ := m.RebootRequired(ctx)
 	res.RebootRequired = rebootNeeded
+	if runErr != nil && len(res.Installed) == 0 {
+		return res, runErr
+	}
 	return res, nil
 }
 
@@ -116,7 +131,11 @@ func (m *pacmanManager) Install(ctx context.Context, ids []string, progress func
 // when names is nil.
 func (m *pacmanManager) installedVersions(ctx context.Context, names []string) map[string]string {
 	args := append([]string{"-Q"}, names...)
-	res := runCmd(ctx, execOptions{Timeout: quickTimeout}, "pacman", args...)
+	// Detached from the job's context: this is the verification query, and it
+	// has to work after the install ran out of time.
+	vctx, cancel := verifyContext(ctx)
+	defer cancel()
+	res := runCmd(vctx, execOptions{Timeout: quickTimeout}, "pacman", args...)
 	return parsePacmanQuery(res.Stdout)
 }
 

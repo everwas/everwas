@@ -77,6 +77,10 @@ archives:
         dst: openrmm-agent.service
         info:
           mode: 0644
+      - src: packaging/agent-guard.sh
+        dst: agent-guard.sh
+        info:
+          mode: 0755
 
 nfpms:
   # Mirrors packaging/linux/nfpm.yaml. Change both together.
@@ -103,6 +107,11 @@ nfpms:
         type: config
         file_info:
           mode: 0644
+      # The external rollback guard the unit's ExecStartPre calls.
+      - src: packaging/agent-guard.sh
+        dst: /usr/local/lib/openrmm/agent-guard.sh
+        file_info:
+          mode: 0755
       # The agent identity (agent.json) carries the NATS secret.
       - dst: /etc/openrmm
         type: dir

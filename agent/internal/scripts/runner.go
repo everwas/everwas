@@ -29,6 +29,10 @@ const (
 	// or an attack on the agent's job slot.
 	MaxTimeout = 24 * time.Hour
 
+	// DefaultDrainGrace is how long the output pipes get to deliver what is
+	// still buffered after the child exits, before we stop reading them.
+	DefaultDrainGrace = 3 * time.Second
+
 	readBufSize = 32 * 1024
 )
 
@@ -72,6 +76,16 @@ type Result struct {
 	ExitCode   int    `json:"exit_code"`
 	DurationMS int64  `json:"duration_ms"`
 	Truncated  bool   `json:"truncated"`
+
+	// Patch jobs only; omitted entirely by script jobs.
+	//
+	// Without these the server records a patch job as "succeeded" with an
+	// empty installed list, so an operator cannot tell WHICH updates landed
+	// from the authoritative job record. The audit event carries the same
+	// facts, but job state must not depend on a separate best-effort stream.
+	Installed      []string          `json:"installed,omitempty"`
+	Failed         map[string]string `json:"failed,omitempty"`
+	RebootRequired bool              `json:"reboot_required,omitempty"`
 }
 
 // ProgressFunc reports a phase transition for a job.
@@ -88,6 +102,14 @@ type Runner struct {
 	// emit publishes one output chunk. Tests replace it to observe framing
 	// without standing up a NATS server.
 	emit func(Chunk) error
+
+	// drainGrace overrides DefaultDrainGrace; tests shorten it.
+	drainGrace time.Duration
+
+	// results publishes terminal results with an ack. Built from NC on
+	// first use; tests inject a fake.
+	resultsOnce sync.Once
+	results     resultPublisher
 
 	mu      sync.Mutex
 	running map[string]*handle
@@ -206,20 +228,24 @@ func (r *Runner) execute(ctx context.Context, job JobSpec, publish ProgressFunc,
 	cmd.Dir = dir
 	cmd.Env = scrubEnv(os.Environ(), job.Env)
 
-	stdout, err := cmd.StdoutPipe()
+	// Our own pipes rather than cmd.StdoutPipe: Wait closes the pipes it
+	// owns the instant the child exits, which races the readers and eats the
+	// tail of the output. Owning them means we decide when reading stops.
+	pipes, err := newOutPipes()
 	if err != nil {
 		return r.abort(sink, job, err)
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return r.abort(sink, job, err)
-	}
+	defer pipes.closeAll()
+	cmd.Stdout, cmd.Stderr = pipes.outW, pipes.errW
 
 	guard := newProcGuard()
 	guard.beforeStart(cmd)
 	if err := cmd.Start(); err != nil {
 		return r.abort(sink, job, fmt.Errorf("start %s: %w", interp.Path, err))
 	}
+	// This process holds a copy of both write ends; without dropping them the
+	// reads below could never see EOF even for a well-behaved script.
+	pipes.closeWrite()
 	guard.afterStart(cmd)
 	defer guard.release()
 	publish(10, PhaseRunning, interp.Path)
@@ -248,18 +274,43 @@ func (r *Runner) execute(ctx context.Context, job JobSpec, publish ProgressFunc,
 		}
 	}()
 
-	// Drain both pipes fully before Wait: Wait closes them, and a reader
-	// still running when that happens loses the tail of the output.
+	// The result comes from Wait, never from the pipes reaching EOF. Any
+	// descendant that called setsid — a daemon the script installed and
+	// started, gpg's dirmngr, ssh-agent — inherits the write end and is not
+	// in the process group the timeout kills, so EOF may never arrive.
+	// Waiting for it means no result, no timeout, no cleanup: a job the
+	// console shows as running forever and a staged script body, often
+	// carrying credentials, left on disk.
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); r.pump(sink, StreamStdout, stdout, job.JobID) }()
-	go func() { defer wg.Done(); r.pump(sink, StreamStderr, stderr, job.JobID) }()
-	wg.Wait()
+	go func() { defer wg.Done(); r.pump(sink, StreamStdout, pipes.outR, job.JobID) }()
+	go func() { defer wg.Done(); r.pump(sink, StreamStderr, pipes.errR, job.JobID) }()
+	drained := make(chan struct{})
+	go func() { wg.Wait(); close(drained) }()
 
 	waitErr := cmd.Wait()
 	close(done)
 
+	// The child is gone. Give the pipes a bounded moment to deliver what is
+	// still buffered, then stop reading them and report. Losing the tail of
+	// a job's output is strictly better than never reporting the job.
+	select {
+	case <-drained:
+	case <-time.After(r.drainWindow()):
+		r.warn("job output pipe held open past exit, abandoning the tail",
+			"job_id", job.JobID, "grace", r.drainWindow().String())
+		sink.stop()
+		pipes.closeRead()
+	}
 	return result(waitErr, reason.get())
+}
+
+// drainWindow is how long the pumps get after the child exits.
+func (r *Runner) drainWindow() time.Duration {
+	if r.drainGrace > 0 {
+		return r.drainGrace
+	}
+	return DefaultDrainGrace
 }
 
 // result maps a wait error plus any kill reason onto the wire status.
