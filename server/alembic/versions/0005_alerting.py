@@ -6,19 +6,25 @@ Create Date: 2026-08-15
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
+from alembic import op
+
 revision: str = "0005"
-down_revision: Union[str, None] = "0004"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0004"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 alert_metric = sa.Enum(
-    "cpu", "memory", "disk", "heartbeat_missed", "service_down", "patch_overdue",
+    "cpu",
+    "memory",
+    "disk",
+    "heartbeat_missed",
+    "service_down",
+    "patch_overdue",
     name="alert_metric",
 )
 alert_operator = sa.Enum("gt", "lt", name="alert_operator")
@@ -112,7 +118,9 @@ def upgrade() -> None:
         "notification_outbox",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column(
-            "alert_id", UUID(as_uuid=True), sa.ForeignKey("alerts.id", ondelete="CASCADE"),
+            "alert_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("alerts.id", ondelete="CASCADE"),
             nullable=True,
         ),
         sa.Column(

@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.device import Device, DeviceStatus
@@ -44,6 +44,20 @@ async def apply_heartbeat(db: AsyncSession, agent_id: uuid.UUID, data: dict) -> 
         .returning(Device)
     )
     return rows.scalar_one_or_none()
+
+
+async def offline_devices(db: AsyncSession) -> list[Device]:
+    """Every device currently offline.
+
+    Heartbeat-missed must be evaluated as a LEVEL condition, not an edge: the
+    sweep below only returns devices that just transitioned, so a device whose
+    first alert attempt was suppressed (cooldown, a transient error) would
+    never get another chance and would sit offline forever with an empty alert
+    page. Re-evaluating every offline device each sweep is safe because the
+    partial unique index makes a duplicate open a no-op.
+    """
+    rows = await db.execute(select(Device).where(Device.status == DeviceStatus.offline))
+    return list(rows.scalars())
 
 
 async def sweep_offline(db: AsyncSession, offline_after_s: int) -> list[Device]:

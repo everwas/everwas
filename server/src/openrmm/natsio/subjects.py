@@ -72,25 +72,43 @@ def agent_durable(agent_id: str) -> str:
     return f"agent-{agent_id}"
 
 
+def agent_inbox_prefix(agent_id: str) -> str:
+    """Per-agent reply inbox.
+
+    The agent must be configured with this as its NATS inbox prefix
+    (nats.CustomInboxPrefix). The default `_INBOX` is shared by every client in
+    the account, so granting `_INBOX.>` let any one agent receive every other
+    agent's request replies and pull deliveries.
+    """
+    return f"_INBOX_{agent_id}"
+
+
 def agent_permissions(agent_id: str) -> dict[str, list[str]]:
     """Subject permissions pinned into the user JWT issued by the auth callout.
 
-    Beyond its own namespace an agent needs a keyhole into the JetStream API:
-    enough to bind and pull from ITS OWN durable consumer on JOBS, and to ack.
-    Every JS subject below is scoped to this agent's durable name — an agent
-    cannot touch another agent's consumer, nor any other stream.
+    Every grant names this agent. There are no shared subjects: an agent can
+    reach its own namespace, its own reply inbox, and its own durable consumer
+    on JOBS, and nothing else.
     """
     durable = agent_durable(agent_id)
+    inbox = agent_inbox_prefix(agent_id)
     return {
         "publish": [
             f"agents.{agent_id}.>",
-            "_INBOX.>",
-            "$JS.API.INFO",
-            f"$JS.API.CONSUMER.INFO.JOBS.{durable}",
+            f"{inbox}.>",
+            # JetStream keyhole, scoped to this agent's own durable consumer.
+            # CONSUMER.CREATE carries the filter subject as a trailing token,
+            # so it is granted as the ONE literal filter this agent may use;
+            # a trailing `.>` here would let an agent filter on `jobs.*` and
+            # drain the whole fleet's work.
             f"$JS.API.CONSUMER.CREATE.JOBS.{durable}",
-            f"$JS.API.CONSUMER.CREATE.JOBS.{durable}.>",
+            f"$JS.API.CONSUMER.CREATE.JOBS.{durable}.jobs.{agent_id}",
+            f"$JS.API.CONSUMER.INFO.JOBS.{durable}",
             f"$JS.API.CONSUMER.MSG.NEXT.JOBS.{durable}",
-            "$JS.ACK.>",
+            # Acks are deterministic subjects carrying the consumer name; an
+            # unscoped `$JS.ACK.>` would let an agent forge acks on the
+            # server's own ingest consumers and destroy audit evidence.
+            f"$JS.ACK.JOBS.{durable}.>",
         ],
         "subscribe": [
             f"cmd.{agent_id}.>",
@@ -98,6 +116,6 @@ def agent_permissions(agent_id: str) -> dict[str, list[str]]:
             f"agents.{agent_id}.shell.*.in",
             f"agents.{agent_id}.shell.*.rsz",
             f"agents.{agent_id}.shell.*.ctl",
-            "_INBOX.>",
+            f"{inbox}.>",
         ],
     }

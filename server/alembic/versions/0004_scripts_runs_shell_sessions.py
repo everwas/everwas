@@ -6,22 +6,27 @@ Create Date: 2026-08-15
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-revision: str = "0004"
-down_revision: Union[str, None] = "0003"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+from alembic import op
 
-shell_kind = sa.Enum(
-    "bash", "sh", "zsh", "powershell", "pwsh", "cmd", "python", name="shell_kind"
-)
+revision: str = "0004"
+down_revision: str | None = "0003"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+shell_kind = sa.Enum("bash", "sh", "zsh", "powershell", "pwsh", "cmd", "python", name="shell_kind")
 run_status = sa.Enum(
-    "queued", "delivered", "running", "succeeded", "failed", "timeout", "cancelled",
+    "queued",
+    "delivered",
+    "running",
+    "succeeded",
+    "failed",
+    "timeout",
+    "cancelled",
     name="run_status",
 )
 run_trigger = sa.Enum("manual", "schedule", "policy", "mcp", name="run_trigger")
@@ -107,7 +112,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="SET NULL"),
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(

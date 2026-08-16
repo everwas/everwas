@@ -10,7 +10,6 @@ import json
 import uuid
 from datetime import UTC, datetime
 
-import nats
 import structlog
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.audit import ActorType, AuditLog
 from openrmm.models.device import Device, OsFamily
+from openrmm.models.job_outbox import KIND_PATCH_INSTALL, KIND_PATCH_SCAN, JobOutbox
 from openrmm.models.patch import (
     ApprovalDecision,
     PatchApproval,
@@ -27,7 +27,6 @@ from openrmm.models.patch import (
     PatchPolicy,
 )
 from openrmm.natsio.subjects import jobs_queue
-from openrmm.services.jobs import job_envelope
 from openrmm.util.ids import uuid7
 
 log = structlog.get_logger()
@@ -145,27 +144,34 @@ async def approved_external_ids(
     return list((await db.execute(stmt)).scalars())
 
 
-async def queue_patch_scan(db: AsyncSession, nc: nats.NATS, device: Device) -> uuid.UUID:
-    js = nc.jetstream()
+async def queue_patch_scan(db: AsyncSession, device: Device) -> uuid.UUID:
+    """Ask a device to re-scan. Delivered by the dispatcher after commit."""
     job_id = uuid7()
-    await js.publish(
-        jobs_queue(str(device.id)),
-        job_envelope(str(device.id), str(job_id), "patch.scan", {}),
-        headers={"Nats-Msg-Id": str(job_id)},
+    db.add(
+        JobOutbox(
+            id=job_id,
+            device_id=device.id,
+            subject=jobs_queue(str(device.id)),
+            kind=KIND_PATCH_SCAN,
+            payload={},
+        )
     )
     return job_id
 
 
 async def queue_patch_install(
     db: AsyncSession,
-    nc: nats.NATS,
     device: Device,
     external_ids: list[str],
     *,
     requested_by: str,
     policy_id: uuid.UUID | None = None,
 ) -> PatchJob:
-    """Deploy approved patches. Callers must pass only approved ids."""
+    """Deploy approved patches. Callers must pass only approved ids.
+
+    Publishes nothing: the job row, its outbox row, and the audit entry commit
+    together and the dispatcher delivers afterwards. See services/jobs.py.
+    """
     job = PatchJob(
         id=uuid7(),
         device_id=device.id,
@@ -175,16 +181,13 @@ async def queue_patch_install(
         requested_by=requested_by,
     )
     db.add(job)
-    await db.flush()
-
-    js = nc.jetstream()
-    await js.publish(
-        jobs_queue(str(device.id)),
-        job_envelope(
-            str(device.id),
-            str(job.id),
-            "patch.install",
-            {
+    db.add(
+        JobOutbox(
+            id=job.id,  # the job id IS the wire job id, and the dedup key
+            device_id=device.id,
+            subject=jobs_queue(str(device.id)),
+            kind=KIND_PATCH_INSTALL,
+            payload={
                 # The agent's job spec carries free-form work in `body`; patch
                 # ids ride there as JSON. `ids` is kept for readability when
                 # inspecting the stream by hand.
@@ -192,8 +195,7 @@ async def queue_patch_install(
                 "ids": external_ids,
                 "requested_by": requested_by,
             },
-        ),
-        headers={"Nats-Msg-Id": str(job.id)},
+        )
     )
     db.add(
         AuditLog(
@@ -205,6 +207,7 @@ async def queue_patch_install(
             detail={"count": len(external_ids), "job_id": str(job.id)},
         )
     )
+    await db.flush()
     log.info(
         "patch install queued",
         device=device.hostname,
@@ -216,7 +219,7 @@ async def queue_patch_install(
 
 async def auto_approve_for_policies(db: AsyncSession, device: Device, patches: list[dict]) -> int:
     """Apply each matching policy's auto_approve_severities to a fresh scan."""
-    from openrmm.services.jobs import resolve_targets
+    from openrmm.services.jobs import TargetError, device_matches_target
 
     policies = list(
         (await db.execute(select(PatchPolicy).where(PatchPolicy.enabled.is_(True)))).scalars()
@@ -228,8 +231,14 @@ async def auto_approve_for_policies(db: AsyncSession, device: Device, patches: l
     for policy in policies:
         if not policy.auto_approve_severities:
             continue
-        targets = await resolve_targets(db, policy.target or {})
-        if device.id not in {d.id for d in targets}:
+        # Membership, not enumeration: a fleet-wide policy must not drag 5000
+        # device rows through an ingest path, and must not trip the run ceiling.
+        try:
+            matched = device_matches_target(device, policy.target or {})
+        except TargetError as exc:
+            log.warning("patch policy has an unusable target", policy=policy.name, error=str(exc))
+            continue
+        if not matched:
             continue
         wanted = {s.lower() for s in policy.auto_approve_severities}
         matching = [p for p in patches if str(p.get("severity", "unknown")).lower() in wanted]

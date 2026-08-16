@@ -14,7 +14,12 @@ from openrmm import __version__
 from openrmm.config import Settings, get_settings
 from openrmm.db.engine import session_scope
 from openrmm.dispatcher.consumers import ENGINE
-from openrmm.ingest.heartbeat import apply_heartbeat, parse_heartbeat, sweep_offline
+from openrmm.ingest.heartbeat import (
+    apply_heartbeat,
+    offline_devices,
+    parse_heartbeat,
+    sweep_offline,
+)
 
 log = structlog.get_logger()
 
@@ -48,8 +53,11 @@ async def offline_sweep(settings: Settings) -> None:
         try:
             async with session_scope() as db:
                 gone = await sweep_offline(db, settings.heartbeat_offline_after_s)
-                if gone:
-                    await ENGINE.evaluate_heartbeat_missed(db, gone)
+                # Evaluate EVERY offline device, not just the new transitions.
+                # An alert attempt that was suppressed once must get another
+                # chance, or the device sits offline forever with nothing on
+                # the alert page.
+                await ENGINE.evaluate_heartbeat_missed(db, await offline_devices(db))
             if gone:
                 log.info("devices marked offline", count=len(gone))
         except Exception:
@@ -93,14 +101,23 @@ async def run() -> None:
 
     await ensure_streams(js)
 
-    from openrmm.dispatcher.consumers import start_consumers
+    from openrmm.dispatcher.consumers import start_consumers, supervise
+    from openrmm.services.job_outbox import job_outbox_loop
     from openrmm.services.outbox import outbox_loop
 
+    # EVERY long-lived task is supervised. These were previously bare
+    # create_task calls that nobody awaited, so an exception left the process
+    # running and apparently healthy with that function silently gone: no
+    # heartbeats recorded, or the entire fleet swept offline, or notifications
+    # never delivered, with a green /health the whole time.
     tasks = [
-        asyncio.create_task(heartbeat_consumer(nc), name="heartbeat"),
-        asyncio.create_task(offline_sweep(settings), name="sweep"),
-        asyncio.create_task(partition_maintenance(settings), name="partitions"),
-        asyncio.create_task(outbox_loop(), name="outbox"),
+        supervise(lambda: heartbeat_consumer(nc), "heartbeat"),
+        supervise(lambda: offline_sweep(settings), "sweep"),
+        supervise(lambda: partition_maintenance(settings), "partitions"),
+        supervise(outbox_loop, "outbox"),
+        # Jobs are queued by the API and published here, after their rows have
+        # committed. Nothing else publishes to JOBS.
+        supervise(lambda: job_outbox_loop(js), "job-outbox"),
         *start_consumers(js),
     ]
 

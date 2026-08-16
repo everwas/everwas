@@ -16,24 +16,43 @@ additive changes (new subjects, new optional fields) are always allowed.
 ## Agent permissions (issued by auth-callout)
 
 ```
-publish:   agents.{agent_id}.>   _INBOX.>
-           $JS.API.INFO
-           $JS.API.CONSUMER.INFO.JOBS.agent-{agent_id}
+publish:   agents.{agent_id}.>
+           _INBOX_{agent_id}.>
            $JS.API.CONSUMER.CREATE.JOBS.agent-{agent_id}
-           $JS.API.CONSUMER.CREATE.JOBS.agent-{agent_id}.>
+           $JS.API.CONSUMER.CREATE.JOBS.agent-{agent_id}.jobs.{agent_id}
+           $JS.API.CONSUMER.INFO.JOBS.agent-{agent_id}
            $JS.API.CONSUMER.MSG.NEXT.JOBS.agent-{agent_id}
-           $JS.ACK.>
+           $JS.ACK.JOBS.agent-{agent_id}.>
 subscribe: cmd.{agent_id}.>   jobs.{agent_id}
            agents.{agent_id}.shell.*.in   agents.{agent_id}.shell.*.rsz
            agents.{agent_id}.shell.*.ctl
-           _INBOX.>
+           _INBOX_{agent_id}.>
 ```
 
-An agent cannot publish or subscribe outside its own namespace, except for a
-keyhole into the JetStream API scoped to **its own** durable consumer
-(`agent-{agent_id}`) on the JOBS stream — needed to bind, pull, and ack
-durable job delivery. The M1 conformance test asserts a foreign-subject
-publish is refused.
+**Every grant names the agent. There are no shared subjects.** Three details
+carry the isolation and are easy to get wrong:
+
+1. **The agent must set a per-agent inbox prefix** (`nats.CustomInboxPrefix`
+   with `_INBOX_{agent_id}`). The default `_INBOX` is shared by every client
+   in the account, so a grant of `_INBOX.>` lets any one agent receive every
+   other agent's request replies and pull-consumer deliveries, which includes
+   the full job envelope with the script body that is about to run as root.
+2. **The CONSUMER.CREATE grant pins the filter subject.** The JetStream API
+   encodes the filter as a trailing token, so a `.>` grant lets an agent
+   create its own durable filtering `jobs.*` and drain the whole fleet's work
+   while the real devices silently never receive their jobs.
+3. **Acks are scoped to the agent's own durable.** `$JS.ACK.>` would let an
+   agent forge acks on the server's ingest consumers and drop results and
+   audit events that would otherwise be redelivered.
+
+A malformed identifier is as dangerous as a bad grant: `agent_id` is validated
+as a UUID before interpolation, and `session_id`, `job_id`, and `entry_id` are
+validated by the agent before they reach a subject string. An unvalidated
+`session_id` of `>` makes the agent's own subscribe fail in a way that closes
+its NATS connection permanently, which is a remote, unrecoverable brick.
+
+The conformance tests assert a foreign-subject publish is refused and that no
+grant is shared between two agents.
 
 `agents.{id}.shell.{sid}.ctl` is **bidirectional**: the server publishes
 `{"ack": n}` and `{"event":"ping"}`; the agent publishes `{"event":"closed"...}`

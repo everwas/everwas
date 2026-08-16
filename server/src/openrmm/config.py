@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     nats_server_password: str = ""
 
     session_ttl_hours: int = 24 * 7
+    # Ceiling on how many machines one script run or patch deploy may touch.
+    # A fleet-wide selector is a decision, not a default.
+    max_run_targets: int = 500
     heartbeat_offline_after_s: int = 90
     telemetry_retention_days: int = 30
     recordings_dir: str = "/data/recordings"

@@ -32,6 +32,11 @@ STREAMS = [
         max_age=7 * 24 * 3600,
         storage=StorageType.FILE,
         discard=DiscardPolicy.OLD,
+        # Job dispatch is at-least-once by design: the outbox may republish a
+        # row whose publish succeeded but whose bookkeeping did not. The
+        # default 2-minute dedup window is shorter than a dispatcher restart,
+        # so widen it. Nats-Msg-Id is the run/job id, which never changes.
+        duplicate_window=2 * 3600,
     ),
     StreamConfig(
         name="JOBOUT",

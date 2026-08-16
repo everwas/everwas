@@ -140,3 +140,69 @@ async def test_idempotent_snapshot_writes_nothing():
         r = await record_facts(db, "software", device_id, snapshot)
     assert not r.wrote
     assert r.unchanged == 2
+
+
+async def test_fact_can_come_back_after_removal():
+    """A fact that disappears and returns must become visible again.
+
+    Regression: the reconciliation SELECT filtered only on
+    upper_inf(recorded_during), so it also matched CORRECTION rows, which are
+    current beliefs with a CLOSED valid range. A returning fact compared equal
+    to its own tombstone, was counted "unchanged", and stayed invisible
+    forever while the agent kept reporting it.
+    """
+    device_id = await _mk_device()
+    sm = get_sessionmaker()
+    snapshot = {"pkg:openssl": {"version": "3.0"}}
+
+    async with sm() as db, db.begin():
+        await record_facts(db, "software", device_id, snapshot)
+    async with sm() as db:
+        assert set(_keys(await get_facts(db, "software", device_id))) == {"pkg:openssl"}
+
+    # it goes away
+    async with sm() as db, db.begin():
+        r = await record_facts(db, "software", device_id, {})
+    assert r.removed == 1
+    async with sm() as db:
+        assert await get_facts(db, "software", device_id) == []
+
+    # ...and comes back, identical
+    async with sm() as db, db.begin():
+        r = await record_facts(db, "software", device_id, snapshot)
+    assert r.added == 1, "a returning fact must be recorded again"
+    async with sm() as db:
+        current = _keys(await get_facts(db, "software", device_id))
+    assert current == snapshot, "the fact must be visible again after returning"
+
+
+async def test_repeated_change_keeps_exactly_one_current_belief():
+    """Two version bumps must not leave overlapping current beliefs.
+
+    After a change there are two rows with an open recorded_during (the
+    correction and the successor). If reconciliation picks the correction, the
+    next amend writes an overlapping range and the exclusion constraint fires,
+    permanently poisoning ingest for that device.
+    """
+    device_id = await _mk_device()
+    sm = get_sessionmaker()
+    base = datetime.now(UTC) - timedelta(days=3)
+
+    for i, version in enumerate(["1.0", "2.0", "3.0", "4.0"]):
+        async with sm() as db, db.begin():
+            await record_facts(
+                db,
+                "software",
+                device_id,
+                {"pkg:x": {"version": version}},
+                observed_at=base + timedelta(hours=i),
+            )
+
+    async with sm() as db:
+        assert _keys(await get_facts(db, "software", device_id)) == {"pkg:x": {"version": "4.0"}}
+        # every earlier version must still be recoverable on the valid-time axis
+        for i, version in enumerate(["1.0", "2.0", "3.0"]):
+            at = base + timedelta(hours=i, minutes=30)
+            assert _keys(await get_facts(db, "software", device_id, as_of=at)) == {
+                "pkg:x": {"version": version}
+            }, f"history for {version} was lost"

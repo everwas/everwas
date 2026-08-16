@@ -9,6 +9,8 @@ instead of silence.
 """
 
 import asyncio
+import traceback
+from datetime import UTC, datetime
 
 import nats
 import nats.errors
@@ -27,14 +29,62 @@ from openrmm.ingest.results import (
     parse_job_result,
 )
 from openrmm.ingest.telemetry import apply_telemetry, parse_telemetry
+from openrmm.models.deadletter import IngestDeadLetter
 
 log = structlog.get_logger()
 
 NAK_DELAY_S = 10
+MAX_DELIVER = 6
+IDLE_HEARTBEAT_S = 30
+RESTART_BACKOFF_S = 5
 
 # One engine instance per dispatcher process: it holds the breach state
 # machine and the rule cache.
 ENGINE = AlertEngine()
+
+# Last time each consumer successfully processed a message. /health/ingest
+# reads this: silence is the alarm, so a consumer that has gone quiet while
+# its stream has pending messages is reported unhealthy.
+LAST_PROGRESS: dict[str, datetime] = {}
+
+
+def _mark_progress(durable: str) -> None:
+    LAST_PROGRESS[durable] = datetime.now(UTC)
+
+
+def _delivery_count(msg) -> int:
+    try:
+        return int(msg.metadata.num_delivered or 1)
+    except Exception:
+        return 1
+
+
+async def _dead_letter(stream: str, durable: str, msg, delivered: int) -> None:
+    """Park a message that can never be processed, with why."""
+    try:
+        async with session_scope() as db:
+            db.add(
+                IngestDeadLetter(
+                    stream=stream,
+                    durable=durable,
+                    subject=msg.subject,
+                    payload=msg.data[:MAX_DEAD_LETTER_BYTES],
+                    delivered=delivered,
+                    error=traceback.format_exc()[:4000],
+                )
+            )
+        log.error(
+            "message dead-lettered after repeated failures",
+            stream=stream,
+            subject=msg.subject,
+            delivered=delivered,
+        )
+    except Exception:
+        # Never let the dead-letter write itself become the poison.
+        log.exception("could not dead-letter message", subject=msg.subject)
+
+
+MAX_DEAD_LETTER_BYTES = 64 * 1024
 
 
 async def _consume(
@@ -56,6 +106,14 @@ async def _consume(
             ack_policy=AckPolicy.EXPLICIT,
             ack_wait=60,
             max_ack_pending=512,
+            # Without this a message that can NEVER be stored redelivers every
+            # 10 seconds forever. One endpoint with a bad clock produced 12
+            # failures in 30 seconds on a live stack and would not have
+            # stopped. A poison message must give up and be recorded.
+            max_deliver=MAX_DELIVER,
+            # Surface a dead deliver subject instead of blocking forever on an
+            # iterator nobody is publishing to.
+            idle_heartbeat=IDLE_HEARTBEAT_S,
         ),
     )
     log.info("consumer running", stream=stream, durable=durable)
@@ -63,21 +121,43 @@ async def _consume(
         try:
             await handler(msg.subject, msg.data)
             await msg.ack()
+            _mark_progress(durable)
         except Exception:
-            log.exception("ingest failed", subject=msg.subject)
-            await msg.nak(delay=NAK_DELAY_S)
+            delivered = _delivery_count(msg)
+            if delivered >= MAX_DELIVER:
+                # Last chance: park it where an operator can find it rather
+                # than letting max_deliver drop it silently.
+                await _dead_letter(stream, durable, msg, delivered)
+                await msg.ack()
+            else:
+                log.exception(
+                    "ingest failed", subject=msg.subject, delivered=delivered, stream=stream
+                )
+                await msg.nak(delay=NAK_DELAY_S)
 
 
 async def _supervised(coro_factory, name: str) -> None:
-    """A consumer that dies must come back, and must say so."""
+    """A task that dies must come back, and must say so.
+
+    Note the backoff is outside the except: a coroutine that RETURNS (rather
+    than raising) would otherwise be restarted in a tight loop at full CPU.
+    Returning is itself an anomaly here, since every one of these is meant to
+    run until cancelled, so it is logged.
+    """
     while True:
         try:
             await coro_factory()
+            log.warning("task returned unexpectedly, restarting", task=name)
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("consumer crashed, restarting", consumer=name)
-            await asyncio.sleep(5)
+            log.exception("task crashed, restarting", task=name)
+        await asyncio.sleep(RESTART_BACKOFF_S)
+
+
+def supervise(coro_factory, name: str) -> asyncio.Task:
+    """Public wrapper so the dispatcher can supervise non-consumer tasks too."""
+    return asyncio.create_task(_supervised(coro_factory, name), name=name)
 
 
 async def _handle_telemetry(subject: str, data: bytes) -> None:

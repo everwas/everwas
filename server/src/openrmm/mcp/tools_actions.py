@@ -24,10 +24,17 @@ from openrmm.models.alert import Alert, AlertRule, AlertState
 from openrmm.models.device import Device
 from openrmm.models.patch import ApprovalDecision, PatchApproval, PatchCatalog
 from openrmm.models.script import RunTrigger, Script
-from openrmm.services.jobs import queue_script_run, resolve_targets
+from openrmm.services.jobs import TargetError, queue_script_run, resolve_targets
 from openrmm.services.patching import approve
 
-MAX_TARGETS = 500
+
+def _max_targets() -> int:
+    """One source of truth with the service layer, which enforces this too."""
+    from openrmm.config import get_settings
+
+    return get_settings().max_run_targets
+
+
 MAX_PATCH_IDS = 200
 CONFIRM_HINT = "Show this plan to the user, then call again with confirm=true to carry it out."
 
@@ -193,11 +200,18 @@ async def run_script(
             else:
                 target = {"device_ids": [str(parse_uuid(d)) for d in device_ids]}
 
-            devices = await resolve_targets(db, target, script)
-            if len(devices) > MAX_TARGETS:
+            try:
+                devices = await resolve_targets(db, target, script)
+            except TargetError as exc:
+                # The service layer enforces the same ceiling and rejects an
+                # ambiguous selector. Surface it as a ToolError so the
+                # assistant reads a sentence instead of a stack trace.
+                raise ToolError(str(exc)) from exc
+            if len(devices) > _max_targets():
                 raise ToolError(
-                    f"That selector matches {len(devices)} devices, above the {MAX_TARGETS} "
-                    "device ceiling for one MCP run. Narrow it, or use the OpenRMM UI."
+                    f"That selector matches {len(devices)} devices, above the "
+                    f"{_max_targets()} device ceiling for one MCP run. Narrow it, "
+                    "or use the OpenRMM UI."
                 )
 
             plan = {

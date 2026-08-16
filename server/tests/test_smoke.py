@@ -38,22 +38,63 @@ async def test_me_requires_auth(app):
     assert r.status_code == 401
 
 
-def test_agent_permissions_are_scoped():
-    """Every grant must name this agent, except the shared JS/inbox plumbing."""
+def test_agent_permissions_have_no_shared_subjects():
+    """EVERY grant must name this agent. No exceptions.
+
+    The previous version of this test listed the shared grants by name and
+    excused them:
+
+        shared = {"_INBOX.>", "$JS.API.INFO", "$JS.ACK.>"}
+
+    Two of those three were the isolation failure. `_INBOX.>` let any enrolled
+    agent receive every other agent's request replies and job deliveries
+    (verified against a live server), and `$JS.ACK.>` let it forge acks on the
+    server's own ingest consumers. The word "shared" was doing the work of a
+    security argument, so the test passed while isolation did not hold.
+    """
     perms = subjects.agent_permissions("abc")
-    shared = {"_INBOX.>", "$JS.API.INFO", "$JS.ACK.>"}
     assert "agents.abc.>" in perms["publish"]
     for subject in perms["publish"] + perms["subscribe"]:
-        assert subject in shared or "abc" in subject, subject
+        assert "abc" in subject, f"grant is not agent-scoped: {subject}"
 
 
-def test_agent_jetstream_grants_are_own_durable_only():
+def test_agent_grants_never_widen_to_other_agents():
+    """No grant may reach another agent's namespace, inbox, or consumer."""
+    mine = subjects.agent_permissions("aaa")
+    theirs = subjects.agent_permissions("bbb")
+
+    for subject in mine["publish"] + mine["subscribe"]:
+        assert "bbb" not in subject
+        # A wildcard token where the agent id belongs would match everyone.
+        assert not subject.startswith("_INBOX."), "must use a per-agent inbox prefix"
+        assert not subject.startswith("$JS.ACK.>"), "acks must be scoped to our durable"
+
+    assert set(mine["publish"]).isdisjoint(theirs["publish"])
+    assert set(mine["subscribe"]).isdisjoint(theirs["subscribe"])
+
+
+def test_consumer_create_grant_pins_the_filter_subject():
+    """CONSUMER.CREATE carries the filter as a trailing token.
+
+    Granting `...CREATE.JOBS.{durable}.>` would let an agent create its own
+    consumer filtering `jobs.*` and drain the entire fleet's work, leaving the
+    real devices to never receive their jobs.
+    """
     perms = subjects.agent_permissions("abc")
-    js = [s for s in perms["publish"] if s.startswith("$JS.API.CONSUMER")]
-    assert js, "agent needs JS consumer access for durable job delivery"
-    # never a wildcard over other agents' consumers
-    assert all("agent-abc" in s for s in js)
-    assert not any(s.endswith("JOBS.>") or s.endswith("JOBS.*") for s in js)
+    creates = [s for s in perms["publish"] if ".CONSUMER.CREATE." in s]
+    assert creates, "agent needs consumer create for durable job delivery"
+    for subject in creates:
+        assert "agent-abc" in subject
+        assert not subject.endswith(">"), f"filter subject is not pinned: {subject}"
+        assert not subject.endswith("*"), f"filter subject is not pinned: {subject}"
+    # exactly one literal filter, and it is this agent's own job subject
+    assert f"$JS.API.CONSUMER.CREATE.JOBS.{subjects.agent_durable('abc')}.jobs.abc" in creates
+
+
+def test_ack_grant_is_scoped_to_own_durable():
+    perms = subjects.agent_permissions("abc")
+    acks = [s for s in perms["publish"] if s.startswith("$JS.ACK")]
+    assert acks == [f"$JS.ACK.JOBS.{subjects.agent_durable('abc')}.>"]
 
 
 def test_subject_builders_match_contract():

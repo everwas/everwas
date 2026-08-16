@@ -6,17 +6,18 @@ Create Date: 2026-08-15
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
+from alembic import op
+
 revision: str = "0006"
-down_revision: Union[str, None] = "0005"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0005"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 patch_severity = sa.Enum(
     "critical", "important", "moderate", "low", "unknown", name="patch_severity"
@@ -45,7 +46,10 @@ def upgrade() -> None:
         sa.Column("size_bytes", sa.BigInteger(), nullable=True),
         sa.Column("reboot_likely", sa.Boolean(), nullable=False),
         sa.Column(
-            "first_seen_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+            "first_seen_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
         ),
         sa.UniqueConstraint("os_family", "external_id", name="uq_patch_catalog_native"),
     )

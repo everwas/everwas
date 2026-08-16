@@ -15,8 +15,10 @@ from openrmm.models.alert import (
 )
 from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import AuditLog
+from openrmm.models.deadletter import IngestDeadLetter
 from openrmm.models.device import AgentCredential, Device, EnrollmentToken, Site
 from openrmm.models.facts import FACT_TABLES, FactHardware, FactPatchState, FactSoftware
+from openrmm.models.job_outbox import JobOutbox, JobOutboxStatus
 from openrmm.models.patch import (
     ApprovalDecision,
     PatchApproval,
@@ -62,12 +64,15 @@ __all__ = [
     "Severity",
     "AuditLog",
     "Device",
+    "IngestDeadLetter",
     "DeviceSnapshot",
     "DeviceStatusLatest",
     "EnrollmentToken",
     "FactHardware",
     "FactPatchState",
     "FactSoftware",
+    "JobOutbox",
+    "JobOutboxStatus",
     "ApprovalDecision",
     "PatchApproval",
     "PatchCatalog",

@@ -26,6 +26,7 @@ from openrmm.alerting.rules import (
 )
 from openrmm.models.alert import (
     Alert,
+    AlertRule,
     AlertState,
     Metric,
     NotificationOutbox,
@@ -94,12 +95,29 @@ class AlertEngine:
                 await self._open(db, rule, device, None, now, state)
 
     async def resolve_for_device(self, db: AsyncSession, device: Device) -> None:
-        """Device came back: clear its heartbeat alerts."""
+        """Device came back: clear its heartbeat alerts.
+
+        This queries open alerts directly instead of iterating the rule cache,
+        because the cache only holds ENABLED rules. Resolving through the cache
+        meant that disabling a rule stranded every alert it had opened, firing
+        forever with no path back, which trains operators to ignore the alert
+        list entirely.
+        """
         now = datetime.now(UTC)
-        for rule in await self.rules.get(db):
-            if rule.metric == Metric.heartbeat_missed:
-                self._entry(device.id, rule.id).since = None
-                await self._resolve(db, rule.id, device.id, now)
+        open_alerts = (
+            await db.execute(
+                select(Alert.rule_id)
+                .join(AlertRule, AlertRule.id == Alert.rule_id)
+                .where(
+                    Alert.device_id == device.id,
+                    Alert.state != AlertState.resolved,
+                    AlertRule.metric == Metric.heartbeat_missed,
+                )
+            )
+        ).scalars()
+        for rule_id in list(open_alerts):
+            self._entry(device.id, rule_id).since = None
+            await self._resolve(db, rule_id, device.id, now)
 
     async def _open(
         self,
@@ -110,11 +128,15 @@ class AlertEngine:
         now: datetime,
         state: BreachState,
     ) -> None:
-        # cooldown suppresses flapping
-        if state.last_fired_at is not None and (
+        # Cooldown suppresses NOTIFICATIONS, never the alert row. Returning
+        # here used to skip the INSERT entirely, so a second genuinely new
+        # incident inside the cooldown left no record at all: the alerts table
+        # was empty and the dashboard was indistinguishable from a healthy
+        # fleet. The alert row is the durable incident record; a
+        # notification-rate concern must not be able to erase it.
+        in_cooldown = state.last_fired_at is not None and (
             now - state.last_fired_at < timedelta(seconds=rule.cooldown_s)
-        ):
-            return
+        )
 
         context = {
             "rule": rule.name,
@@ -151,13 +173,17 @@ class AlertEngine:
             f"{rule.metric.value} {rule.operator.value} {rule.threshold}"
             f" for {rule.duration_s}s" + (f" (current {value:.1f})" if value is not None else "")
         )
-        await self._enqueue(db, rule, alert_id, "alert.firing", title, body, device, value, context)
+        if not in_cooldown:
+            await self._enqueue(
+                db, rule, alert_id, "alert.firing", title, body, device, value, context
+            )
         log.info(
             "alert opened",
             rule=rule.name,
             device=device.hostname,
             severity=rule.severity.value,
             value=value,
+            notified=not in_cooldown,
         )
 
     async def _resolve(
@@ -176,6 +202,10 @@ class AlertEngine:
             return
         alert.state = AlertState.resolved
         alert.resolved_at = now
+        # A resolved incident ends the cooldown. Leaving last_fired_at set
+        # meant the NEXT incident was measured against the previous one's fire
+        # time, so a fresh problem could be silently suppressed.
+        self._entry(device_id, rule_id).last_fired_at = None
 
         for rule in await self.rules.get(db):
             if rule.id != rule_id:

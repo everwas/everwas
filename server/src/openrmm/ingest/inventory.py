@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.bitemporal.store import record_facts
+from openrmm.ingest.wiretime import WireTimeError, parse_wire_time
 from openrmm.models.telemetry import DeviceSnapshot
 
 log = structlog.get_logger()
@@ -29,12 +30,18 @@ def parse_inventory(subject: str, payload: bytes) -> tuple[uuid.UUID, str, datet
     try:
         agent_id = uuid.UUID(parts[1])
         envelope = json.loads(payload)
-        ts = datetime.fromisoformat(envelope["ts"].replace("Z", "+00:00"))
-    except (ValueError, KeyError, json.JSONDecodeError):
+    except (ValueError, json.JSONDecodeError):
         return None
     if envelope.get("agent_id") != str(agent_id):
         return None
-    return agent_id, parts[3], ts.astimezone(UTC), envelope.get("data") or {}
+    try:
+        # This becomes valid_during. A future-dated fact is invisible to every
+        # as_of=now query, so the device would silently report nothing.
+        ts = parse_wire_time(envelope.get("ts"))
+    except WireTimeError as exc:
+        log.warning("rejecting inventory timestamp", agent_id=str(agent_id), reason=str(exc))
+        return None
+    return agent_id, parts[3], ts, envelope.get("data") or {}
 
 
 def _facts_from(kind: str, data: dict) -> dict[str, dict]:

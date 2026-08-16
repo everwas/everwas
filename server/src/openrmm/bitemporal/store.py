@@ -19,6 +19,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openrmm.models.facts import FACT_TABLES
 
 
+class ConcurrentAmendError(RuntimeError):
+    """Another writer amended this device's facts mid-flight.
+
+    The design says one dispatcher; this makes the assumption enforced rather
+    than assumed, so a second instance produces a retryable error instead of
+    silently rewriting history.
+    """
+
+
 @dataclass
 class AmendResult:
     added: int = 0
@@ -59,15 +68,30 @@ async def record_facts(
     now = datetime.now(UTC)
     result = AmendResult()
 
+    # Current on BOTH axes. upper_inf(recorded_during) alone is not enough:
+    # a correction row is a current *belief* about a value that has already
+    # ended, so it has an open recorded_during and a CLOSED valid_during.
+    # Including those made a returning fact compare equal to its own tombstone,
+    # count as "unchanged", and stay invisible forever. This predicate must
+    # match query.get_facts(as_of=None, knew_at=None) exactly.
     rows = (
         await db.execute(
             select(model.id, model.fact_key, model.payload, model.valid_during).where(
                 model.device_id == device_id,
                 func.upper_inf(model.recorded_during),
+                func.upper_inf(model.valid_during),
             )
         )
     ).all()
     current = {r.fact_key: r for r in rows}
+    if len(current) != len(rows):
+        # Two open beliefs for one key means the exclusion constraint was
+        # bypassed or this writer has a bug. Fail loudly rather than silently
+        # picking whichever row the heap returned last.
+        raise RuntimeError(
+            f"{model.__tablename__}: overlapping current beliefs for device {device_id}; "
+            "refusing to amend"
+        )
 
     to_close: list[int] = []
     inserts: list[dict] = []
@@ -110,12 +134,23 @@ async def record_facts(
             correction(prior, key)
 
     if to_close:
-        # the ONE permitted UPDATE: closing belief windows, set-based
-        await db.execute(
+        # The ONE permitted UPDATE: closing belief windows, set-based.
+        # upper_inf() in the predicate makes this a compare-and-swap. Without
+        # it, a concurrent amend that already closed these rows would re-close
+        # them, mutating a belief window that is supposed to be immutable.
+        closed = await db.execute(
             update(model)
-            .where(model.id.in_(to_close))
+            .where(model.id.in_(to_close), func.upper_inf(model.recorded_during))
             .values(recorded_during=func.tstzrange(func.lower(model.recorded_during), now, "[)"))
         )
+        if closed.rowcount != len(to_close):
+            # Someone else amended this device between our SELECT and here.
+            # Abort rather than write successors on top of their work; the
+            # caller's transaction rolls back and the message is retried.
+            raise ConcurrentAmendError(
+                f"{model.__tablename__}: expected to close {len(to_close)} beliefs, "
+                f"closed {closed.rowcount}; concurrent amend for device {device_id}"
+            )
     if inserts:
         await db.execute(model.__table__.insert(), inserts)
     return result

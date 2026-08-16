@@ -14,7 +14,6 @@ from openrmm.models.patch import (
     PatchPolicy,
 )
 from openrmm.models.user import Role
-from openrmm.natsio.client import get_nats
 from openrmm.schemas.patch import (
     ApprovalRequest,
     DeployRequest,
@@ -123,7 +122,7 @@ async def approve_patches(body: ApprovalRequest, db: DbSession, user: CurrentUse
 @router.post("/scan/{device_id}", dependencies=[OPERATOR])
 async def scan_device(device_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> dict:
     device = await _device_or_404(db, device_id)
-    job_id = await queue_patch_scan(db, get_nats(), device)
+    job_id = await queue_patch_scan(db, device)
     await db.commit()
     return {"job_id": str(job_id), "device_id": str(device_id)}
 
@@ -144,7 +143,7 @@ async def deploy(body: DeployRequest, db: DbSession, user: CurrentUser) -> Patch
     if not allowed:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no approved patches for this device")
 
-    job = await queue_patch_install(db, get_nats(), device, allowed, requested_by=user.email)
+    job = await queue_patch_install(db, device, allowed, requested_by=user.email)
     await db.commit()
     return PatchJobOut.model_validate(job)
 

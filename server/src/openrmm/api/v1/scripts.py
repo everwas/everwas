@@ -15,7 +15,12 @@ from openrmm.schemas.script import (
     ScriptOut,
     ScriptRunOut,
 )
-from openrmm.services.jobs import cancel_run, queue_script_run, resolve_targets
+from openrmm.services.jobs import (
+    TargetError,
+    cancel_run,
+    queue_script_run,
+    resolve_targets,
+)
 
 router = APIRouter()
 
@@ -77,17 +82,21 @@ async def run_script(
     if script is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown script")
 
-    devices = await resolve_targets(
-        db,
-        {"device_ids": [str(d) for d in body.device_ids], "tags": body.tags, "all": body.all},
-        script,
-    )
+    try:
+        devices = await resolve_targets(
+            db,
+            {"device_ids": [str(d) for d in body.device_ids], "tags": body.tags, "all": body.all},
+            script,
+        )
+    except TargetError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if not devices:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no devices matched the target")
 
-    batch_id, runs = await queue_script_run(
-        db, get_nats(), script, devices, requested_by=user.email
-    )
+    # No NATS here on purpose: the runs and their outbox rows commit together
+    # and the dispatcher delivers them. A broker outage delays a run, it does
+    # not lose one, and it never runs one we have no record of.
+    batch_id, runs = await queue_script_run(db, None, script, devices, requested_by=user.email)
     await db.commit()
     return RunBatchOut(batch_id=batch_id, queued=len(runs), run_ids=[r.id for r in runs])
 
