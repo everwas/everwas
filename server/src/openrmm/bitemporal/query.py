@@ -51,3 +51,40 @@ async def get_facts(
         }
         for r in rows
     ]
+
+
+async def diff_facts(
+    db: AsyncSession,
+    kind: str,
+    device_id: uuid.UUID,
+    *,
+    from_ts: datetime,
+    to_ts: datetime,
+    knew_at: datetime | None = None,
+) -> dict[str, list[dict]]:
+    """What changed on this device between two moments in valid time.
+
+    Answers "what did this machine gain, lose, or upgrade last week" using our
+    current knowledge, or the knowledge we had at `knew_at`.
+    """
+    before = {
+        f["fact_key"]: f["payload"]
+        for f in await get_facts(db, kind, device_id, as_of=from_ts, knew_at=knew_at)
+    }
+    after = {
+        f["fact_key"]: f["payload"]
+        for f in await get_facts(db, kind, device_id, as_of=to_ts, knew_at=knew_at)
+    }
+
+    added = [{"fact_key": k, "payload": v} for k, v in after.items() if k not in before]
+    removed = [{"fact_key": k, "payload": v} for k, v in before.items() if k not in after]
+    changed = [
+        {"fact_key": k, "before": before[k], "after": v}
+        for k, v in after.items()
+        if k in before and before[k] != v
+    ]
+    return {
+        "added": sorted(added, key=lambda f: f["fact_key"]),
+        "removed": sorted(removed, key=lambda f: f["fact_key"]),
+        "changed": sorted(changed, key=lambda f: f["fact_key"]),
+    }

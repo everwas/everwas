@@ -6,7 +6,7 @@ OPENRMM_MODE ?= dev
 COMPOSE = docker compose -f docker-compose.yml -f docker-compose.$(OPENRMM_MODE).yml
 
 .PHONY: help up down dev logs ps build restart migrate revision psql nats-cli \
-        seed admin enroll-token test lint fmt openapi agent release
+        seed admin enroll-token api-key test lint fmt openapi agent release
 
 help: ## Show targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -49,6 +49,12 @@ nats-cli: ## NATS box for debugging (nats CLI inside the network)
 
 admin: ## Create an admin user: make admin EMAIL=you@example.com
 	$(COMPOSE) exec openrmm-api openrmm create-admin $(EMAIL)
+
+enroll-token: ## Mint an agent enrollment token
+	$(COMPOSE) exec openrmm-api openrmm gen-enrollment-token
+
+api-key: ## Mint an API key: make api-key NAME=claude SCOPES=devices:read,alerts:read
+	$(COMPOSE) exec openrmm-api openrmm create-api-key $(NAME) --scopes "$(SCOPES)"
 
 test: ## Run server tests + agent tests
 	cd server && uv run pytest -q

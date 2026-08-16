@@ -62,6 +62,38 @@ def gen_enrollment_token(max_uses: int = 1, ttl_hours: int = 24, created_by: str
 
 
 @cli.command()
+def create_api_key(
+    name: str,
+    scopes: str = "devices:read,alerts:read,patches:read",
+    ttl_days: int = 0,
+) -> None:
+    """Mint an API key for automation or the MCP server. Shown once."""
+    import hashlib
+    import secrets as _secrets
+    from datetime import UTC, datetime, timedelta
+
+    from openrmm.db.engine import session_scope
+    from openrmm.models.api_key import ApiKey
+
+    async def run() -> str:
+        key_id = _secrets.token_hex(11)  # 22 chars
+        secret = _secrets.token_urlsafe(32)
+        async with session_scope() as db:
+            db.add(
+                ApiKey(
+                    name=name,
+                    key_id=key_id,
+                    secret_hash=hashlib.sha256(secret.encode()).hexdigest(),
+                    scopes=[s.strip() for s in scopes.split(",") if s.strip()],
+                    expires_at=(datetime.now(UTC) + timedelta(days=ttl_days) if ttl_days else None),
+                )
+            )
+        return f"orpk_{key_id}_{secret}"
+
+    typer.echo(asyncio.run(run()))
+
+
+@cli.command()
 def gen_nats_keys() -> None:
     """Generate the auth-callout account keypair. Put both values in .env."""
     from openrmm.natsio.jwt import generate_account_keypair

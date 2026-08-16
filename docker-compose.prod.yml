@@ -18,6 +18,14 @@ services:
       caddy.@nats.path: /nats
       caddy.reverse_proxy_1: "@nats {{upstreams 8080}}"
 
+  openrmm-mcp:
+    restart: unless-stopped
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN}
+      caddy.@mcp.path: /mcp*
+      caddy.reverse_proxy_2: "@mcp {{upstreams 8001}}"
+
   openrmm-web:
     restart: unless-stopped
     networks: [openrmm-internal, caddy]

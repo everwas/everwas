@@ -48,6 +48,7 @@ services:
       OPENRMM_SMTP_USER: ${OPENRMM_SMTP_USER:-}
       OPENRMM_SMTP_PASSWORD: ${OPENRMM_SMTP_PASSWORD:-}
       OPENRMM_SMTP_FROM: ${OPENRMM_SMTP_FROM:-openrmm@localhost}
+      OPENRMM_MCP_ENABLED: ${OPENRMM_MCP_ENABLED:-false}
     networks: [openrmm-internal]
     depends_on:
       openrmm-postgres:
@@ -61,6 +62,23 @@ services:
       dockerfile: docker/server.Dockerfile
       target: ${OPENRMM_MODE:-dev}
     command: ["openrmm-dispatcher"]
+    environment: *server-env
+    networks: [openrmm-internal]
+    depends_on:
+      openrmm-postgres:
+        condition: service_healthy
+      openrmm-nats:
+        condition: service_healthy
+
+  # Opt-in: set OPENRMM_MCP_ENABLED=true in .env, then
+  #   docker compose --profile mcp up -d
+  openrmm-mcp:
+    profiles: [mcp]
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+      target: ${OPENRMM_MODE:-dev}
+    command: ["openrmm-mcp"]
     environment: *server-env
     networks: [openrmm-internal]
     depends_on:

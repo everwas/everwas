@@ -2,7 +2,11 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+
+# postgresql.ARRAY, not the generic one: the generic comparator has no
+# overlap()/contains(), so tag targeting silently fails to compile.
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from openrmm.db.base import Base

@@ -61,3 +61,16 @@ def test_subject_builders_match_contract():
     assert subjects.jobs_queue("x") == "jobs.x"
     assert subjects.cmd("x", "shell.open") == "cmd.x.shell.open"
     assert subjects.shell_in("x", "s1") == "agents.x.shell.s1.in"
+
+
+def test_device_tags_support_array_operators():
+    """Tag targeting compiles to a real SQL operator.
+
+    Regression: models used the generic sqlalchemy.ARRAY, whose comparator has
+    no overlap(), so every tag-targeted script run and patch policy raised
+    AttributeError at query-build time.
+    """
+    from openrmm.models.device import Device
+
+    assert "&&" in str(Device.tags.overlap(["prod"]))
+    assert "@>" in str(Device.tags.contains(["prod"]))

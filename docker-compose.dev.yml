@@ -33,6 +33,12 @@ services:
     ports:
       - "127.0.0.1:25173:5173"
 
+  openrmm-mcp:
+    volumes:
+      - ./server/src:/app/src
+    ports:
+      - "127.0.0.1:28001:8001"
+
   openrmm-mailpit:
     image: axllent/mailpit:latest
     networks: [openrmm-internal]
