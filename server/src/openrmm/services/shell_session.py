@@ -37,12 +37,27 @@ QUEUE_MAXSIZE = 256
 
 
 class AsciicastRecorder:
-    """asciicast v2: a JSON header line, then [elapsed, "o", data] events."""
+    """asciicast v2: a JSON header line, then [elapsed, "o", data] events.
+
+    Every write is buffered in memory and flushed off the event loop. The
+    recorder used to call `self._fh.write(...)` directly from the output pump,
+    which is a synchronous disk write on the loop thread for EVERY shell frame:
+    a busy session, or one slow fsync, stalls every other websocket, HTTP
+    request and NATS callback this worker is serving. Recording someone's
+    terminal is not worth pausing the API.
+    """
+
+    #: Flush once the pending buffer passes this. Small enough that a crash
+    #: loses very little, large enough that a `yes` flood is not one thread
+    #: hop per frame.
+    FLUSH_BYTES = 64 * 1024
 
     def __init__(self, path: Path, cols: int, rows: int) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._fh = path.open("w", encoding="utf-8")
         self._start = time.monotonic()
+        self._pending: list[str] = []
+        self._pending_bytes = 0
         header = {
             "version": 2,
             "width": cols,
@@ -50,19 +65,37 @@ class AsciicastRecorder:
             "timestamp": int(time.time()),
             "env": {"TERM": "xterm-256color"},
         }
-        self._fh.write(json.dumps(header) + "\n")
+        self._append(json.dumps(header) + "\n")
+
+    def _append(self, line: str) -> None:
+        self._pending.append(line)
+        self._pending_bytes += len(line)
 
     def write_output(self, data: bytes) -> None:
+        """Buffer one output event. Cheap and never touches the disk."""
         event = [
             round(time.monotonic() - self._start, 6),
             "o",
             data.decode("utf-8", errors="replace"),
         ]
-        self._fh.write(json.dumps(event) + "\n")
+        self._append(json.dumps(event) + "\n")
 
-    def close(self) -> None:
+    async def maybe_flush(self) -> None:
+        if self._pending_bytes >= self.FLUSH_BYTES:
+            await self.flush()
+
+    async def flush(self) -> None:
+        if not self._pending:
+            return
+        chunk, self._pending, self._pending_bytes = "".join(self._pending), [], 0
+        # A recording is never worth failing a live session for.
         with contextlib.suppress(Exception):
-            self._fh.close()
+            await asyncio.to_thread(self._fh.write, chunk)
+
+    async def aclose(self) -> None:
+        await self.flush()
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(self._fh.close)
 
 
 async def bridge_shell(
@@ -110,7 +143,14 @@ async def bridge_shell(
         else None
     )
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=QUEUE_MAXSIZE)
+    # Set when the agent says the PTY is gone. An Event, not a queue sentinel:
+    # a full queue must not be able to delay or lose the close.
+    agent_closed = asyncio.Event()
     dropped = 0
+
+    async def ack(n: int) -> None:
+        """Credit `n` bytes back to the agent's flow-control window."""
+        await nc.publish(shell_ctl(agent_id, sid), json.dumps({"ack": n}).encode())
 
     async def on_out(msg) -> None:
         nonlocal dropped
@@ -119,10 +159,21 @@ async def bridge_shell(
         except asyncio.QueueFull:
             # Pathological: browser is far behind even with the ack window.
             # Drop oldest so the newest output still flows.
-            with contextlib.suppress(asyncio.QueueEmpty):
-                queue.get_nowait()
+            try:
+                stale = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                stale = b""
             dropped += 1
             queue.put_nowait(msg.data)
+            # ACK THE DROPPED BYTES. The ack window counts what the agent
+            # SENT, not what the browser displayed, so bytes we throw away are
+            # still owed back. Without this the window leaks a little on every
+            # drop, and once the leak passes the agent's 512 KiB pause
+            # threshold the PTY stops being read for good: the terminal goes
+            # permanently silent with no error anywhere, and only closing the
+            # session clears it.
+            if stale:
+                await ack(len(stale))
 
     async def on_ctl(msg) -> None:
         nonlocal close_reason
@@ -132,26 +183,43 @@ async def bridge_shell(
             return
         if event.get("event") == "closed":
             close_reason = event.get("reason", "exit")
-            await queue.put(b"")  # sentinel: stop the pump
+            agent_closed.set()
         elif event.get("event") == "gap":
-            await queue.put(b"\r\n\x1b[33m[output gap: agent was disconnected]\x1b[0m\r\n")
+            # A banner is cosmetic; never block the ctl callback for it.
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait(b"\r\n\x1b[33m[output gap: agent was disconnected]\x1b[0m\r\n")
 
     sub_out = await nc.subscribe(shell_out(agent_id, sid), cb=on_out)
     sub_ctl = await nc.subscribe(shell_ctl(agent_id, sid), cb=on_ctl)
 
     async def pump_to_browser() -> None:
+        closed = asyncio.ensure_future(agent_closed.wait())
+        try:
+            while True:
+                nxt = asyncio.ensure_future(queue.get())
+                done, _ = await asyncio.wait({nxt, closed}, return_when=asyncio.FIRST_COMPLETED)
+                if nxt not in done:
+                    # PTY is gone. Drain what already arrived so the last of
+                    # the command output reaches the browser instead of dying
+                    # with the session.
+                    nxt.cancel()
+                    while not queue.empty():
+                        await deliver(queue.get_nowait())
+                    return
+                await deliver(nxt.result())
+        finally:
+            closed.cancel()
+
+    async def deliver(data: bytes) -> None:
         nonlocal bytes_out
-        while True:
-            data = await queue.get()
-            if data == b"":
-                return
-            # awaited write => browser TCP backpressure reaches us here
-            await websocket.send_bytes(data)
-            bytes_out += len(data)
-            if recorder is not None:
-                recorder.write_output(data)
-            # ack AFTER the write: this is the flow-control signal
-            await nc.publish(shell_ctl(agent_id, sid), json.dumps({"ack": len(data)}).encode())
+        # awaited write => browser TCP backpressure reaches us here
+        await websocket.send_bytes(data)
+        bytes_out += len(data)
+        if recorder is not None:
+            recorder.write_output(data)
+            await recorder.maybe_flush()
+        # ack AFTER the write: this is the flow-control signal
+        await ack(len(data))
 
     async def pump_to_agent() -> None:
         nonlocal bytes_in
@@ -187,7 +255,12 @@ async def bridge_shell(
         asyncio.create_task(ping_agent(), name="shell-ping"),
     ]
     try:
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        # FIRST_COMPLETED, not FIRST_EXCEPTION. With no exception raised,
+        # FIRST_EXCEPTION waits for EVERY task, and two of these never return
+        # on their own: a clean PTY exit left the bridge hanging until the
+        # browser happened to disconnect, holding a session, a websocket and
+        # two subscriptions open for a shell that had already gone.
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             exc = task.exception()
             if isinstance(exc, WebSocketDisconnect):
@@ -206,7 +279,7 @@ async def bridge_shell(
         await sub_out.unsubscribe()
         await sub_ctl.unsubscribe()
         if recorder is not None:
-            recorder.close()
+            await recorder.aclose()
         if dropped:
             log.warning("shell output frames dropped", session_id=sid, dropped=dropped)
         log.info(
