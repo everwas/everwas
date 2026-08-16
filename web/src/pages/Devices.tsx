@@ -48,34 +48,68 @@ function lastSeen(iso: string | null): string {
 export function DevicesPage() {
   const navigate = useNavigate()
   const [devices, setDevices] = useState<Device[] | null>(null)
+  // Retired machines are hidden by default. They will never report again, and
+  // a fleet list padded with them is how the ones that matter get lost.
+  const [showRetired, setShowRetired] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    const load = () => api.devices().then((d) => !cancelled && setDevices(d)).catch(() => {})
+    const load = () =>
+      api
+        .devices(showRetired)
+        .then((d) => !cancelled && setDevices(d))
+        .catch(() => {})
     load()
     const timer = setInterval(load, REFRESH_MS)
     return () => {
       cancelled = true
       clearInterval(timer)
     }
-  }, [])
+  }, [showRetired])
+
+  const retiredToggle = (
+    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <input
+        type="checkbox"
+        checked={showRetired}
+        onChange={(e) => setShowRetired(e.target.checked)}
+      />
+      Show retired
+    </label>
+  )
 
   if (devices === null) {
     return <p className="text-sm text-muted-foreground">Loading devices…</p>
   }
   if (devices.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-        No devices yet. Generate an enrollment token and install an agent:
-        <pre className="mt-3 rounded bg-muted p-3 text-left font-mono text-xs">
-          make enroll-token{"\n"}openrmm-agent enroll --server https://… --token ore_…
-        </pre>
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-end">{retiredToggle}</div>
+        <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+          {showRetired ? (
+            "No devices."
+          ) : (
+            <>
+              No active devices. Generate an enrollment token and install an agent:
+              <pre className="mt-3 rounded bg-muted p-3 text-left font-mono text-xs">
+                make enroll-token{"\n"}openrmm-agent enroll --server https://… --token ore_…
+              </pre>
+            </>
+          )}
+        </div>
       </div>
     )
   }
 
   return (
-    <Table>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          {devices.length} device{devices.length === 1 ? "" : "s"}
+        </p>
+        {retiredToggle}
+      </div>
+      <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Hostname</TableHead>
@@ -112,6 +146,7 @@ export function DevicesPage() {
           )
         })}
       </TableBody>
-    </Table>
+      </Table>
+    </div>
   )
 }

@@ -54,8 +54,15 @@ function since(iso: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
-function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
+function NewRuleForm({
+  channels,
+  onCreated,
+  onClose,
+}: {
+  channels: Channel[]
+  onCreated: () => void
+  onClose: () => void
+}) {
   const [name, setName] = useState("")
   const [metric, setMetric] = useState<AlertMetric>("cpu")
   const [threshold, setThreshold] = useState(90)
@@ -69,15 +76,6 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
   // than rejected, which is the same policy said in a way the operator can act
   // on instead of a 422 they never see.
   const silent = channelIds.length === 0
-
-  if (!open) {
-    return (
-      <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
-        <Plus className="size-4" />
-        New rule
-      </Button>
-    )
-  }
 
   return (
     <Card className="w-full">
@@ -210,13 +208,13 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
               }
               setName("")
               setChannelIds([])
-              setOpen(false)
+              onClose()
               onCreated()
             }}
           >
             {silent ? "Save as disabled" : "Save"}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" variant="ghost" onClick={() => onClose()}>
             Cancel
           </Button>
         </div>
@@ -232,20 +230,10 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
   )
 }
 
-function NewChannelForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
+function NewChannelForm({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
   const [name, setName] = useState("")
   const [kind, setKind] = useState<Channel["kind"]>("email")
   const [value, setValue] = useState("")
-
-  if (!open) {
-    return (
-      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
-        <Plus className="size-4" />
-        New channel
-      </Button>
-    )
-  }
 
   const placeholder =
     kind === "email"
@@ -307,13 +295,13 @@ function NewChannelForm({ onCreated }: { onCreated: () => void }) {
             await api.createChannel({ name, kind, config, enabled: true })
             setName("")
             setValue("")
-            setOpen(false)
+            onClose()
             onCreated()
           }}
         >
           Save
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="ghost" onClick={() => onClose()}>
           Cancel
         </Button>
       </CardContent>
@@ -398,6 +386,9 @@ export function AlertsPage() {
   const [devices, setDevices] = useState<Device[]>([])
   const [outbox, setOutbox] = useState<OutboxHealth | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // One form at a time. Both could be open at once before, stacked in the
+  // header, which is not a state anyone wants to be in.
+  const [form, setForm] = useState<"rule" | "channel" | null>(null)
 
   const load = useCallback(() => {
     api.alerts().then(setAlerts).catch(() => {})
@@ -421,11 +412,38 @@ export function AlertsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Alerts</h1>
+        {/* The triggers stay here and the open form renders as a sibling
+            BELOW. While each form owned its own open state and swapped itself
+            for a full-width Card, that Card was still a flex item in this
+            header row, so it laid itself out alongside the heading and pushed
+            the buttons off. */}
         <div className="flex flex-wrap gap-2">
-          <NewChannelForm onCreated={load} />
-          <NewRuleForm channels={channels} onCreated={load} />
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setForm(form === "channel" ? null : "channel")}
+          >
+            <Plus className="size-4" />
+            New channel
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setForm(form === "rule" ? null : "rule")}
+          >
+            <Plus className="size-4" />
+            New rule
+          </Button>
         </div>
       </div>
+
+      {form === "channel" && (
+        <NewChannelForm onCreated={load} onClose={() => setForm(null)} />
+      )}
+      {form === "rule" && (
+        <NewRuleForm channels={channels} onCreated={load} onClose={() => setForm(null)} />
+      )}
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
 

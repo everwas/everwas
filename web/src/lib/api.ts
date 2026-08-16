@@ -202,7 +202,14 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<void>("/api/v1/auth/logout", { method: "POST" }),
-  devices: () => request<Device[]>("/api/v1/devices"),
+  devices: (includeRetired = false) =>
+    request<Device[]>(`/api/v1/devices${includeRetired ? "?include_retired=true" : ""}`),
+  retireDevice: (id: string) =>
+    request<{ revoked_within_s: number; detail: string }>(`/api/v1/devices/${id}/retire`, {
+      method: "POST",
+    }),
+  deleteDevice: (id: string) =>
+    request<void>(`/api/v1/devices/${id}`, { method: "DELETE" }),
   device: (id: string) => request<DeviceDetail>(`/api/v1/devices/${id}`),
   telemetry: (id: string, hours = 24) =>
     request<TelemetryPoint[]>(`/api/v1/devices/${id}/telemetry?hours=${hours}`),

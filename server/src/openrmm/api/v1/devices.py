@@ -24,6 +24,7 @@ from openrmm.schemas.device import (
     FactOut,
     TelemetryPoint,
 )
+from openrmm.services.devices import DeviceNotRetiredError, delete_device
 from openrmm.services.enrollment import (
     ROTATION_GRACE,
     RotationInFlightError,
@@ -46,8 +47,20 @@ async def _device_or_404(db, device_id: uuid.UUID) -> Device:
 
 
 @router.get("")
-async def list_devices(db: DbSession, _user: CurrentUser) -> list[DeviceOut]:
-    rows = await db.execute(select(Device).order_by(Device.hostname))
+async def list_devices(
+    db: DbSession, _user: CurrentUser, include_retired: bool = False
+) -> list[DeviceOut]:
+    """The fleet. Retired devices are excluded unless asked for.
+
+    A retired device is one an operator has deliberately taken out of service.
+    Leaving them in the default list means every device picker, every count and
+    every table is padded with machines that will never report again, and the
+    ones that matter get harder to find as the list grows.
+    """
+    query = select(Device).order_by(Device.hostname)
+    if not include_retired:
+        query = query.where(Device.status != DeviceStatus.retired)
+    rows = await db.execute(query)
     return [DeviceOut.model_validate(d) for d in rows.scalars()]
 
 
@@ -155,6 +168,24 @@ async def retire(device_id: uuid.UUID, db: DbSession, user: CurrentUser) -> dict
             f"until its JWT expires, at most {ttl}s from now"
         ),
     }
+
+
+@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[ADMIN])
+async def delete(device_id: uuid.UUID, db: DbSession, user: CurrentUser) -> None:
+    """Remove a retired device and all of its history. Not reversible.
+
+    Retiring is the first step and this is the second. Requiring both means a
+    live machine cannot be erased by one wrong click, and the retire in
+    between gives the agent's credential time to be revoked before its records
+    disappear.
+    """
+    try:
+        device = await delete_device(db, device_id, actor=user.email)
+    except DeviceNotRetiredError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if device is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
+    await db.commit()
 
 
 @router.post("/{device_id}/rotate-credentials", dependencies=[ADMIN])
