@@ -10,7 +10,9 @@ import (
 
 	"github.com/rsp2k/openrmm/agent/internal/audit"
 	"github.com/rsp2k/openrmm/agent/internal/sched"
+	"github.com/rsp2k/openrmm/agent/internal/scripts"
 	"github.com/rsp2k/openrmm/agent/internal/shell"
+	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
 
 // reply is the shape every command answers with. Replies are bare JSON, not
@@ -61,9 +63,10 @@ func (m *Module) dispatchCommand(msg *nats.Msg) {
 		m.respond(msg, m.cmdJobCancel(data))
 	case "sched.sync":
 		m.respond(msg, m.cmdSchedSync(data))
-	case "agent.update", "agent.rotate_creds":
-		m.Audit.Emit(audit.CommandUnsupported, map[string]any{"command": op})
-		m.respond(msg, reply{Accepted: false, Error: "unsupported: " + op + " lands in M4"})
+	case "agent.update":
+		m.respond(msg, m.cmdAgentUpdate(data))
+	case "agent.rotate_creds":
+		m.respond(msg, m.cmdRotateCreds(data))
 	default:
 		m.respond(msg, reply{Accepted: false, Error: "unknown command " + op})
 	}
@@ -145,6 +148,81 @@ func (m *Module) cmdSchedSync(data []byte) reply {
 	}
 	m.Log.Info("schedule synced", "version", version, "entries", len(doc.Entries))
 	return reply{Accepted: true, ScheduleVersion: version}
+}
+
+// cmdAgentUpdate accepts a self-update and runs it as a job. It is two-phase
+// like every other long-running command: the reply says only that the work
+// started, and the outcome arrives on agents.{id}.jobs.{job_id}.result.
+//
+// Everything that can refuse the update is checked BEFORE the reply, so a
+// server that gets accepted=true knows a result is coming.
+func (m *Module) cmdAgentUpdate(data []byte) reply {
+	var req struct {
+		JobID       string `json:"job_id"`
+		RequestedBy string `json:"requested_by"`
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		return reply{Accepted: false, Error: "bad agent.update payload: " + err.Error()}
+	}
+	// The job id is server-assigned and becomes a subject token. An agent
+	// that invented its own would publish results the server is not reading.
+	if err := wire.CheckIdentifier("job_id", req.JobID); err != nil {
+		return reply{Accepted: false, Error: err.Error()}
+	}
+	if err := m.Update.ready(); err != nil {
+		return reply{Accepted: false, JobID: req.JobID, Error: err.Error()}
+	}
+
+	jobCtx, release, err := m.reserve(req.JobID, scripts.KindAgentUpdate)
+	if err != nil {
+		return reply{Accepted: false, JobID: req.JobID, Error: err.Error()}
+	}
+	// The whole request rides in Body so the job handler decodes it once,
+	// the same way patch ids do.
+	spec := scripts.JobSpec{
+		JobID:       req.JobID,
+		Kind:        scripts.KindAgentUpdate,
+		Body:        string(data),
+		RequestedBy: req.RequestedBy,
+	}
+	go func() {
+		defer release()
+		m.runJob(jobCtx, spec)
+	}()
+	return reply{Accepted: true, JobID: req.JobID}
+}
+
+// cmdRotateCreds installs a new agent secret.
+//
+// The OLD secret keeps working server-side for a grace window, and that is
+// what makes this safe to answer at all: if this reply is lost the server
+// believes rotation failed while the agent is already on the new secret.
+// With one valid secret at a time that combination is an unrecoverable
+// lockout requiring a site visit. With an overlap the next reconnect
+// succeeds on either one.
+func (m *Module) cmdRotateCreds(data []byte) reply {
+	var req struct {
+		Secret      string `json:"agent_secret"`
+		RequestedBy string `json:"requested_by"`
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		return reply{Accepted: false, Error: "bad agent.rotate_creds payload: " + err.Error()}
+	}
+	if req.Secret == "" {
+		return reply{Accepted: false, Error: "agent.rotate_creds carried no secret"}
+	}
+	if m.RotateSecret == nil {
+		return reply{Accepted: false, Error: "credential rotation is not wired"}
+	}
+	if err := m.RotateSecret(req.Secret); err != nil {
+		// Persisting failed, so the agent is still on the old secret. Say so
+		// plainly: the server must NOT retire the old one.
+		m.Log.Error("credential rotation failed", "err", err)
+		return reply{Accepted: false, Error: "could not persist the new secret: " + err.Error()}
+	}
+	m.Audit.Emit(audit.CredentialsRotated, map[string]any{"requested_by": req.RequestedBy})
+	m.Log.Info("agent secret rotated")
+	return reply{Accepted: true}
 }
 
 // rejectionSummary names the entries in the error string too, for a server

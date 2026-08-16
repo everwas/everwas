@@ -50,6 +50,7 @@ const (
 	KindInventoryRefresh = "inventory.refresh"
 	KindPatchScan        = "patch.scan"
 	KindPatchInstall     = "patch.install"
+	KindAgentUpdate      = "agent.update"
 )
 
 // Progress phases.
@@ -86,6 +87,16 @@ type Result struct {
 	Installed      []string          `json:"installed,omitempty"`
 	Failed         map[string]string `json:"failed,omitempty"`
 	RebootRequired bool              `json:"reboot_required,omitempty"`
+
+	// agent.update jobs only.
+	//
+	// Finalizing is NOT success. On Windows the swap is handed to a helper
+	// process that finishes after this one exits, so the host is still on the
+	// old binary when this result is published. A server that reads a
+	// finalizing job as "updated" moves the ring forward over a fleet that
+	// has not actually changed version.
+	UpdatedTo  string `json:"updated_to,omitempty"`
+	Finalizing bool   `json:"finalizing,omitempty"`
 }
 
 // ProgressFunc reports a phase transition for a job.

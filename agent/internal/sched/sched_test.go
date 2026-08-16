@@ -211,7 +211,7 @@ func TestFireDueDispatchesJobID(t *testing.T) {
 	s.fireDue(context.Background(), time.Now())
 	select {
 	case got := <-calls:
-		want := "sched:nightly:" + strconv.FormatInt(base.Unix(), 10)
+		want := JobID("nightly", base)
 		if got.jobID != want {
 			t.Errorf("job id = %q, want %q", got.jobID, want)
 		}
@@ -396,10 +396,54 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	}
 }
 
-func TestJobID(t *testing.T) {
+// TestJobIDMatchesTheServersDerivation pins the exact bytes both sides must
+// agree on. The vector below is Python's
+// uuid5(uuid5(NAMESPACE_DNS, "schedule.openrmm.invalid"), "nightly-scan:1755225600"),
+// which is what openrmm.services.schedules.scheduled_job_id computes. If this
+// test and its Python twin ever disagree, scheduled results arrive for a run
+// id the server never created and are dropped as "unknown run".
+func TestJobIDMatchesTheServersDerivation(t *testing.T) {
 	base := time.Unix(1755225600, 0).UTC()
-	if got := JobID("nightly-scan", base); got != "sched:nightly-scan:1755225600" {
-		t.Errorf("JobID = %q", got)
+	const want = "11bea7a9-2e3c-5b06-90a7-0e4c7ba7c2f1"
+	if got := JobID("nightly-scan", base); got != want {
+		t.Errorf("JobID = %q, want %q", got, want)
+	}
+}
+
+// TestJobIDIsAUUID: the server parses every job id as a UUID to find the row
+// a result belongs to. An id that is not one is not "ugly", it is a result
+// that gets logged as unknown and thrown away.
+func TestJobIDIsAUUID(t *testing.T) {
+	id := JobID("nightly-scan", time.Unix(1755225600, 0))
+	if err := wire.CheckIdentifier("job_id", id); err != nil {
+		t.Errorf("job id is not a legal subject token: %v", err)
+	}
+	if len(id) != 36 {
+		t.Errorf("job id %q is not a UUID", id)
+	}
+	for _, i := range []int{8, 13, 18, 23} {
+		if id[i] != '-' {
+			t.Errorf("job id %q is not a UUID", id)
+		}
+	}
+	if id[14] != '5' {
+		t.Errorf("job id %q is not version 5, so it is not derived from the entry", id)
+	}
+}
+
+// TestJobIDIsStableForTheSameFire is what makes a doubly-reported run
+// idempotent server-side: the same entry and the same unjittered fire time
+// must always produce the same id, and a different fire must not.
+func TestJobIDIsStableForTheSameFire(t *testing.T) {
+	base := time.Unix(1755225600, 0)
+	if JobID("nightly", base) != JobID("nightly", base) {
+		t.Error("the same fire produced two ids, so a retry would create a second run")
+	}
+	if JobID("nightly", base) == JobID("nightly", base.Add(time.Hour)) {
+		t.Error("two different fires share an id, so the second overwrites the first")
+	}
+	if JobID("nightly", base) == JobID("weekly", base) {
+		t.Error("two different entries share an id")
 	}
 }
 

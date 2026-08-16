@@ -22,6 +22,7 @@ const (
 	SchedMisfireSkip   = "sched.misfire_skipped"
 	ScheduleSynced     = "schedule.synced"
 	CommandUnsupported = "command.unsupported"
+	CredentialsRotated = "agent.credentials_rotated"
 )
 
 type record struct {

@@ -101,7 +101,13 @@ async def run() -> None:
 
     await ensure_streams(js)
 
-    from openrmm.dispatcher.consumers import start_consumers, supervise
+    from openrmm.dispatcher.consumers import reconcile_durables, start_consumers, supervise
+
+    # Before anything subscribes: a durable that already exists keeps its old
+    # config, so settings added since this stack first ran are inert until
+    # they are pushed explicitly.
+    await reconcile_durables(js)
+
     from openrmm.services.job_outbox import job_outbox_loop
     from openrmm.services.outbox import outbox_loop
 

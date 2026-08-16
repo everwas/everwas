@@ -150,3 +150,57 @@ def test_every_route_requires_auth_except_the_documented_few():
             unguarded.append(f"{sorted(route.methods)} {route.path}")
 
     assert not unguarded, f"routes without authentication: {unguarded}"
+
+
+def test_agents_can_publish_to_the_reply_subject_the_server_uses():
+    """The regression that broke every server-to-agent command.
+
+    Pinning the agent's publish grant to its own namespace also cut off the
+    default `_INBOX.…` that `nc.request()` replies on, so agents received
+    commands, executed them, and were REFUSED when they answered. The server
+    saw a plain timeout. Credential rotation applied on the agent and reported
+    failure to the operator, which is how a machine gets locked out.
+
+    Every server-to-agent request therefore has to reply inside the agent's own
+    inbox namespace. This asserts the two halves still agree.
+    """
+    from openrmm.natsio.agent_request import reply_subject
+    from openrmm.natsio.subjects import agent_permissions
+
+    agent_id = "01a00b45-0e50-78c8-b572-8b8fbc272ad1"
+    subject = reply_subject(agent_id)
+    allowed = agent_permissions(agent_id)["publish"]
+
+    assert _subject_allowed(subject, allowed), (
+        f"the agent may not publish to {subject}, so it cannot answer any command; "
+        f"grants are {allowed}"
+    )
+
+
+def test_the_server_reply_subject_is_not_shared_between_agents():
+    """It has to be per-agent, or the fix reintroduces the hole it came from."""
+    from openrmm.natsio.agent_request import reply_subject
+    from openrmm.natsio.subjects import agent_permissions
+
+    mine = "01a00b45-0e50-78c8-b572-8b8fbc272ad1"
+    theirs = "01a00710-f7a8-7a84-8986-2081f6ac56c6"
+
+    assert not _subject_allowed(reply_subject(theirs), agent_permissions(mine)["publish"]), (
+        "one agent can publish into another agent's server reply inbox and forge its answers"
+    )
+
+
+def _subject_allowed(subject: str, grants: list[str]) -> bool:
+    """NATS subject matching: `*` is one token, `>` is the rest."""
+    tokens = subject.split(".")
+    for grant in grants:
+        gt = grant.split(".")
+        for i, g in enumerate(gt):
+            if g == ">":
+                return i <= len(tokens)
+            if i >= len(tokens) or (g != "*" and g != tokens[i]):
+                break
+        else:
+            if len(gt) == len(tokens):
+                return True
+    return False

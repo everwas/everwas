@@ -38,6 +38,14 @@ type Supervisor struct {
 	StateDir string
 	Log      *slog.Logger
 
+	// Restart asks the process to exit so the service manager starts the
+	// binary that self-update just swapped in. Without it the swap succeeds
+	// and the old code keeps running, so self-update is refused instead.
+	Restart func(reason string)
+
+	// RotateSecret persists a new agent secret handed down by the server.
+	RotateSecret func(secret string) error
+
 	wg sync.WaitGroup
 }
 
@@ -72,6 +80,15 @@ func (s *Supervisor) Start(ctx context.Context) {
 			Audit:             aud,
 			Log:               s.Log,
 		},
+		Update: jobs.UpdateDeps{
+			StateDir: s.StateDir,
+			Version:  s.Version,
+			Runner:   runner,
+			Audit:    aud,
+			Log:      s.Log,
+			Restart:  s.Restart,
+		},
+		RotateSecret: s.RotateSecret,
 	}
 	scheduler := sched.New(s.AgentID, s.StateDir, jobsMod.RunScheduled, aud, s.Log)
 	jobsMod.Sched = scheduler

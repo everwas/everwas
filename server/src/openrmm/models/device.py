@@ -80,3 +80,10 @@ class AgentCredential(Base):
     )
     secret_hash: Mapped[str] = mapped_column(String(64))
     rotated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # The secret being replaced, honoured until prev_valid_until. Rotation is
+    # a distributed handshake that can be interrupted at any point, so both
+    # secrets work during the window and whichever one the agent ends up
+    # holding gets it back in.
+    prev_secret_hash: Mapped[str | None] = mapped_column(String(64), default=None)
+    prev_valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

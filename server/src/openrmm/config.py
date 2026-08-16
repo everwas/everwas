@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     # (listed in nats.conf auth_users, so they bypass the callout)
     nats_server_user: str = "server"
     nats_server_password: str = ""
+    # How long an agent's issued user JWT is good for. NATS runs auth-callout
+    # at CONNECT time only, so this is the revocation latency: a retired agent
+    # keeps its session until the JWT expires. Without an expiry, retiring a
+    # device does nothing at all to a machine that is already connected.
+    # nats.go reconnects on its own when the server closes an expired session.
+    nats_jwt_ttl_s: int = 3600
 
     session_ttl_hours: int = 24 * 7
     # Ceiling on how many machines one script run or patch deploy may touch.

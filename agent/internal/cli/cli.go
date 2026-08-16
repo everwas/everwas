@@ -119,24 +119,45 @@ func cmdRun() int {
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
 
+	// A self-update swaps the binary on disk; only exiting makes the service
+	// manager start it. The restart is deferred to here rather than done in
+	// the update handler so the job's result is published first and the
+	// shutdown path is the same one SIGTERM takes.
+	restart := make(chan string, 1)
+	var restartOnce sync.Once
+
 	sup := &agentcore.Supervisor{
 		NC:       nc,
 		AgentID:  cfg.AgentID,
 		Version:  Version,
 		StateDir: stateDir,
 		Log:      log,
+		Restart: func(reason string) {
+			restartOnce.Do(func() { restart <- reason })
+		},
+		RotateSecret: func(secret string) error {
+			// Write the file before anything else believes the rotation
+			// happened. The live NATS connection keeps working on the old
+			// secret until it drops, and the server honours both for a
+			// grace window, so there is no reconnect gap here.
+			cfg.AgentSecret = secret
+			return cfg.Save()
+		},
 	}
 	sup.Start(ctx)
 
-	wentDeaf := waitForShutdown(ctx, deaf)
+	why := waitForShutdown(ctx, deaf, restart)
 	cancel()
-	if wentDeaf {
+	switch {
+	case why.deaf:
 		log.Error("nats connection is closed and cannot recover, exiting for restart")
-	} else {
+	case why.restart != "":
+		log.Info("restarting", "reason", why.restart)
+	default:
 		log.Info("shutting down")
 	}
 	sup.Wait()
-	if wentDeaf {
+	if why.deaf {
 		// The conn is already closed; there is nothing to drain, and the exit
 		// code is what makes the service manager act.
 		return 1
@@ -147,23 +168,30 @@ func cmdRun() int {
 	return 0
 }
 
-// waitForShutdown blocks until the agent should stop, reporting whether it
-// is stopping because the connection went deaf rather than because it was
+// stopReason says why the agent is shutting down. Zero value means it was
 // asked to.
+type stopReason struct {
+	deaf    bool
+	restart string
+}
+
+// waitForShutdown blocks until the agent should stop and reports why.
 //
-// A clean shutdown closes the conn itself, which fires the same callback, so
+// A clean shutdown closes the conn itself, which fires the deaf callback, so
 // being asked to stop always wins. The explicit ctx check comes first
-// because a select with two ready cases picks at random, and a SIGTERM that
-// arrives alongside the close must not be reported as a crash.
-func waitForShutdown(ctx context.Context, deaf <-chan struct{}) bool {
+// because a select with several ready cases picks at random, and a SIGTERM
+// that arrives alongside the close must not be reported as a crash.
+func waitForShutdown(ctx context.Context, deaf <-chan struct{}, restart <-chan string) stopReason {
 	if ctx.Err() != nil {
-		return false
+		return stopReason{}
 	}
 	select {
 	case <-ctx.Done():
-		return false
+		return stopReason{}
 	case <-deaf:
-		return true
+		return stopReason{deaf: true}
+	case reason := <-restart:
+		return stopReason{restart: reason}
 	}
 }
 

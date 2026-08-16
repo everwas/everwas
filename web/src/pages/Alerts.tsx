@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { BellRing, Check, Plus, Send, Trash2 } from "lucide-react"
+import { BellRing, Check, MailWarning, Plus, Send, Trash2, TriangleAlert } from "lucide-react"
 
 import {
   api,
@@ -8,6 +8,7 @@ import {
   type AlertRule,
   type Channel,
   type Device,
+  type OutboxHealth,
   type Severity,
 } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
@@ -139,7 +140,13 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
           </div>
         </div>
 
-        {channels.length > 0 && (
+        {channels.length === 0 ? (
+          <p className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            No notification channels exist yet. This rule will record alerts in this
+            page but will not reach anybody.
+          </p>
+        ) : (
           <div className="flex flex-col gap-1.5">
             <Label>Notify</Label>
             <div className="flex flex-wrap gap-3">
@@ -158,6 +165,16 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
                 </label>
               ))}
             </div>
+            {channelIds.length === 0 && (
+              /* A rule with no channel is not an error: the alert is still
+                 recorded and visible here. It is only dangerous when the
+                 operator believes it will page someone, so say so rather than
+                 blocking the save. */
+              <p className="flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                Nothing selected. This rule will record alerts but notify nobody.
+              </p>
+            )}
           </div>
         )}
 
@@ -184,7 +201,7 @@ function NewRuleForm({ channels, onCreated }: { channels: Channel[]; onCreated: 
               onCreated()
             }}
           >
-            Save
+            {channelIds.length === 0 ? "Save without notifications" : "Save"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
             Cancel
@@ -284,17 +301,89 @@ function NewChannelForm({ onCreated }: { onCreated: () => void }) {
   )
 }
 
+/** Notification delivery health.
+ *
+ * An alert that fires and is never delivered leaves no trace anywhere else in
+ * this UI: the alert row looks exactly the same whether it paged someone or
+ * sat in a queue behind a channel that was deleted last Tuesday. This is the
+ * only place that difference is visible, so it renders even when healthy.
+ */
+function DeliveryHealth({ health }: { health: OutboxHealth | null }) {
+  if (!health) return null
+  const broken = health.problems.length > 0
+
+  return (
+    <section
+      className={
+        broken
+          ? "rounded-lg border border-amber-500/50 bg-amber-500/5 p-4"
+          : "rounded-lg border p-4"
+      }
+    >
+      <h2 className="mb-2 flex items-center gap-2 text-sm font-medium">
+        {broken ? (
+          <MailWarning className="size-4 text-amber-600 dark:text-amber-500" />
+        ) : (
+          <Send className="size-4 text-muted-foreground" />
+        )}
+        Notification delivery
+      </h2>
+
+      {broken ? (
+        <ul className="mb-3 flex flex-col gap-1 text-sm">
+          {health.problems.map((p) => (
+            <li key={p} className="text-amber-700 dark:text-amber-400">
+              {p}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mb-3 text-sm text-muted-foreground">
+          Everything queued has been delivered.
+        </p>
+      )}
+
+      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <div className="flex gap-1.5">
+          <dt className="text-muted-foreground">Queued</dt>
+          <dd className="tabular-nums">{health.pending}</dd>
+        </div>
+        <div className="flex gap-1.5">
+          {/* Blocked is not failed. These are waiting on a channel an operator
+              has to repair, and they deliver the moment it is fixed. */}
+          <dt className="text-muted-foreground">Blocked on config</dt>
+          <dd className="tabular-nums">{health.blocked}</dd>
+        </div>
+        <div className="flex gap-1.5">
+          <dt className="text-muted-foreground">
+            Failed ({Math.round(health.failed_window_s / 3600)}h)
+          </dt>
+          <dd className="tabular-nums">{health.failed_recent}</dd>
+        </div>
+        {health.oldest_pending_age_s !== null && (
+          <div className="flex gap-1.5">
+            <dt className="text-muted-foreground">Oldest undelivered</dt>
+            <dd className="tabular-nums">{health.oldest_pending_age_s}s</dd>
+          </div>
+        )}
+      </dl>
+    </section>
+  )
+}
+
 export function AlertsPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [rules, setRules] = useState<AlertRule[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
   const [devices, setDevices] = useState<Device[]>([])
+  const [outbox, setOutbox] = useState<OutboxHealth | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = useCallback(() => {
     api.alerts().then(setAlerts).catch(() => {})
     api.alertRules().then(setRules).catch(() => {})
     api.channels().then(setChannels).catch(() => {})
+    api.outboxHealth().then(setOutbox).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -319,6 +408,8 @@ export function AlertsPage() {
       </div>
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
+
+      <DeliveryHealth health={outbox} />
 
       <section>
         <h2 className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -401,7 +492,22 @@ export function AlertsPage() {
                   <CardContent className="flex items-center gap-3 py-3">
                     <SeverityBadge severity={r.severity} />
                     <div className="flex-1">
-                      <p className="text-sm font-medium">{r.name}</p>
+                      <p className="flex items-center gap-2 text-sm font-medium">
+                        {r.name}
+                        {/* An enabled rule with no channel is the quiet
+                            failure: it looks configured, it evaluates, it
+                            records, and nobody is told. The list is where an
+                            operator would otherwise never notice. */}
+                        {r.enabled && r.channel_ids.length === 0 && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-amber-500/50 text-amber-700 dark:text-amber-400"
+                          >
+                            <TriangleAlert className="size-3" />
+                            notifies nobody
+                          </Badge>
+                        )}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {r.metric === "heartbeat_missed"
                           ? "device stops checking in"

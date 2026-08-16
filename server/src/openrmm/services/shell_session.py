@@ -26,7 +26,8 @@ import structlog
 from fastapi import WebSocket, WebSocketDisconnect
 
 from openrmm.config import get_settings
-from openrmm.natsio.subjects import cmd, shell_ctl, shell_in, shell_out, shell_resize
+from openrmm.natsio.agent_request import request_agent
+from openrmm.natsio.subjects import shell_ctl, shell_in, shell_out, shell_resize
 
 log = structlog.get_logger()
 
@@ -83,8 +84,10 @@ async def bridge_shell(
     close_reason = "client"
     bytes_in = bytes_out = 0
 
-    reply = await nc.request(
-        cmd(agent_id, "shell.open"),
+    reply_data = await request_agent(
+        nc,
+        agent_id,
+        "shell.open",
         json.dumps(
             {
                 "session_id": sid,
@@ -97,7 +100,7 @@ async def bridge_shell(
         ).encode(),
         timeout=OPEN_TIMEOUT_S,
     )
-    ack = json.loads(reply.data)
+    ack = json.loads(reply_data)
     if not ack.get("accepted"):
         raise RuntimeError(ack.get("error") or "agent refused the session")
 
@@ -197,10 +200,8 @@ async def bridge_shell(
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         with contextlib.suppress(Exception):
-            await nc.request(
-                cmd(agent_id, "shell.close"),
-                json.dumps({"session_id": sid}).encode(),
-                timeout=2,
+            await request_agent(
+                nc, agent_id, "shell.close", json.dumps({"session_id": sid}).encode(), timeout=2
             )
         await sub_out.unsubscribe()
         await sub_ctl.unsubscribe()

@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from openrmm.models.device import Device
 from openrmm.models.script import RunStatus, ScriptRun
 
 log = structlog.get_logger()
@@ -125,9 +126,41 @@ async def apply_job_result(
     run.finished_at = datetime.now(UTC)
     if run.started_at is None:
         run.started_at = run.finished_at
+    await _apply_agent_version(db, device_id, job_id, data)
     log.info(
         "job finished",
         job_id=str(job_id),
         status=run.status.value,
         exit_code=run.exit_code,
     )
+
+
+async def _apply_agent_version(
+    db: AsyncSession, device_id: uuid.UUID, job_id: uuid.UUID, data: dict
+) -> None:
+    """Record a completed self-update against the device.
+
+    `finalizing` is the whole reason this is a function and not a line. On
+    Windows the swap is handed to a helper that runs after the agent exits, so
+    a finalizing result means the binary on disk MIGHT change and the host is
+    demonstrably still on the old version right now. Recording the new version
+    there tells a ring rollout the host has moved when it has not, and the
+    ring advances over a fleet that never updated. The agent's next heartbeat
+    carries the truth either way, so waiting for it costs nothing.
+    """
+    updated_to = data.get("updated_to")
+    if not updated_to or data.get("finalizing"):
+        return
+    if data.get("status") != "succeeded":
+        return
+    device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+    if device is None or device.agent_version == updated_to:
+        return
+    log.info(
+        "agent version updated",
+        device_id=str(device_id),
+        job_id=str(job_id),
+        was=device.agent_version,
+        now=updated_to,
+    )
+    device.agent_version = updated_to

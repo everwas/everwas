@@ -45,6 +45,13 @@ type Module struct {
 	// Patch handles patch.scan and patch.install.
 	Patch PatchDeps
 
+	// Update handles agent.update.
+	Update UpdateDeps
+
+	// RotateSecret persists a new agent secret. Nil refuses the command
+	// rather than accepting a rotation the agent cannot survive.
+	RotateSecret func(secret string) error
+
 	// RefreshInventory runs an out-of-band inventory snapshot.
 	RefreshInventory func(context.Context) error
 
@@ -147,6 +154,8 @@ func (m *Module) execute(ctx context.Context, spec scripts.JobSpec) {
 		m.runInventoryRefresh(ctx, spec, progress)
 	case scripts.KindPatchScan, scripts.KindPatchInstall:
 		m.runPatch(ctx, spec, progress)
+	case scripts.KindAgentUpdate:
+		m.runAgentUpdate(ctx, spec, progress)
 	default:
 		m.unsupportedJob(spec, progress)
 	}

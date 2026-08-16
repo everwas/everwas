@@ -224,6 +224,27 @@ SPECS = [
 ]
 
 
+async def reconcile_durables(js: nats.js.JetStreamContext) -> None:
+    """Repair consumers created before the current settings existed.
+
+    JetStream binds to an existing durable rather than reconfiguring it, so a
+    stack that first ran before `max_deliver` was added still redelivers poison
+    messages forever, with code in front of it that says otherwise.
+    """
+    from openrmm.dispatcher.reconcile import reconcile_agent_job_consumers, reconcile_consumer
+
+    wanted = {"max_deliver": MAX_DELIVER, "ack_wait": 60, "max_ack_pending": 512}
+    for stream, durable, _subject, _handler, _deliver in SPECS:
+        await reconcile_consumer(js, stream, durable, wanted)
+
+    # Per-agent job durables are created BY the agent, which binds to an
+    # existing one on every restart, so upgrading the agent never fixes an old
+    # durable. These values mirror internal/jobs/consumer.go.
+    await reconcile_agent_job_consumers(
+        js, "JOBS", {"max_deliver": 3, "ack_wait": 30, "max_ack_pending": 16}
+    )
+
+
 def start_consumers(js: nats.js.JetStreamContext) -> list[asyncio.Task]:
     tasks = []
     for stream, durable, subject, handler, deliver in SPECS:

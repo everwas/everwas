@@ -33,12 +33,19 @@ def _issuer_public(seed: str) -> str:
         kp.wipe()
 
 
-def _user_jwt(issuer: str, seed: str, user_nkey: str, agent_id: str) -> str:
+def _user_jwt(issuer: str, seed: str, user_nkey: str, agent_id: str, ttl_s: int) -> str:
     perms = agent_permissions(agent_id)
+    now = int(time.time())
     return encode_nats_jwt(
         {
             "jti": new_jti(),
-            "iat": int(time.time()),
+            "iat": now,
+            # Authorization is decided once, at CONNECT. Without an expiry a
+            # session outlives every decision behind it: retire the device,
+            # rotate its secret, delete the credential, and the connection
+            # that machine already holds keeps working until someone reboots
+            # it. The expiry turns "revoked" into "revoked within ttl_s".
+            "exp": now + ttl_s,
             "iss": issuer,
             "sub": user_nkey,
             "aud": GLOBAL_ACCOUNT,
@@ -101,7 +108,7 @@ async def auth_callout_responder(nc: nats.NATS, settings: Settings) -> None:
             opts = req.get("connect_opts") or {}
             agent_id = await _authorize(settings, opts.get("user") or "", opts.get("pass") or "")
             if agent_id is not None:
-                user_jwt = _user_jwt(issuer, seed, user_nkey, agent_id)
+                user_jwt = _user_jwt(issuer, seed, user_nkey, agent_id, settings.nats_jwt_ttl_s)
                 await msg.respond(_response_jwt(issuer, seed, user_nkey, server_id, jwt=user_jwt))
                 log.info("agent authorized", agent_id=agent_id)
             else:

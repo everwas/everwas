@@ -205,7 +205,7 @@ async def queue_script_run(
 
 
 async def cancel_run(db: AsyncSession, nc: nats.NATS, run: ScriptRun) -> None:
-    from openrmm.natsio.subjects import cmd
+    from openrmm.natsio.agent_request import request_agent
 
     # Undelivered work is cancelled by never sending it. Do this first: if the
     # row is still pending, the agent has nothing to cancel.
@@ -218,8 +218,10 @@ async def cancel_run(db: AsyncSession, nc: nats.NATS, run: ScriptRun) -> None:
         log.info("run cancelled before dispatch", run_id=str(run.id))
     else:
         try:
-            await nc.request(
-                cmd(str(run.device_id), "job.cancel"),
+            await request_agent(
+                nc,
+                str(run.device_id),
+                "job.cancel",
                 json.dumps({"job_id": str(run.id)}).encode(),
                 timeout=5,
             )

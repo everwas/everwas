@@ -110,6 +110,16 @@ export type AlertRule = {
   channel_ids: string[]
 }
 
+/** Shape of /api/v1/alerts/outbox/health. `problems` empty means healthy. */
+export type OutboxHealth = {
+  pending: number
+  blocked: number
+  failed_recent: number
+  failed_window_s: number
+  oldest_pending_age_s: number | null
+  problems: string[]
+}
+
 export type Alert = {
   id: string
   rule_id: string
@@ -218,6 +228,7 @@ export const api = {
     request<{ id: string; status: string }>(`/api/v1/alerts/channels/${id}/test`, {
       method: "POST",
     }),
+  outboxHealth: () => request<OutboxHealth>("/api/v1/alerts/outbox/health"),
 
   devicePatches: (deviceId: string) =>
     request<DevicePatch[]>(`/api/v1/patches/device/${deviceId}`),

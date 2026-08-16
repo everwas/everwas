@@ -7,6 +7,7 @@ package sched
 import (
 	"container/heap"
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -25,9 +26,9 @@ var parser = cron.NewParser(
 	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 )
 
-// RunFunc executes one scheduled entry. jobID is
-// sched:{entry_id}:{unix_base_fire_ts} — built from the unjittered time so
-// the server can derive the same id and dedup a doubly-reported run.
+// RunFunc executes one scheduled entry. jobID is a UUIDv5 over
+// (entry_id, unix_base_fire_ts) — derived from the UNJITTERED time so the
+// server computes the same id and dedups a doubly-reported run. See JobID.
 type RunFunc func(ctx context.Context, jobID string, entry Entry, fireAt time.Time)
 
 // Scheduler owns the schedule cache and the next-fire heap.
@@ -412,9 +413,42 @@ func (s *Scheduler) signal() {
 	}
 }
 
+// schedNamespace is the UUIDv5 namespace for scheduled job ids. It is part of
+// the wire contract, not an implementation detail: the server derives the same
+// id from the same (entry, fire time) to find the run a result belongs to.
+// Changing it orphans every scheduled result in flight.
+//
+// Value: uuid5(NAMESPACE_DNS, "schedule.openrmm.invalid"). Mirrored by
+// openrmm.services.schedules.SCHED_NAMESPACE.
+var schedNamespace = [16]byte{
+	0x06, 0xca, 0xde, 0xed, 0x8a, 0x30, 0x50, 0xab,
+	0x87, 0xf5, 0x7a, 0x27, 0xb0, 0x43, 0xba, 0x2d,
+}
+
 // JobID is the idempotent id for a scheduled run.
+//
+// It is a UUID, and it has to be. The id becomes a NATS subject token and the
+// server parses every job id as a UUID to find the row a result belongs to,
+// so the old "sched:{entry}:{ts}" form parsed as nothing: a scheduled run
+// would report its result to a server that logged "unknown run" and dropped
+// it. Deriving it from (entry, fire time) keeps what that form was for, which
+// is idempotency when the same fire is reported twice.
 func JobID(entryID string, base time.Time) string {
-	return fmt.Sprintf("sched:%s:%d", entryID, base.Unix())
+	return uuidV5(schedNamespace, fmt.Sprintf("%s:%d", entryID, base.Unix()))
+}
+
+// uuidV5 is RFC 4122 section 4.3: SHA-1 over namespace||name, with the
+// version and variant bits forced. Hand-rolled because the agent has no
+// third-party uuid dependency and this is the only place it needs one.
+func uuidV5(ns [16]byte, name string) string {
+	h := sha1.New()
+	h.Write(ns[:])
+	h.Write([]byte(name))
+	var u [16]byte
+	copy(u[:], h.Sum(nil))
+	u[6] = (u[6] & 0x0f) | 0x50 // version 5
+	u[8] = (u[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
 }
 
 func stop(t *time.Timer) {
