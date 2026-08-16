@@ -19,6 +19,7 @@ from openrmm.models.deadletter import IngestDeadLetter
 from openrmm.models.device import AgentCredential, Device, EnrollmentToken, Site
 from openrmm.models.facts import FACT_TABLES, FactHardware, FactPatchState, FactSoftware
 from openrmm.models.job_outbox import JobOutbox, JobOutboxStatus
+from openrmm.models.org import DEFAULT_ORG_ID, Organization
 from openrmm.models.patch import (
     ApprovalDecision,
     PatchApproval,
@@ -85,6 +86,8 @@ __all__ = [
     "RunTrigger",
     "Script",
     "ScriptRun",
+    "Organization",
+    "DEFAULT_ORG_ID",
     "ScriptSchedule",
     "ShellKind",
     "ShellSession",

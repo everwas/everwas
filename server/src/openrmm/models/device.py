@@ -28,6 +28,12 @@ class DeviceStatus(enum.StrEnum):
 class Site(Base):
     __tablename__ = "sites"
 
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -35,6 +41,12 @@ class Site(Base):
 
 class Device(Base):
     __tablename__ = "devices"
+
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True)  # uuid7, is the agent_id
     site_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -59,6 +71,12 @@ class Device(Base):
 
 class EnrollmentToken(Base):
     __tablename__ = "enrollment_tokens"
+
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)

@@ -64,6 +64,12 @@ class OutboxStatus(enum.StrEnum):
 class AlertRule(Base):
     __tablename__ = "alert_rules"
 
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), unique=True)
     metric: Mapped[Metric] = mapped_column(Enum(Metric, name="alert_metric"))
@@ -109,6 +115,12 @@ class Alert(Base):
 
 class NotificationChannel(Base):
     __tablename__ = "notification_channels"
+
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), unique=True)

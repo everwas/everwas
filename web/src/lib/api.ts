@@ -78,6 +78,27 @@ export class ApiError extends Error {
 
 export type ShellKind = "bash" | "sh" | "zsh" | "powershell" | "pwsh" | "cmd" | "python"
 
+export type ActorType = "user" | "api_key" | "agent" | "system"
+
+export type AuditEntry = {
+  id: string
+  at: string
+  actor_type: ActorType
+  actor_id: string | null
+  action: string
+  target_type: string | null
+  target_id: string | null
+  detail: Record<string, unknown> | null
+}
+
+/** Keyset paging. An offset over an append-only table that is being written
+ *  to while you read it silently repeats and skips rows. */
+export type AuditPage = {
+  entries: AuditEntry[]
+  has_more: boolean
+  next_before: string | null
+}
+
 export type Schedule = {
   id: string
   name: string
@@ -244,6 +265,22 @@ export const api = {
     request<{ payload: Record<string, unknown> | null; updated_at: string | null }>(
       `/api/v1/devices/${id}/snapshots/${kind}`,
     ),
+
+  audit: (params: {
+    action?: string
+    actor?: string
+    target_id?: string
+    hours?: number
+    before?: string
+    limit?: number
+  }) => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => v != null && v !== "" && q.set(k, String(v)))
+    return request<AuditPage>(`/api/v1/audit?${q}`)
+  },
+  auditActions: () => request<string[]>("/api/v1/audit/actions"),
+  deviceAudit: (deviceId: string) =>
+    request<AuditEntry[]>(`/api/v1/audit/device/${deviceId}`),
 
   schedules: () => request<Schedule[]>("/api/v1/scripts/schedules"),
   createSchedule: (body: Partial<Schedule>) =>

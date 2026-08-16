@@ -11,13 +11,51 @@ jobs:
     defaults:
       run:
         working-directory: server
+
+    # A real PostgreSQL, because more than half the suite needs one. Without
+    # it those tests SKIP and the job still goes green: for months CI ran 87
+    # pure-function tests and skipped 92, including every bitemporal,
+    # revocation, schedule and deletion test. Skips do not show up in a check
+    # mark, so the coverage loss was invisible.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: openrmm
+          POSTGRES_PASSWORD: openrmm
+          POSTGRES_DB: openrmm
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U openrmm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      OPENRMM_TEST_PG: postgresql+asyncpg://openrmm:openrmm@localhost:5432
+      # Turns "the database is missing" from a silent skip into a failure.
+      # Adding the service above is not enough on its own: if it ever breaks,
+      # the suite would go back to skipping and nobody would notice.
+      OPENRMM_REQUIRE_PG: "1"
+
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
+      - run: uv run ruff check ../server/alembic
       - run: uv run pytest -q
+
+      # A skipped test is not a passing test. If anything starts skipping
+      # again, say so here rather than in a check mark six months later.
+      - name: Assert nothing was skipped
+        run: |
+          uv run pytest -q --no-header -rs 2>&1 | tee /tmp/pytest.out
+          if grep -qE "[0-9]+ skipped" /tmp/pytest.out; then
+            echo "::error::tests were skipped in CI; see the SKIPPED lines above"
+            exit 1
+          fi
 
   agent:
     strategy:

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, String, func
+from sqlalchemy import ARRAY, DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from openrmm.db.base import Base
@@ -11,6 +11,12 @@ class ApiKey(Base):
     """Bearer key `orpk_<id>_<secret>`; only sha256(secret) is stored."""
 
     __tablename__ = "api_keys"
+
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120))

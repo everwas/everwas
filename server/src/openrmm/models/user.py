@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from openrmm.db.base import Base
@@ -16,6 +16,12 @@ class Role(enum.StrEnum):
 
 class User(Base):
     __tablename__ = "users"
+
+    # Tenant boundary. Nullable and unenforced for now: see
+    # openrmm.models.org. Queries do NOT filter on it yet.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)

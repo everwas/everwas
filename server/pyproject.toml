@@ -53,6 +53,24 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
 
+[tool.ruff.lint.flake8-bugbear]
+# B008 exists to catch `def f(x=[])`. FastAPI's whole parameter API is calls in
+# defaults, and they are not mutable state: Query/Depends/Path build a
+# descriptor FastAPI reads once at import. Without this the rule fires
+# unpredictably (it tripped on a `datetime` annotated Query while leaving the
+# `str` and `int` ones beside it alone), which trains people to sprinkle noqa.
+extend-immutable-calls = [
+  "fastapi.Body",
+  "fastapi.Cookie",
+  "fastapi.Depends",
+  "fastapi.File",
+  "fastapi.Form",
+  "fastapi.Header",
+  "fastapi.Path",
+  "fastapi.Query",
+  "fastapi.Security",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
