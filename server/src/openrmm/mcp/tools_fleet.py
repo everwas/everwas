@@ -417,10 +417,21 @@ async def list_pending_patches(
 
 
 def register(mcp: FastMCP) -> None:
+    # readOnlyHint lets a client auto-approve these without a prompt.
+    # openWorldHint is false: the domain is an enumerable fleet, not the web.
+    # idempotentHint is deliberately omitted; the spec says it is only
+    # meaningful when readOnlyHint is false.
     read_only = {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}
-    mcp.tool(list_devices, tags={"fleet", "read"}, annotations=read_only)
-    mcp.tool(get_device, tags={"fleet", "read"}, annotations=read_only)
-    mcp.tool(get_device_facts, tags={"fleet", "read", "bitemporal"}, annotations=read_only)
-    mcp.tool(diff_device_facts, tags={"fleet", "read", "bitemporal"}, annotations=read_only)
-    mcp.tool(list_alerts, tags={"alerts", "read"}, annotations=read_only)
-    mcp.tool(list_pending_patches, tags={"patches", "read"}, annotations=read_only)
+
+    def _read(fn, title: str, tags: set[str]) -> None:
+        # `title` is the current spec field; annotations.title is the legacy
+        # one older clients still read. Set both so the permission dialog
+        # never falls back to showing a bare function name.
+        mcp.tool(fn, title=title, tags=tags, annotations={**read_only, "title": title})
+
+    _read(list_devices, "List devices", {"fleet", "read"})
+    _read(get_device, "Get device detail", {"fleet", "read"})
+    _read(get_device_facts, "Inspect inventory at a point in time", {"fleet", "read", "bitemporal"})
+    _read(diff_device_facts, "Compare inventory between two times", {"fleet", "read", "bitemporal"})
+    _read(list_alerts, "List alerts", {"alerts", "read"})
+    _read(list_pending_patches, "List pending patches", {"patches", "read"})

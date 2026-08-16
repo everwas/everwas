@@ -575,3 +575,61 @@ async def test_alerts_listed_then_acknowledged():
     assert [r.detail["dry_run"] for r in rows] == [True, False]
     assert rows[1].detail["note"] == "maintenance window"
     assert rows[1].target_id == str(alert_id)
+
+
+# --- annotation contract -------------------------------------------------
+#
+# Clients decide whether to auto-approve a call from these hints. A tool that
+# claims readOnlyHint while mutating, or drops destructiveHint from run_script,
+# would let an assistant execute code on endpoints without ever prompting.
+
+EXPECTED_ANNOTATIONS = {
+    "list_devices": {"readOnlyHint": True, "destructiveHint": False},
+    "get_device": {"readOnlyHint": True, "destructiveHint": False},
+    "get_device_facts": {"readOnlyHint": True, "destructiveHint": False},
+    "diff_device_facts": {"readOnlyHint": True, "destructiveHint": False},
+    "list_alerts": {"readOnlyHint": True, "destructiveHint": False},
+    "list_pending_patches": {"readOnlyHint": True, "destructiveHint": False},
+    "acknowledge_alert": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+    "run_script": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False},
+    "approve_patches": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True},
+}
+
+
+async def test_every_tool_is_annotated_and_titled():
+    from fastmcp import Client
+
+    from openrmm.mcp.server import mcp
+
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+
+    assert set(tools) == set(EXPECTED_ANNOTATIONS), "tool set changed; update the contract"
+
+    for name, expected in EXPECTED_ANNOTATIONS.items():
+        tool = tools[name]
+        assert tool.description, f"{name} has no description"
+        assert tool.title, f"{name} has no human-readable title"
+        assert tool.annotations is not None, f"{name} has no annotations"
+        actual = tool.annotations.model_dump(exclude_none=True)
+        for hint, value in expected.items():
+            assert actual.get(hint) == value, f"{name}.{hint} is {actual.get(hint)}, want {value}"
+        # The fleet is an enumerable set of machines, never an open world.
+        assert actual.get("openWorldHint") is False, f"{name} claims open world"
+
+
+async def test_mutating_tools_all_require_confirmation():
+    """Every non-read-only tool must expose `confirm`, defaulting to false."""
+    from fastmcp import Client
+
+    from openrmm.mcp.server import mcp
+
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+
+    for tool in tools:
+        if tool.annotations and tool.annotations.readOnlyHint:
+            continue
+        props = (tool.inputSchema or {}).get("properties", {})
+        assert "confirm" in props, f"{tool.name} mutates without a confirm parameter"
+        assert props["confirm"].get("default") is False, f"{tool.name} confirm must default false"

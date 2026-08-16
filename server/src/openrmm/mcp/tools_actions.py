@@ -180,10 +180,9 @@ async def run_script(
                 )
             call.target_id = str(script.id)
 
-            # Tags are resolved to ids here rather than handed to resolve_targets
-            # as {"tags": [...]}: that path calls Device.tags.overlap(), which the
-            # generic ARRAY comparator does not implement. `any()` does the same
-            # job (device carries at least one of the tags) and works today.
+            # Tags are resolved to ids first so the plan can name every host
+            # before anything is queued. resolve_targets still applies the
+            # script's os_filter and drops retired devices.
             if tags:
                 matched = (
                     await db.execute(
@@ -399,17 +398,34 @@ async def approve_patches(
 
 
 def register(mcp: FastMCP) -> None:
-    mutating = {"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False}
-    mcp.tool(
+    mutating = {"readOnlyHint": False, "openWorldHint": False}
+
+    def _write(fn, title: str, tags: set[str], **hints) -> None:
+        mcp.tool(fn, title=title, tags=tags, annotations={**mutating, "title": title, **hints})
+
+    # Acknowledging twice leaves the same alert acknowledged.
+    _write(
         acknowledge_alert,
-        tags={"alerts", "write"},
-        annotations={**mutating, "destructiveHint": False, "idempotentHint": True},
+        "Acknowledge an alert",
+        {"alerts", "write"},
+        destructiveHint=False,
+        idempotentHint=True,
     )
-    mcp.tool(
-        run_script, tags={"scripts", "write"}, annotations={**mutating, "destructiveHint": True}
+    # A script can do anything on the endpoint, and running it twice runs it
+    # twice. This is the one tool a client should always prompt for.
+    _write(
+        run_script,
+        "Run a script on devices",
+        {"scripts", "write"},
+        destructiveHint=True,
+        idempotentHint=False,
     )
-    mcp.tool(
+    # Approving is an upsert on (patch, device): re-approving changes nothing,
+    # and approving still installs nothing.
+    _write(
         approve_patches,
-        tags={"patches", "write"},
-        annotations={**mutating, "destructiveHint": False},
+        "Approve patches for installation",
+        {"patches", "write"},
+        destructiveHint=False,
+        idempotentHint=True,
     )
