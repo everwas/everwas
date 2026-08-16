@@ -213,15 +213,3 @@ func (m *aptManager) installedVersions(ctx context.Context, want map[string]stri
 func (m *aptManager) RebootRequired(_ context.Context) (bool, error) {
 	return fileExists(rebootRequiredFlag), nil
 }
-
-// pctOf turns a count into a 10..90 progress percentage, leaving room for
-// the caller's own start and finish ticks.
-func pctOf(seen, total int) int {
-	if total <= 0 {
-		return 10
-	}
-	if seen > total {
-		seen = total
-	}
-	return 10 + (80 * seen / total)
-}

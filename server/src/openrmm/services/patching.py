@@ -6,6 +6,7 @@ means allowing a specific package upgrade. Both normalize to
 patch_catalog.external_id, which is unique only within an OS family.
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -183,7 +184,14 @@ async def queue_patch_install(
             str(device.id),
             str(job.id),
             "patch.install",
-            {"ids": external_ids, "requested_by": requested_by},
+            {
+                # The agent's job spec carries free-form work in `body`; patch
+                # ids ride there as JSON. `ids` is kept for readability when
+                # inspecting the stream by hand.
+                "body": json.dumps({"update_ids": external_ids}),
+                "ids": external_ids,
+                "requested_by": requested_by,
+            },
         ),
         headers={"Nats-Msg-Id": str(job.id)},
     )

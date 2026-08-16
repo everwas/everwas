@@ -21,6 +21,7 @@ import (
 	"github.com/openrmm/agent/internal/scripts"
 	"github.com/openrmm/agent/internal/shell"
 	"github.com/openrmm/agent/internal/telemetry"
+	"github.com/openrmm/agent/internal/update"
 )
 
 const (
@@ -50,6 +51,7 @@ func (s *Supervisor) Start(ctx context.Context) {
 	aud := audit.New(s.NC, s.AgentID, s.Log)
 	shells := shell.New(s.NC, s.AgentID, aud, s.Log)
 	runner := scripts.NewRunner(s.NC, s.AgentID, s.StateDir, aud, s.Log)
+	patches := inventory.NewPatchCollector(s.NC, s.AgentID, s.Log)
 
 	jobsMod := &jobs.Module{
 		NC:      s.NC,
@@ -61,6 +63,13 @@ func (s *Supervisor) Start(ctx context.Context) {
 		Audit:   aud,
 		RefreshInventory: func(ctx context.Context) error {
 			return inventory.RefreshNow(ctx, s.NC, s.AgentID, s.Log)
+		},
+		Patch: jobs.PatchDeps{
+			Manager:           patches.Manager,
+			RefreshPatchState: patches.RefreshNow,
+			Runner:            runner,
+			Audit:             aud,
+			Log:               s.Log,
 		},
 	}
 	scheduler := sched.New(s.AgentID, s.StateDir, jobsMod.RunScheduled, aud, s.Log)
@@ -84,6 +93,14 @@ func (s *Supervisor) Start(ctx context.Context) {
 		}},
 		{"sched", func(ctx context.Context, _ *slog.Logger) error {
 			return scheduler.Run(ctx)
+		}},
+		// Marks this build healthy after a sustained connection, which is what
+		// retires the previous binary after a self-update.
+		{"patchstate", func(ctx context.Context, _ *slog.Logger) error {
+			return patches.Run(ctx)
+		}},
+		{"update-health", func(ctx context.Context, log *slog.Logger) error {
+			return update.WatchHealth(ctx, s.StateDir, log)
 		}},
 	}
 	for _, t := range tasks {

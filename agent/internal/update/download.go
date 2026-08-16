@@ -122,7 +122,7 @@ func (d *Downloader) Download(ctx context.Context, url, dest string) (int64, err
 
 	resp, err := d.client().Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrDownload, err)
+		return 0, fmt.Errorf("%w: %w", ErrDownload, err)
 	}
 	defer resp.Body.Close()
 
@@ -160,7 +160,7 @@ func (d *Downloader) Download(ctx context.Context, url, dest string) (int64, err
 	closeErr := f.Close()
 	if copyErr != nil {
 		// Leave the part file in place: the next attempt resumes from here.
-		return 0, fmt.Errorf("%w: %v", ErrDownload, copyErr)
+		return 0, fmt.Errorf("%w: %w", ErrDownload, copyErr)
 	}
 	if closeErr != nil {
 		return 0, fmt.Errorf("%w: close staging file: %v", ErrDownload, closeErr)
@@ -196,7 +196,7 @@ func (d *Downloader) Fetch(ctx context.Context, url string, maxBytes int64) ([]b
 	req.Header.Set("User-Agent", "openrmm-agent-updater")
 	resp, err := d.client().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDownload, err)
+		return nil, fmt.Errorf("%w: %w", ErrDownload, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -204,7 +204,7 @@ func (d *Downloader) Fetch(ctx context.Context, url string, maxBytes int64) ([]b
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDownload, err)
+		return nil, fmt.Errorf("%w: %w", ErrDownload, err)
 	}
 	if int64(len(body)) > maxBytes {
 		return nil, fmt.Errorf("%w: companion file over %d bytes", ErrTooLarge, maxBytes)

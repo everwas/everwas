@@ -1,0 +1,12 @@
+Software Update Tool
+
+Finding available software
+* Label: macOS Sequoia 15.5-24F74
+	Title: macOS Sequoia 15.5, Version: 15.5, Size: 7213268KiB, Recommended: YES, Action: restart,
+* Label: TruncatedBlock-1.0
+* Label:
+	Title: Nameless, Version: 1.0, Size: 10KiB,
+* Label: WeirdSize-2.0
+	Title: Weird Size, Version: 2.0, Size: notanumber, Recommended: YES,
+* Label: Safari18.5Sequoia-18.5
+	Title: Safari, Version: 18.5, Size: 1

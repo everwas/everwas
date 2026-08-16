@@ -1,4 +1,12 @@
-"""JetStream durable pull consumers -> ingest handlers."""
+"""JetStream durable consumers -> ingest handlers.
+
+These are PUSH consumers, deliberately. An earlier pull-based version went
+silently deaf: after a reconnect the durable's pull requests stopped being
+answered, `fetch()` returned nothing forever, and ingest stopped while the
+dispatcher still looked healthy (only a restart cleared it). Push delivery has
+no polling to go stale, and a dead subscription surfaces as an exception
+instead of silence.
+"""
 
 import asyncio
 
@@ -6,6 +14,7 @@ import nats
 import nats.errors
 import nats.js
 import structlog
+from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 
 from openrmm.alerting.engine import AlertEngine
 from openrmm.db.engine import session_scope
@@ -21,29 +30,54 @@ from openrmm.ingest.telemetry import apply_telemetry, parse_telemetry
 
 log = structlog.get_logger()
 
-FETCH_BATCH = 64
-FETCH_TIMEOUT_S = 5
+NAK_DELAY_S = 10
 
 # One engine instance per dispatcher process: it holds the breach state
 # machine and the rule cache.
 ENGINE = AlertEngine()
 
 
-async def _pull_loop(js: nats.js.JetStreamContext, stream: str, durable: str, handler) -> None:
-    sub = await js.pull_subscribe("", durable=durable, stream=stream)
+async def _consume(
+    js: nats.js.JetStreamContext,
+    stream: str,
+    durable: str,
+    subject: str,
+    handler,
+    deliver: DeliverPolicy,
+) -> None:
+    sub = await js.subscribe(
+        subject,
+        stream=stream,
+        durable=durable,
+        manual_ack=True,
+        config=ConsumerConfig(
+            durable_name=durable,
+            deliver_policy=deliver,
+            ack_policy=AckPolicy.EXPLICIT,
+            ack_wait=60,
+            max_ack_pending=512,
+        ),
+    )
     log.info("consumer running", stream=stream, durable=durable)
+    async for msg in sub.messages:
+        try:
+            await handler(msg.subject, msg.data)
+            await msg.ack()
+        except Exception:
+            log.exception("ingest failed", subject=msg.subject)
+            await msg.nak(delay=NAK_DELAY_S)
+
+
+async def _supervised(coro_factory, name: str) -> None:
+    """A consumer that dies must come back, and must say so."""
     while True:
         try:
-            msgs = await sub.fetch(FETCH_BATCH, timeout=FETCH_TIMEOUT_S)
-        except nats.errors.TimeoutError:
-            continue
-        for msg in msgs:
-            try:
-                await handler(msg.subject, msg.data)
-                await msg.ack()
-            except Exception:
-                log.exception("ingest failed", subject=msg.subject)
-                await msg.nak(delay=10)
+            await coro_factory()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("consumer crashed, restarting", consumer=name)
+            await asyncio.sleep(5)
 
 
 async def _handle_telemetry(subject: str, data: bytes) -> None:
@@ -98,15 +132,24 @@ async def _handle_event(subject: str, data: bytes) -> None:
         await record_agent_event(db, device_id, payload)
 
 
+# Telemetry history is already in the database and samples are cheap to miss
+# for a moment; everything else replays its retained backlog (all ingest is
+# idempotent, so a replay is safe).
+SPECS = [
+    ("TELEMETRY", "ing-telemetry", "agents.*.telemetry", _handle_telemetry, DeliverPolicy.NEW),
+    ("INVENTORY", "ing-inventory", "agents.*.inventory.>", _handle_inventory, DeliverPolicy.ALL),
+    ("JOBOUT", "ing-joboutput", "agents.*.jobs.*.output", _handle_job_output, DeliverPolicy.ALL),
+    ("RESULTS", "ing-jobresults", "agents.*.jobs.*.result", _handle_job_result, DeliverPolicy.ALL),
+    ("EVENTS", "ing-events", "agents.*.events", _handle_event, DeliverPolicy.ALL),
+]
+
+
 def start_consumers(js: nats.js.JetStreamContext) -> list[asyncio.Task]:
-    specs = [
-        ("TELEMETRY", "ingest-telemetry", _handle_telemetry),
-        ("INVENTORY", "ingest-inventory", _handle_inventory),
-        ("JOBOUT", "ingest-joboutput", _handle_job_output),
-        ("RESULTS", "ingest-jobresults", _handle_job_result),
-        ("EVENTS", "ingest-events", _handle_event),
-    ]
-    return [
-        asyncio.create_task(_pull_loop(js, stream, durable, handler), name=f"{durable}-consumer")
-        for stream, durable, handler in specs
-    ]
+    tasks = []
+    for stream, durable, subject, handler, deliver in SPECS:
+
+        def factory(s=stream, d=durable, subj=subject, h=handler, dp=deliver):
+            return _consume(js, s, d, subj, h, dp)
+
+        tasks.append(asyncio.create_task(_supervised(factory, durable), name=f"{durable}-consumer"))
+    return tasks

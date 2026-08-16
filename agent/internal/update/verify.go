@@ -23,8 +23,8 @@ var EmbeddedPublicKey = ""
 
 // Wire sizes of the minisign primitives.
 const (
-	algLen       = 2
-	keyIDLen     = 8
+	algLen        = 2
+	keyIDLen      = 8
 	pubKeyBodyLen = algLen + keyIDLen + ed25519.PublicKeySize
 	sigBodyLen    = algLen + keyIDLen + ed25519.SignatureSize
 )

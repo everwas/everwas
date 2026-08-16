@@ -1,0 +1,10 @@
+Software Update Tool
+
+Finding available software
+Software Update found the following new or updated software:
+* Label: macOS Ventura 13.6.6-22G630
+	Title: macOS Ventura 13.6.6, Version: 13.6.6, Size: 3627470KiB, Recommended: YES, Action: restart,
+* Label: Safari16.6VenturaAuto-16.6
+	Title: Safari, Version: 16.6, Size: 128173KiB, Recommended: YES,
+* Label: MRTConfigData_10_15-1.93
+	Title: MRTConfigData, Version: 1.93, Size: 6963KiB, Recommended: YES,

@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenRMM remote monitoring and management agent
+Documentation=https://github.com/openrmm/agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/openrmm-agent run
+Restart=always
+RestartSec=5
+
+# The agent applies OS patches, so it runs as root and must keep the
+# ability to gain privileges. Forbidding that here breaks apt, dnf and
+# zypper in ways that are hard to spot from the outside.
+NoNewPrivileges=false
+ProtectHome=read-only
+PrivateTmp=true
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

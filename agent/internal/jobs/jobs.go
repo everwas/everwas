@@ -34,6 +34,9 @@ type Module struct {
 	Sched   *sched.Scheduler
 	Audit   *audit.Publisher
 
+	// Patch handles patch.scan and patch.install.
+	Patch PatchDeps
+
 	// RefreshInventory runs an out-of-band inventory snapshot.
 	RefreshInventory func(context.Context) error
 }
@@ -78,6 +81,8 @@ func (m *Module) execute(ctx context.Context, spec scripts.JobSpec) {
 		m.Scripts.Run(ctx, spec, progress)
 	case scripts.KindInventoryRefresh:
 		m.runInventoryRefresh(ctx, spec, progress)
+	case scripts.KindPatchScan, scripts.KindPatchInstall:
+		m.Patch.Execute(ctx, spec, progress)
 	default:
 		m.unsupportedJob(spec, progress)
 	}

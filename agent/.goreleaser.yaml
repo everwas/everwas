@@ -1,0 +1,169 @@
+# GoReleaser config for the OpenRMM agent. Requires GoReleaser v2.6 or newer
+# (the `formats` list on archives).
+#
+#   goreleaser build --snapshot --clean     # local matrix build, no publish
+#   goreleaser release --clean              # full release, needs a tag
+#
+# Two environment variables shape a real release:
+#
+#   OPENRMM_UPDATE_PUBKEY      base64 body of the minisign public key, baked
+#                              into every binary as the self-update trust
+#                              anchor. Set it to "" for snapshot builds and
+#                              self-update refuses to run, which is correct.
+#   MINISIGN_SECRET_KEY_FILE   path to the release signing secret key.
+#   MINISIGN_PASSWORD          its passphrase, fed to minisign on stdin.
+version: 2
+
+project_name: openrmm-agent
+
+before:
+  hooks:
+    # Deliberately not `go mod tidy`: a release must build the dependency set
+    # that was reviewed and committed, not one resolved at release time.
+    - go mod download
+
+builds:
+  - id: openrmm-agent
+    main: ./cmd/openrmm-agent
+    binary: openrmm-agent
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/openrmm/agent/internal/cli.Version={{ .Version }}
+      - -X github.com/openrmm/agent/internal/update.EmbeddedPublicKey={{ .Env.OPENRMM_UPDATE_PUBKEY }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+universal_binaries:
+  # One darwin artifact that runs on Intel and Apple silicon. replace: true
+  # drops the per-arch darwin binaries so the release page has one obvious
+  # macOS download instead of three.
+  - ids:
+      - openrmm-agent
+    replace: true
+    name_template: openrmm-agent
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - src: packaging/linux/openrmm-agent.service
+        dst: openrmm-agent.service
+        info:
+          mode: 0644
+
+nfpms:
+  # Mirrors packaging/linux/nfpm.yaml. Change both together.
+  - id: packages
+    package_name: openrmm-agent
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: OpenRMM
+    homepage: https://github.com/openrmm/agent
+    maintainer: OpenRMM <agents@openrmm.invalid>
+    description: |-
+      OpenRMM remote monitoring and management agent.
+      Collects inventory and telemetry, runs scripts and patch jobs, and
+      provides remote shell access over an authenticated NATS connection.
+    license: Apache-2.0
+    section: admin
+    priority: optional
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    contents:
+      - src: packaging/linux/openrmm-agent.service
+        dst: /etc/systemd/system/openrmm-agent.service
+        type: config
+        file_info:
+          mode: 0644
+      # The agent identity (agent.json) carries the NATS secret.
+      - dst: /etc/openrmm
+        type: dir
+        file_info:
+          mode: 0700
+          owner: root
+          group: root
+      # Script staging, scheduler state, update staging.
+      - dst: /var/lib/openrmm
+        type: dir
+        file_info:
+          mode: 0700
+          owner: root
+          group: root
+    scripts:
+      postinstall: packaging/linux/postinstall.sh
+      preremove: packaging/linux/preremove.sh
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+signs:
+  # Release signing is minisign, and the agent verifies it with the embedded
+  # public key before it will swap a binary.
+  #
+  # Do NOT add -H here. minisign's -H flag signs a BLAKE2b-512 prehash, and
+  # the agent's verifier is stdlib-only ed25519 over the raw artifact. A
+  # prehashed signature is rejected with a clear error rather than silently
+  # accepted, but the release would still be unusable.
+  - id: minisign
+    artifacts: all
+    signature: "${artifact}.minisig"
+    cmd: minisign
+    args:
+      - -S
+      - -s
+      - "{{ .Env.MINISIGN_SECRET_KEY_FILE }}"
+      - -x
+      - "${signature}"
+      - -m
+      - "${artifact}"
+      - -t
+      - "openrmm-agent {{ .Version }} {{ .CommitDate }}"
+    stdin: "{{ .Env.MINISIGN_PASSWORD }}"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  # Publish as a draft so a human checks the artifacts, the SHA256SUMS and the
+  # .minisig files before the fleet can see them.
+  draft: true
+  prerelease: auto
+  footer: |
+    ## Verifying this release
+
+    Every artifact has a matching `.minisig`. With the project public key in
+    `openrmm-agent.pub`:
+
+    ```
+    minisign -Vm openrmm-agent_{{ .Version }}_linux_amd64.tar.gz -p openrmm-agent.pub
+    sha256sum -c SHA256SUMS --ignore-missing
+    ```
+
+    Agents verify the same signature themselves before applying an update.

@@ -1,0 +1,66 @@
+# nfpm config for building the deb and rpm by hand:
+#
+#   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+#     -ldflags "-s -w -X github.com/openrmm/agent/internal/cli.Version=$VERSION" \
+#     -o dist/openrmm-agent ./cmd/openrmm-agent
+#   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p deb -t dist/
+#   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p rpm -t dist/
+#
+# Releases go through goreleaser, whose nfpms block mirrors this file. If you
+# change one, change the other: the packaged unit, the scripts and the
+# directory modes are asserted by internal/svc tests and by the installer.
+name: openrmm-agent
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: none
+section: admin
+priority: optional
+maintainer: OpenRMM <agents@openrmm.invalid>
+vendor: OpenRMM
+homepage: https://github.com/openrmm/agent
+license: Apache-2.0
+description: |
+  OpenRMM remote monitoring and management agent.
+  Collects inventory and telemetry, runs scripts and patch jobs, and provides
+  remote shell access over an authenticated NATS connection.
+
+contents:
+  - src: ./dist/openrmm-agent
+    dst: /usr/local/bin/openrmm-agent
+    file_info:
+      mode: 0755
+
+  - src: ./packaging/linux/openrmm-agent.service
+    dst: /etc/systemd/system/openrmm-agent.service
+    type: config
+    file_info:
+      mode: 0644
+
+  # Identity lives here (agent.json holds the NATS secret), so 0700 root.
+  - dst: /etc/openrmm
+    type: dir
+    file_info:
+      mode: 0700
+      owner: root
+      group: root
+
+  # Working state: script staging, scheduler state, update staging.
+  - dst: /var/lib/openrmm
+    type: dir
+    file_info:
+      mode: 0700
+      owner: root
+      group: root
+
+scripts:
+  postinstall: ./packaging/linux/postinstall.sh
+  preremove: ./packaging/linux/preremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - systemd
+  deb:
+    depends:
+      - systemd

@@ -119,7 +119,11 @@ func runCmd(ctx context.Context, opts execOptions, name string, args ...string) 
 		}
 	}()
 	wg.Wait()
-	return finish(ctx, stdout.String(), stderr.String(), cmd.Wait())
+	// Wait AFTER the pipe is drained and BEFORE the buffers are read: Wait
+	// is what joins the goroutine exec.Cmd uses to fill cmd.Stderr, so
+	// reading stderr any earlier races with it.
+	waitErr := cmd.Wait()
+	return finish(ctx, stdout.String(), stderr.String(), waitErr)
 }
 
 // finish turns a wait error into a cmdResult, mapping a context deadline
@@ -155,6 +159,18 @@ func have(binary string) bool {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// pctOf turns a count into a 10..90 progress percentage, leaving room for
+// the caller's own start and finish ticks.
+func pctOf(seen, total int) int {
+	if total <= 0 {
+		return 10
+	}
+	if seen > total {
+		seen = total
+	}
+	return 10 + (80 * seen / total)
 }
 
 // sleepCtx waits for d or until ctx is done, reporting whether the wait

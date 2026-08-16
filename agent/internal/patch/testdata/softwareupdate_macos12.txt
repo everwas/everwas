@@ -1,0 +1,12 @@
+Software Update Tool
+
+Finding available software
+Software Update found the following new or updated software:
+* Label: Safari15.6.1MontereyAuto-15.6.1
+	Title: Safari, Version: 15.6.1, Size: 89747K, Recommended: YES,
+* Label: macOS Monterey 12.6.1-21G217
+	Title: macOS Monterey 12.6.1, Version: 12.6.1, Size: 2914283K, Recommended: YES, Action: restart,
+* Label: XProtectPlistConfigData_10_15-2151
+	Title: XProtectPlistConfigData, Version: 2151, Size: 5427K, Recommended: YES,
+* Label: Command Line Tools for Xcode-14.0
+	Title: Command Line Tools for Xcode, Version: 14.0, Size: 686060K, Recommended: YES,

@@ -14,6 +14,7 @@ import (
 	"github.com/openrmm/agent/internal/config"
 	"github.com/openrmm/agent/internal/conn"
 	"github.com/openrmm/agent/internal/enroll"
+	"github.com/openrmm/agent/internal/update"
 )
 
 // Version is injected at build time via -ldflags.
@@ -34,9 +35,12 @@ func Run(args []string) int {
 		return cmdRun()
 	case "status":
 		return cmdStatus()
-	case "install", "uninstall":
-		fmt.Fprintf(os.Stderr, "openrmm-agent %s: not implemented yet (M4)\n", args[0])
-		return 1
+	case "install":
+		return CmdInstall(args[1:])
+	case "uninstall":
+		return CmdUninstall(args[1:])
+	case "update-finalize":
+		return CmdUpdateFinalize(args[1:])
 	default:
 		usage()
 		return 2
@@ -75,6 +79,21 @@ func cmdRun() int {
 		return 1
 	}
 
+	stateDir, err := config.Dir()
+	if err != nil {
+		log.Error("resolve state dir", "err", err)
+		return 1
+	}
+
+	// Before anything else: if the build we just updated to has crash looped,
+	// put the previous binary back and exit so the service manager starts it.
+	if rolledBack, err := update.CheckAndRollback(stateDir); err != nil {
+		log.Warn("update rollback check", "err", err)
+	} else if rolledBack {
+		log.Error("update rolled back after repeated crashes, restarting previous version")
+		return 1
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -84,12 +103,6 @@ func cmdRun() int {
 		return 1
 	}
 	log.Info("agent started", "agent_id", cfg.AgentID, "version", Version, "nats_url", cfg.NATSURL)
-
-	stateDir, err := config.Dir()
-	if err != nil {
-		log.Error("resolve state dir", "err", err)
-		return 1
-	}
 
 	sup := &agentcore.Supervisor{
 		NC:       nc,

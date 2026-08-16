@@ -126,14 +126,14 @@ var aptRebootPrefixes = []string{
 // aptRebootNames are exact package names whose upgrade leaves the running
 // system inconsistent until a reboot.
 var aptRebootNames = map[string]bool{
-	"libc6":   true,
-	"libc-bin": true,
-	"systemd": true,
-	"udev":    true,
-	"dbus":    true,
-	"grub-common": true,
-	"grub-pc": true,
-	"grub-efi-amd64": true,
+	"libc6":             true,
+	"libc-bin":          true,
+	"systemd":           true,
+	"udev":              true,
+	"dbus":              true,
+	"grub-common":       true,
+	"grub-pc":           true,
+	"grub-efi-amd64":    true,
 	"xserver-xorg-core": true,
 }
 

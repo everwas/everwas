@@ -1,0 +1,11 @@
+Software Update Tool
+
+Finding available software
+
+
+* Label: macOS Sonoma 14.5-23F79
+	Title: macOS Sonoma, Version: 14.5, Size: 6081868KiB, Recommended: YES, Action: restart,
+* Label: Safari17.5SonomaAuto-17.5
+	Title: Safari, Version: 17.5, Size: 128173KiB, Recommended: YES,
+* Label: macOS Sequoia 15.0-24A335
+	Title: macOS Sequoia 15.0, Version: 15.0, Size: 7213268KiB, Recommended: NO, Action: restart,
