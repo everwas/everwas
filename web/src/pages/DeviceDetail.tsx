@@ -15,7 +15,11 @@ import {
 } from "@/lib/api"
 import { SessionPlayer } from "@/components/SessionPlayer"
 import { DeviceTerminal } from "@/components/Terminal"
-import { NetworkPanel } from "@/components/NetworkPanel"
+import {
+  NetworkPanel,
+  NetworkSummaryChart,
+  NetworkTile,
+} from "@/components/NetworkPanel"
 import { TelemetryChart } from "@/components/TelemetryChart"
 import { RunStatusBadge } from "@/pages/Scripts"
 import { Badge } from "@/components/ui/badge"
@@ -270,6 +274,7 @@ export function DeviceDetailPage() {
     if (!id) return
     api.device(id).then(setDevice).catch(() => {})
     api.telemetry(id).then(setTelemetry).catch(() => {})
+    api.network(id).then(setNets).catch(() => {})
   }, [id])
 
   const loadTab = useCallback(() => {
@@ -283,23 +288,21 @@ export function DeviceDetailPage() {
       api.runs(id).then(setRuns).catch(() => {})
     } else if (tab === "sessions") {
       api.shellSessions(id).then(setSessions).catch(() => {})
-    } else if (tab === "network") {
-      api.network(id).then(setNets).catch(() => {})
-    } else if (tab !== "terminal") {
+    } else if (tab !== "terminal" && tab !== "network") {
       api.facts(id, tab, asOf).then(setFacts).catch(() => {})
     }
   }, [id, tab, asOf])
 
   useEffect(loadTab, [loadTab])
 
-  // Throughput is only interesting live. 30s rather than the 4s runs uses:
-  // the agent samples every 60s, so polling faster only re-renders the same
-  // points.
+  // Not gated on the tab: the summary chart is visible from every one of them.
+  // 30s rather than the 4s runs uses, because the agent samples every 60s and
+  // polling faster only re-renders the same points.
   useEffect(() => {
-    if (tab !== "network" || !id) return
+    if (!id) return
     const timer = setInterval(() => api.network(id).then(setNets).catch(() => {}), 30000)
     return () => clearInterval(timer)
-  }, [tab, id])
+  }, [id])
 
   useEffect(() => {
     if (tab !== "runs" || !id) return
@@ -341,6 +344,7 @@ export function DeviceDetailPage() {
         <StatTile icon={Cpu} label="CPU" value={device.cpu_pct} />
         <StatTile icon={MemoryStick} label="Memory" value={device.mem_pct} />
         <StatTile icon={HardDrive} label="Worst disk" value={device.worst_disk_pct} />
+        <NetworkTile interfaces={nets} />
       </div>
 
       <div className="flex flex-wrap gap-4">
@@ -351,6 +355,7 @@ export function DeviceDetailPage() {
           dataKey="mem_pct"
           color="var(--chart-mem)"
         />
+        <NetworkSummaryChart interfaces={nets} />
       </div>
 
       <div>
