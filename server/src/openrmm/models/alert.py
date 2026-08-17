@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from openrmm.db.base import Base
+from openrmm.models.org import DEFAULT_ORG_ID
 
 
 class Metric(enum.StrEnum):
@@ -66,8 +67,10 @@ class AlertRule(Base):
 
     # Tenant boundary. Nullable and unenforced for now: see
     # openrmm.models.org. Queries do NOT filter on it yet.
-    org_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        default=DEFAULT_ORG_ID,
+        index=True,
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -118,8 +121,10 @@ class NotificationChannel(Base):
 
     # Tenant boundary. Nullable and unenforced for now: see
     # openrmm.models.org. Queries do NOT filter on it yet.
-    org_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), default=None, index=True
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        default=DEFAULT_ORG_ID,
+        index=True,
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

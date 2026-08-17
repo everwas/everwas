@@ -129,11 +129,20 @@ async def client(pg_database):
 
     from openrmm.api.app import create_app
     from openrmm.api.deps import current_user
+    from openrmm.models.org import DEFAULT_ORG_ID
     from openrmm.models.user import Role, User
 
     app = create_app()
+    # org_id matters now that the boundary is enforced. DEFAULT_ORG_ID is what
+    # every model defaults to, so a fixture user without one would fail closed
+    # against every device the tests create, which is correct behaviour and
+    # useless for testing anything else.
     app.dependency_overrides[current_user] = lambda: User(
-        id=uuid.uuid4(), email="admin@example.com", password_hash="x", role=Role.admin
+        id=uuid.uuid4(),
+        email="admin@example.com",
+        password_hash="x",
+        role=Role.admin,
+        org_id=DEFAULT_ORG_ID,
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
@@ -159,6 +168,7 @@ async def client_as(pg_database):
 
     from openrmm.api.app import create_app
     from openrmm.api.deps import current_user
+    from openrmm.models.org import DEFAULT_ORG_ID
     from openrmm.models.user import User
 
     @contextlib.asynccontextmanager
@@ -169,6 +179,7 @@ async def client_as(pg_database):
             email=f"{role.value}@example.com",
             password_hash="x",
             role=role,
+            org_id=DEFAULT_ORG_ID,
         )
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:

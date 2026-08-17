@@ -13,6 +13,8 @@ import pytest
 from openrmm.api.v1.audit import MAX_LIMIT
 from openrmm.db.engine import get_sessionmaker
 from openrmm.models.audit import ActorType, AuditLog
+from openrmm.models.device import Device, OsFamily
+from openrmm.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -104,8 +106,16 @@ async def test_the_hours_window_excludes_older_entries(client):
 async def test_a_device_history_includes_what_the_agent_itself_reported(client):
     """A device is named as the TARGET when an operator acts on it and as the
     ACTOR when its own agent reports. Reading only one of those halves the
-    history of the machine you are investigating."""
-    device_id = uuid.uuid4()
+    history of the machine you are investigating.
+
+    The device is a real row now, because the endpoint authorizes on it: the
+    audit trail names who ran what on which host, so serving it for an
+    arbitrary UUID would hand another organization's operator identities to
+    anyone who guessed one.
+    """
+    device_id = uuid7()
+    async with get_sessionmaker()() as db, db.begin():
+        db.add(Device(id=device_id, hostname="audited", os_family=OsFamily.linux, tags=[]))
     async with get_sessionmaker()() as db, db.begin():
         db.add(
             AuditLog(

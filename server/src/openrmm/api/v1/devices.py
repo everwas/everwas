@@ -27,6 +27,7 @@ from openrmm.schemas.device import (
     NetRatePoint,
     TelemetryPoint,
 )
+from openrmm.security.tenancy import caller_org, scope_to_org
 from openrmm.services.devices import DeviceNotRetiredError, delete_device
 from openrmm.services.enrollment import (
     ROTATION_GRACE,
@@ -43,8 +44,18 @@ ADMIN = require_role(Role.admin)
 OPERATOR = require_role(Role.admin, Role.operator)
 
 
-async def _device_or_404(db, device_id: uuid.UUID) -> Device:
-    device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+async def _device_or_404(db, device_id: uuid.UUID, user) -> Device:
+    """Load a device the caller is allowed to act on.
+
+    Takes the user, and is the only way these routes reach a Device, so the
+    organization filter cannot be omitted at one route and present at the rest.
+    A device in another organization returns 404, not 403: a caller who is not
+    entitled to it should not learn whether it exists.
+    """
+    query = scope_to_org(
+        select(Device).where(Device.id == device_id), Device.org_id, caller_org(user)
+    )
+    device = (await db.execute(query)).scalar_one_or_none()
     if device is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
     return device
@@ -61,7 +72,7 @@ async def list_devices(
     every table is padded with machines that will never report again, and the
     ones that matter get harder to find as the list grows.
     """
-    query = select(Device).order_by(Device.hostname)
+    query = scope_to_org(select(Device).order_by(Device.hostname), Device.org_id, caller_org(_user))
     if not include_retired:
         query = query.where(Device.status != DeviceStatus.retired)
     rows = await db.execute(query)
@@ -70,7 +81,7 @@ async def list_devices(
 
 @router.get("/{device_id}")
 async def get_device(device_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> DeviceDetailOut:
-    device = await _device_or_404(db, device_id)
+    device = await _device_or_404(db, device_id, _user)
     latest = (
         await db.execute(
             select(DeviceStatusLatest).where(DeviceStatusLatest.device_id == device_id)
@@ -91,7 +102,7 @@ async def get_telemetry(
     _user: CurrentUser,
     hours: int = Query(default=24, ge=1, le=168),
 ) -> list[TelemetryPoint]:
-    await _device_or_404(db, device_id)
+    await _device_or_404(db, device_id, _user)
     since = datetime.now(UTC) - timedelta(hours=hours)
     t = telemetry_metrics
     rows = await db.execute(
@@ -118,7 +129,7 @@ async def get_network(
     hours: int = Query(default=24, ge=1, le=168),
 ) -> list[NetInterfaceSeries]:
     """Per-interface throughput, labelled from the current inventory."""
-    await _device_or_404(db, device_id)
+    await _device_or_404(db, device_id, _user)
     since = datetime.now(UTC) - timedelta(hours=hours)
     series = await interface_rates(db, device_id, since)
 
@@ -168,7 +179,7 @@ async def get_device_facts(
     as_of: datetime | None = None,
     knew_at: datetime | None = None,
 ) -> list[FactOut]:
-    await _device_or_404(db, device_id)
+    await _device_or_404(db, device_id, _user)
     facts = await get_facts(db, kind, device_id, as_of=as_of, knew_at=knew_at)
     return [FactOut(**f) for f in facts]
 
@@ -180,7 +191,7 @@ async def get_snapshot(
     db: DbSession,
     _user: CurrentUser,
 ) -> dict:
-    await _device_or_404(db, device_id)
+    await _device_or_404(db, device_id, _user)
     snap = (
         await db.execute(
             select(DeviceSnapshot).where(
@@ -205,6 +216,10 @@ async def retire(device_id: uuid.UUID, db: DbSession, user: CurrentUser) -> dict
     keeps working until its JWT expires. Saying so is the difference between
     an operator who waits and one who assumes and moves on.
     """
+    # Through the scoped gate first, so this route cannot be the one that
+    # forgets. retire_device looks up by primary key alone, which is correct
+    # for a service that trusts its caller; the caller is here.
+    await _device_or_404(db, device_id, user)
     device = await retire_device(db, device_id, actor=user.email)
     if device is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
@@ -232,6 +247,7 @@ async def delete(device_id: uuid.UUID, db: DbSession, user: CurrentUser) -> None
     between gives the agent's credential time to be revoked before its records
     disappear.
     """
+    await _device_or_404(db, device_id, user)
     try:
         device = await delete_device(db, device_id, actor=user.email)
     except DeviceNotRetiredError as exc:
@@ -256,7 +272,7 @@ async def rotate_credentials(
     failed delivery would leave the audit trail saying nothing was attempted
     while the agent may already hold the new secret.
     """
-    device = await _device_or_404(db, device_id)
+    device = await _device_or_404(db, device_id, user)
     try:
         secret = await rotate_agent_secret(db, device_id, actor=user.email, force=force)
     except RotationInFlightError as exc:
@@ -307,7 +323,7 @@ async def update_agent(
     not know, so creating the row afterwards races the agent on a fast link
     and loses the outcome of the update.
     """
-    device = await _device_or_404(db, device_id)
+    device = await _device_or_404(db, device_id, user)
     if device.status is DeviceStatus.retired:
         raise HTTPException(status.HTTP_409_CONFLICT, "device is retired")
 

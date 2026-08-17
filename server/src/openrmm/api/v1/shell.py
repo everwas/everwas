@@ -17,6 +17,7 @@ from openrmm.models.script import ShellSession
 from openrmm.models.user import Role
 from openrmm.natsio.client import get_nats
 from openrmm.security.sessions import SESSION_COOKIE, resolve_session
+from openrmm.security.tenancy import caller_org, scope_to_org
 from openrmm.services.shell_session import (
     bridge_shell,
     close_session_record,
@@ -48,8 +49,18 @@ async def device_shell(
         if user is None or user.role not in (Role.admin, Role.operator):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+        # Scoped to the caller's organization. This route cannot be covered by
+        # the route-enumeration test (it is a WebSocket, and the handshake has
+        # to be refused before accept()), so the check is written out here and
+        # covered directly by tests/test_org_isolation.py.
         device = (
-            await db.execute(select(Device).where(Device.id == device_id))
+            await db.execute(
+                scope_to_org(
+                    select(Device).where(Device.id == device_id),
+                    Device.org_id,
+                    caller_org(user),
+                )
+            )
         ).scalar_one_or_none()
         if device is None:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)

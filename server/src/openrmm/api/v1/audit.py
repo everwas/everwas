@@ -18,7 +18,9 @@ from sqlalchemy import select
 
 from openrmm.api.deps import CurrentUser, DbSession
 from openrmm.models.audit import ActorType, AuditLog
+from openrmm.models.device import Device
 from openrmm.schemas.audit import AuditEntryOut, AuditPage
+from openrmm.security.tenancy import caller_org, scope_to_org
 
 router = APIRouter()
 
@@ -93,10 +95,35 @@ async def device_history(
 ) -> list[AuditEntryOut]:
     """Everything done to one machine, whoever did it.
 
+    Scoped to the caller's organization first: the audit trail names who ran
+    what on which host, so leaking it across the boundary leaks both the
+    existence of another tenant's fleet and the identities of their operators.
+
     Separate from the filtered list because it is the question an incident
     starts with, and because a device is named both as a target and, when the
     agent itself reports, as the actor.
     """
+    # 404 before any audit row is read. The device is the authorization
+    # subject here even though the rows live in another table.
+    #
+    # KNOWN LIMIT: audit_log deliberately outlives its subjects, but this
+    # authorizes on the device row, so the history of a DELETED device is no
+    # longer readable through this route. Fixing that properly means giving
+    # audit_log its own org_id rather than reaching one through a parent that
+    # may be gone. Serving it unscoped was the alternative, and that hands
+    # another organization's operator identities to anyone who guesses a UUID.
+    owned = (
+        await db.execute(
+            scope_to_org(
+                select(Device.id).where(Device.id == device_id),
+                Device.org_id,
+                caller_org(_user),
+            )
+        )
+    ).scalar_one_or_none()
+    if owned is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
+
     rows = await db.execute(
         select(AuditLog)
         .where(

@@ -124,8 +124,17 @@ def test_every_route_requires_auth_except_the_documented_few():
     an anonymous caller could enumerate device UUIDs and read admin shell
     history. Every other read route had one; this test makes the exception
     list explicit instead of relying on nobody forgetting.
+
+    This test could not fail until now. It iterated `app.routes` looking for
+    APIRoute, and on this FastAPI version routers included with a prefix appear
+    as `_IncludedRouter` wrappers whose children are reachable only through
+    `original_router.routes`. The loop matched zero routes, so `unguarded` was
+    always empty and the assertion always held, whatever the code did, while
+    reading as proof that the whole API was authenticated. It walks properly
+    now, and covers the shell WebSocket too, which authenticates by hand inside
+    its handler and was previously exempt by construction.
     """
-    from fastapi.routing import APIRoute
+    from routewalk import api_routes
 
     from openrmm.api.app import create_app
 
@@ -139,15 +148,28 @@ def test_every_route_requires_auth_except_the_documented_few():
         "/api/v1/agents/enroll",
     }
 
+    # Authenticates inside the handler rather than through a dependency,
+    # because a WebSocket must be refused BEFORE accept() and a dependency that
+    # raises would have already completed the handshake. Listed explicitly so
+    # the exemption is a decision rather than an oversight; the authorization
+    # it performs is covered by tests/test_role_gates.py and
+    # tests/test_org_isolation.py.
+    HAND_AUTHENTICATED = {"/api/v1/devices/{device_id}/shell"}
+
     app = create_app()
+    routes = api_routes(app, websockets=True)
+    assert len(routes) > 20, (
+        f"only {len(routes)} routes found; the walk is broken and this test proves nothing"
+    )
+
     unguarded = []
-    for route in app.routes:
-        if not isinstance(route, APIRoute) or route.path in PUBLIC:
+    for route in routes:
+        if route.path in PUBLIC or route.path in HAND_AUTHENTICATED:
             continue
         names = {d.name for d in route.dependant.dependencies}
         flat = str(route.dependant.dependencies) + str(names)
         if "current_user" not in flat and "check" not in flat:
-            unguarded.append(f"{sorted(route.methods)} {route.path}")
+            unguarded.append(f"{sorted(getattr(route, 'methods', []) or ['WS'])} {route.path}")
 
     assert not unguarded, f"routes without authentication: {unguarded}"
 

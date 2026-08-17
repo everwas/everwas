@@ -23,6 +23,7 @@ from openrmm.schemas.patch import (
     PatchPolicyIn,
     PatchPolicyOut,
 )
+from openrmm.security.tenancy import caller_org, scope_to_org
 from openrmm.services.patching import (
     approve,
     approved_external_ids,
@@ -34,8 +35,14 @@ router = APIRouter()
 OPERATOR = require_role(Role.admin, Role.operator)
 
 
-async def _device_or_404(db, device_id: uuid.UUID) -> Device:
-    device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+async def _device_or_404(db, device_id: uuid.UUID, user) -> Device:
+    """Load a device the caller may act on. See devices.py for the reasoning:
+    scoped in the query so a foreign device is never loaded, and 404 rather
+    than 403 so its existence is not confirmed."""
+    query = scope_to_org(
+        select(Device).where(Device.id == device_id), Device.org_id, caller_org(user)
+    )
+    device = (await db.execute(query)).scalar_one_or_none()
     if device is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
     return device
@@ -56,7 +63,7 @@ async def device_patches(
     device_id: uuid.UUID, db: DbSession, _user: CurrentUser
 ) -> list[DevicePatchOut]:
     """What this device currently reports as pending, joined to the catalog."""
-    device = await _device_or_404(db, device_id)
+    device = await _device_or_404(db, device_id, _user)
     facts = await get_facts(db, "patchstate", device_id)
     if not facts:
         return []
@@ -121,7 +128,7 @@ async def approve_patches(body: ApprovalRequest, db: DbSession, user: CurrentUse
 
 @router.post("/scan/{device_id}", dependencies=[OPERATOR])
 async def scan_device(device_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> dict:
-    device = await _device_or_404(db, device_id)
+    device = await _device_or_404(db, device_id, _user)
     job_id = await queue_patch_scan(db, device)
     await db.commit()
     return {"job_id": str(job_id), "device_id": str(device_id)}

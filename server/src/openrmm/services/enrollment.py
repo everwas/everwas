@@ -69,6 +69,7 @@ async def enroll_device(db: AsyncSession, req: EnrollRequest) -> tuple[Device, s
         site_id=token.site_id,
         hostname=req.hostname,
         os_family=req.os_family,
+        org_id=token.org_id,
         os_version=req.os_version,
         arch=req.arch,
         agent_version=req.agent_version,

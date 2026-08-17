@@ -52,17 +52,42 @@ async def test_the_default_organization_exists():
     assert org.name == "Default"
 
 
-async def test_the_column_is_nullable():
-    """A new row must not be forced to name an organization while nothing
-    assigns one; making it required now would break every insert path for a
-    feature that does not exist."""
+async def test_the_column_is_not_nullable():
+    """A row that belongs to no organization must be unrepresentable.
+
+    This asserted the opposite while the boundary was unenforced, which was
+    right at the time: making it required before anything assigned one would
+    have broken every insert path for a feature that did not exist.
+
+    It is enforced now, and NOT NULL is what removes the trap underneath it.
+    enroll_device never set org_id, so every device enrolled since the column
+    was added was NULL-org; a filter written as `WHERE org_id = :caller`
+    excludes those silently rather than failing, so switching the boundary on
+    would have quietly hidden the entire existing fleet from everyone. The
+    failure now happens at the insert, where it is obvious.
+    """
     async with get_sessionmaker()() as db, db.begin():
+        # No org_id given: the model default fills it in rather than leaving a
+        # row nobody can see.
         db.add(Device(id=uuid7(), hostname="no-org", os_family=OsFamily.linux))
 
     async with get_sessionmaker()() as db:
         rows = (await db.execute(select(Device).where(Device.hostname == "no-org"))).scalars().all()
     assert len(rows) == 1
-    assert rows[0].org_id is None
+    assert rows[0].org_id == DEFAULT_ORG_ID
+
+    # And an explicit NULL is refused by the database, not just by the default.
+    from sqlalchemy import text
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        async with get_sessionmaker()() as db, db.begin():
+            await db.execute(
+                text(
+                    "INSERT INTO devices (id, hostname, os_family, status, org_id) "
+                    "VALUES (gen_random_uuid(), 'nullorg', 'linux', 'enrolled', NULL)"
+                )
+            )
 
 
 async def test_an_organization_that_owns_something_cannot_be_deleted():
