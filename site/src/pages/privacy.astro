@@ -1,0 +1,85 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout
+  title="Privacy — OpenRMM"
+  description="What this website collects, where it lives, and what the OpenRMM product itself sends: nothing."
+>
+  <Nav />
+  <main class="privacy">
+    <div class="container">
+      <p class="section-kicker">Privacy</p>
+      <h1>What this site collects</h1>
+
+      <section>
+        <h2>This website</h2>
+        <p>
+          This marketing site uses session replay to understand which parts of
+          the page people actually read. It runs on infrastructure we host
+          ourselves (no third-party analytics service receives anything),
+          recordings expire after 30 days, and text you type into form fields
+          is obscured by the recorder. If your browser sends the Do Not Track
+          signal, recording never starts.
+        </p>
+        <p>
+          Aggregate counts, such as daily visits per section, may be kept
+          longer. Counts are not personal data.
+        </p>
+      </section>
+
+      <section>
+        <h2>The OpenRMM product</h2>
+        <p>
+          The software this site describes sends nothing to us. No telemetry,
+          no update pings, no crash reports, no license checks. Your server,
+          your agents, your data. The only network connections the agent makes
+          are to the server you point it at. That claim is auditable, which is
+          rather the point of the license.
+        </p>
+      </section>
+
+      <section>
+        <h2>Questions</h2>
+        <p>
+          Open an issue on <a href="https://github.com/openrmm">GitHub</a> or
+          write to the maintainers at
+          <a href="https://supported.systems">Supported Systems</a>.
+        </p>
+      </section>
+    </div>
+  </main>
+  <Footer />
+</BaseLayout>
+
+<style>
+  .privacy {
+    padding-block: clamp(4rem, 9vw, 7rem);
+  }
+
+  .privacy .container {
+    max-width: 46rem;
+  }
+
+  .privacy h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    margin-bottom: 2.5rem;
+  }
+
+  .privacy section {
+    margin-bottom: 2.2rem;
+  }
+
+  .privacy h2 {
+    font-size: 1.25rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .privacy p {
+    color: var(--text-dim);
+    margin-bottom: 0.9rem;
+    text-wrap: pretty;
+  }
+</style>

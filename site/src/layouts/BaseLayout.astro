@@ -49,5 +49,46 @@ const jsonLd = {
   </head>
   <body>
     <slot />
+    <script>
+      // Self-hosted session replay, marketing site ONLY — never the console.
+      // See /privacy for what this collects; DNT is honored before start().
+      // analytics.active enables CUSTOM events (without it the instance only
+      // derives CLICK/PERFORMANCE rows with empty descriptions).
+      import Tracker from '@openreplay/tracker';
+
+      if (import.meta.env.PROD) {
+        const tracker = new Tracker({
+          projectKey: 'RsUB9UfA6uOSSilQf4u9',
+          ingestPoint: 'https://or.supported.systems/ingest',
+          respectDoNotTrack: true,
+          analytics: { active: true },
+        } as ConstructorParameters<typeof Tracker>[0]);
+        tracker.start();
+
+        // Components stay tracker-agnostic: they dispatch openrmm:track on
+        // the document, and only this file knows a tracker exists.
+        document.addEventListener('openrmm:track', (e) => {
+          const { name, payload } = (e as CustomEvent).detail ?? {};
+          if (name) tracker.event(name, payload ?? null);
+        });
+
+        // section_view: fired once per anchored section per page view, so
+        // "did the bitemporal pitch survive the fold" is measured, not inferred.
+        const seen = new Set<string>();
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const id = (entry.target as HTMLElement).id;
+              if (entry.isIntersecting && id && !seen.has(id)) {
+                seen.add(id);
+                tracker.event('section_view', { id });
+              }
+            }
+          },
+          { threshold: 0.15 },
+        );
+        document.querySelectorAll('section[id]').forEach((s) => io.observe(s));
+      }
+    </script>
   </body>
 </html>

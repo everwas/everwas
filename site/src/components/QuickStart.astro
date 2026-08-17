@@ -29,7 +29,7 @@ sudo ./bin/openrmm-agent install \\
         <div class="qs-pane-head">
           <span class="qs-step">1</span>
           <h3>Bring up the server</h3>
-          <button class="qs-copy" type="button" data-copy={serverCmds} aria-label="Copy server commands">
+          <button class="qs-copy" type="button" data-copy={serverCmds} data-variant="server" aria-label="Copy server commands">
             <Icon name="lucide:copy" size={15} />
           </button>
         </div>
@@ -39,7 +39,7 @@ sudo ./bin/openrmm-agent install \\
         <div class="qs-pane-head">
           <span class="qs-step">2</span>
           <h3>Enroll a machine</h3>
-          <button class="qs-copy" type="button" data-copy={agentCmds} aria-label="Copy agent commands">
+          <button class="qs-copy" type="button" data-copy={agentCmds} data-variant="agent" aria-label="Copy agent commands">
             <Icon name="lucide:copy" size={15} />
           </button>
         </div>
@@ -81,6 +81,14 @@ sudo ./bin/openrmm-agent install \\
       }
       btn.classList.add(ok ? 'copied' : 'copy-failed');
       setTimeout(() => btn.classList.remove('copied', 'copy-failed'), 1500);
+      if (ok) {
+        // north-star conversion: someone copied the install commands
+        document.dispatchEvent(
+          new CustomEvent('openrmm:track', {
+            detail: { name: 'quickstart_copy', payload: { variant: btn.dataset.variant } },
+          }),
+        );
+      }
     });
   });
 </script>
