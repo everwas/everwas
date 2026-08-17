@@ -23,3 +23,7 @@ agent/dist/
 # runtime data
 data/
 *.log
+
+# Agent coordination threads carry live infra details; decisions get
+# promoted into docs/ or commit messages, raw threads stay out of history.
+docs/agent-threads/*/
