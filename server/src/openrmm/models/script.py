@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import ARRAY, DateTime, Enum, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -111,6 +111,12 @@ class ScriptRun(Base):
     stdout: Mapped[str] = mapped_column(Text, default="")
     stderr: Mapped[str] = mapped_column(Text, default="")
     truncated: Mapped[bool] = mapped_column(default=False)
+
+    # Highest output sequence applied per stream, -1 meaning none yet. Read by
+    # apply_job_output to make a redelivered chunk a no-op instead of a
+    # duplicate; see migration 0015.
+    stdout_seq: Mapped[int] = mapped_column(default=-1, server_default=text("-1"))
+    stderr_seq: Mapped[int] = mapped_column(default=-1, server_default=text("-1"))
     requested_by: Mapped[str | None] = mapped_column(String(255), default=None)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)

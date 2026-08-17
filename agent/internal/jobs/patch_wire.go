@@ -124,11 +124,11 @@ func (d PatchDeps) Execute(ctx context.Context, spec scripts.JobSpec, progress s
 	// One PublishStderr call per job: it emits both EOF markers, so a
 	// second call would reopen a stream the server has already closed.
 	if d.Runner != nil {
-		d.Runner.PublishStderr(spec.JobID, "openrmm-agent: "+summary+"\n")
+		d.Runner.PublishStderr(spec, "openrmm-agent: "+summary+"\n")
 	}
 	progress(100, scripts.PhaseFinished, res.Status)
 	if d.Runner != nil {
-		d.Runner.PublishResult(spec.JobID, res)
+		d.Runner.PublishResult(spec, res)
 	}
 	return res
 }

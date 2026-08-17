@@ -104,10 +104,28 @@ func TestHandleJobDropsADuplicateDelivery(t *testing.T) {
 	close(release)
 	waitFor(t, "the job to finish", func() bool { return len(m.RunningJobs()) == 0 })
 
-	// Once it has finished, the same id may legitimately run again.
+	// A redelivery arriving AFTER completion must not run the job again.
+	//
+	// This previously asserted the opposite, that "the same id may legitimately
+	// run again". It may not: job ids are server-assigned UUIDs that are never
+	// reused, and JetStream redelivers only because it saw no ack. So a second
+	// delivery of a finished id is always a retry of work that already
+	// happened, never a new request.
+	//
+	// It is also the likelier of the two duplicate shapes. The in-flight
+	// registry catches an overlapping redelivery; this one arrives while the
+	// callback is blocked in reserve waiting for a slot, and lands after the
+	// original has finished and left the registry.
 	third := &fakeMsg{data: jobBody(t, "job-dup", scripts.KindInventoryRefresh)}
 	m.handleJob(third)
-	waitFor(t, "a re-run after completion", func() bool { return total.Load() == 2 })
+	if !third.acked {
+		t.Error("the post-completion redelivery was not acked, so JetStream keeps offering it " +
+			"and every offer is another chance to run it twice")
+	}
+	if got := total.Load(); got != 1 {
+		t.Fatalf("%d executions for one job id, want 1: a script ran twice, or a patch "+
+			"install ran twice and reported failure for updates it had already applied", got)
+	}
 }
 
 // TestDispatchIsBoundedByTheWorkerPool is the regression for unbounded

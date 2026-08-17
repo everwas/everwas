@@ -65,11 +65,14 @@ type Module struct {
 	// job derives from. See inflight.go.
 	mu       sync.Mutex
 	inflight map[string]*jobHandle
-	slots    chan struct{}
-	base     context.Context
-	stopJobs context.CancelFunc
-	stopping bool
-	wg       sync.WaitGroup
+	// done and doneOrder are the bounded recently-finished set; see markDone.
+	done      map[string]struct{}
+	doneOrder []string
+	slots     chan struct{}
+	base      context.Context
+	stopJobs  context.CancelFunc
+	stopping  bool
+	wg        sync.WaitGroup
 
 	// Shutdown timings; zero means the defaults. Tests shorten them.
 	shutdownGrace time.Duration
@@ -164,9 +167,9 @@ func (m *Module) jobPanicked(spec scripts.JobSpec, cause any, stack []byte) {
 	m.Log.Error("panic while running a job", "job_id", spec.JobID,
 		"kind", spec.Kind, "panic", cause, "stack", string(stack))
 	if m.Scripts != nil {
-		m.Scripts.PublishStderr(spec.JobID,
+		m.Scripts.PublishStderr(spec,
 			fmt.Sprintf("openrmm-agent: job failed with an internal error: %v\n", cause))
-		m.Scripts.PublishResult(spec.JobID, scripts.Result{
+		m.Scripts.PublishResult(spec, scripts.Result{
 			Status:   scripts.StatusFailed,
 			ExitCode: -1,
 		})
@@ -215,6 +218,9 @@ func (m *Module) runPatch(ctx context.Context, spec scripts.JobSpec, progress sc
 }
 
 func (m *Module) runInventoryRefresh(ctx context.Context, spec scripts.JobSpec, progress scripts.ProgressFunc) {
+	if progress == nil {
+		progress = func(int, string, string) {}
+	}
 	started := time.Now()
 	progress(0, scripts.PhaseStarted, spec.Kind)
 	res := scripts.Result{Status: scripts.StatusSucceeded}
@@ -226,18 +232,24 @@ func (m *Module) runInventoryRefresh(ctx context.Context, spec scripts.JobSpec, 
 	}
 	res.DurationMS = time.Since(started).Milliseconds()
 	progress(100, scripts.PhaseFinished, res.Status)
-	m.Scripts.PublishResult(spec.JobID, res)
+	m.Scripts.PublishResult(spec, res)
 }
 
 // unsupportedJob reports a kind this build cannot run (patch.* lands in M5)
 // without leaving the server waiting for a result that never comes.
 func (m *Module) unsupportedJob(spec scripts.JobSpec, progress scripts.ProgressFunc) {
+	// Guarded like the patch and update handlers already are. This is the
+	// error path for a kind we cannot run, so a nil progress here turns "tell
+	// the server this job cannot run" into a panic.
+	if progress == nil {
+		progress = func(int, string, string) {}
+	}
 	note := "job kind " + spec.Kind + " is not supported by agent " + m.Version
 	m.Log.Warn("unsupported job kind", "job_id", spec.JobID, "kind", spec.Kind)
 	progress(0, scripts.PhaseStarted, spec.Kind)
-	m.Scripts.PublishStderr(spec.JobID, "openrmm-agent: "+note+"\n")
+	m.Scripts.PublishStderr(spec, "openrmm-agent: "+note+"\n")
 	progress(100, scripts.PhaseFinished, scripts.StatusFailed)
-	m.Scripts.PublishResult(spec.JobID, scripts.Result{
+	m.Scripts.PublishResult(spec, scripts.Result{
 		Status:   scripts.StatusFailed,
 		ExitCode: -1,
 	})
@@ -276,7 +288,7 @@ func (m *Module) RunScheduled(_ context.Context, jobID string, entry sched.Entry
 	// job, so they are cancellable, counted against the concurrency cap, and
 	// reported at shutdown. ctx is the scheduler's; the job's own context
 	// comes from the registry.
-	jobCtx, release, err := m.reserve(jobID, spec.Kind)
+	jobCtx, release, err := m.reserve(spec)
 	if err != nil {
 		m.Log.Warn("scheduled job not started", "job_id", jobID,
 			"entry_id", entry.EntryID, "err", err)

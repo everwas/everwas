@@ -122,6 +122,11 @@ type Runner struct {
 	Audit    *audit.Publisher
 	Log      *slog.Logger
 
+	// OnResult and OnChunk intercept publishing. Set by tests in other
+	// packages, which cannot reach the unexported emit hook below.
+	OnResult func(jobID string, res Result)
+	OnChunk  func(Chunk) error
+
 	// emit publishes one output chunk. Tests replace it to observe framing
 	// without standing up a NATS server.
 	emit func(Chunk) error
@@ -423,6 +428,9 @@ func (b *reasonBox) get() string {
 func (r *Runner) chunkOut(c Chunk) error {
 	if r.emit != nil {
 		return r.emit(c)
+	}
+	if r.OnChunk != nil {
+		return r.OnChunk(c)
 	}
 	return r.publishChunk(c)
 }

@@ -146,14 +146,31 @@ func (r *Runner) resultStream() resultPublisher {
 
 // PublishResult publishes a terminal result for work the runner did not
 // execute itself (inventory refresh, unsupported job kinds).
-func (r *Runner) PublishResult(jobID string, res Result) {
-	r.publishResult(jobID, res)
+// PublishResult sends one terminal result for a job.
+//
+// Takes the JobSpec rather than a job id so EntryID travels with it. It used to
+// take an id, and every caller except the happy path built a bare Result and
+// dropped the entry id, which is the only thing that lets the server attribute
+// a scheduled run: a nightly job that panicked or was interrupted left no
+// record anywhere. Threading the spec is what makes forgetting impossible,
+// rather than remembering to set a field at six call sites.
+func (r *Runner) PublishResult(job JobSpec, res Result) {
+	res.EntryID = job.EntryID
+	if r.OnResult != nil {
+		r.OnResult(job.JobID, res)
+		return
+	}
+	r.publishResult(job.JobID, res)
 }
 
 // PublishStderr sends one stderr chunk and both EOF markers, so a job that
 // never spawned a process still terminates its output stream cleanly.
-func (r *Runner) PublishStderr(jobID, text string) {
-	sink := newChunkSink(jobID, "", r.chunkOut)
+func (r *Runner) PublishStderr(job JobSpec, text string) {
+	jobID := job.JobID
+	// Output is adopted by the same lookup as the result, so a chunk with no
+	// entry id is dropped alongside it and the operator loses the reason as
+	// well as the record.
+	sink := newChunkSink(jobID, job.EntryID, r.chunkOut)
 	if err := sink.write(StreamStderr, []byte(text)); err != nil {
 		r.warn("job stderr publish", "job_id", jobID, "err", err)
 	}

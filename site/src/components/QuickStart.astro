@@ -50,12 +50,37 @@ sudo ./bin/openrmm-agent install \\
 </section>
 
 <script>
-  // Clipboard copy with a brief confirmation state on the button.
+  // Clipboard copy with a brief confirmation state on the button. The
+  // async API can reject (unfocused document, restricted context), so a
+  // hidden-textarea execCommand fallback keeps the button honest either way.
+  function fallbackCopy(text: string): boolean {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    return ok;
+  }
+
   document.querySelectorAll<HTMLButtonElement>('.qs-copy').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(btn.dataset.copy ?? '');
-      btn.classList.add('copied');
-      setTimeout(() => btn.classList.remove('copied'), 1500);
+      const text = btn.dataset.copy ?? '';
+      let ok = true;
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        ok = fallbackCopy(text);
+      }
+      btn.classList.add(ok ? 'copied' : 'copy-failed');
+      setTimeout(() => btn.classList.remove('copied', 'copy-failed'), 1500);
     });
   });
 </script>

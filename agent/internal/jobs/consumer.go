@@ -135,8 +135,18 @@ func (m *Module) handleJob(msg jetstream.Msg) {
 	// is deliberate: the library delivers to this callback one message at a
 	// time, so an agent with every slot busy stops acking and MaxAckPending
 	// becomes real backpressure instead of a number.
-	ctx, release, err := m.reserve(spec.JobID, spec.Kind)
+	ctx, release, err := m.reserve(spec)
 	switch {
+	case errors.Is(err, errJobDone):
+		// Ran already and finished. Acking is the whole point: leaving it
+		// unacked means JetStream keeps offering it until MaxDeliver, and
+		// every offer is another chance to run it a second time.
+		m.Log.Warn("redelivery of a completed job, dropping",
+			"job_id", spec.JobID, "kind", spec.Kind)
+		if aerr := msg.Ack(); aerr != nil {
+			m.Log.Warn("job ack", "job_id", spec.JobID, "err", aerr)
+		}
+		return
 	case errors.Is(err, errJobRunning):
 		// A redelivery of a job we are already running, which happens
 		// whenever an ack is lost to a blip longer than ack_wait. A second
@@ -163,6 +173,9 @@ func (m *Module) handleJob(msg jetstream.Msg) {
 		"requested_by", spec.RequestedBy)
 	go func() {
 		defer release()
+		// Marked done BEFORE the slot is released, so a redelivery cannot slip
+		// between the two and find the id neither running nor finished.
+		defer m.markDone(spec.JobID)
 		m.runJob(ctx, spec)
 	}()
 

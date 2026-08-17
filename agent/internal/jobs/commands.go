@@ -173,7 +173,7 @@ func (m *Module) cmdAgentUpdate(data []byte) reply {
 		return reply{Accepted: false, JobID: req.JobID, Error: err.Error()}
 	}
 
-	jobCtx, release, err := m.reserve(req.JobID, scripts.KindAgentUpdate)
+	jobCtx, release, err := m.reserve(scripts.JobSpec{JobID: req.JobID, Kind: scripts.KindAgentUpdate})
 	if err != nil {
 		return reply{Accepted: false, JobID: req.JobID, Error: err.Error()}
 	}
