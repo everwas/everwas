@@ -27,9 +27,29 @@ services:
   openrmm-web:
     environment:
       OPENRMM_API_URL: http://openrmm-api:8000
+      # Tells vite what the browser will actually be talking to. Without it
+      # HMR advertises ws://localhost:5173, the browser tries that against an
+      # https:// page, and every edit needs a manual reload with
+      # "[vite] server connection lost" in the console.
+      OPENRMM_PUBLIC_HOST: ${OPENRMM_DOMAIN:-}
     volumes:
       - ./web:/app
       - /app/node_modules
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      caddy.3_handle: /*
+      caddy.3_handle.reverse_proxy: "{{upstreams 5173}}"
+      # Vite's HMR socket sends no application-level pings, so Caddy's
+      # defaults close it as idle after ~10-15s and the page stops updating
+      # while looking perfectly fine.
+      caddy.3_handle.reverse_proxy.flush_interval: "-1"
+      caddy.3_handle.reverse_proxy.transport: http
+      caddy.3_handle.reverse_proxy.transport.read_timeout: "0"
+      caddy.3_handle.reverse_proxy.transport.write_timeout: "0"
+      caddy.3_handle.reverse_proxy.transport.keepalive: 5m
+      caddy.3_handle.reverse_proxy.stream_timeout: "0"
+      caddy.3_handle.reverse_proxy.stream_close_delay: 5s
     ports:
       - "127.0.0.1:25173:5173"
 
@@ -41,6 +61,9 @@ services:
 
   openrmm-mailpit:
     image: axllent/mailpit:latest
-    networks: [openrmm-internal]
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_MAIL_DOMAIN:-mail-${OPENRMM_DOMAIN}}
+      caddy.reverse_proxy: "{{upstreams 8025}}"
     ports:
       - "127.0.0.1:28025:8025"

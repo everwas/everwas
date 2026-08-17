@@ -29,7 +29,7 @@ func Connect(cfg *config.Config, log *slog.Logger, onClosed func()) (*nats.Conn,
 	if len(shortID) > 8 {
 		shortID = shortID[:8]
 	}
-	return nats.Connect(cfg.NATSURL,
+	nc, err := nats.Connect(cfg.NATSURL,
 		nats.UserInfo(cfg.AgentID, cfg.AgentSecret),
 		nats.Name("openrmm-agent-"+shortID),
 		// The server grants only this agent's own inbox; the shared
@@ -42,6 +42,9 @@ func Connect(cfg *config.Config, log *slog.Logger, onClosed func()) (*nats.Conn,
 		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			log.Warn("nats disconnected", "err", err)
 		}),
+		nats.ConnectHandler(func(nc *nats.Conn) {
+			log.Info("nats connected", "url", nc.ConnectedUrl())
+		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
 			log.Info("nats reconnected", "url", nc.ConnectedUrl())
 		}),
@@ -53,4 +56,26 @@ func Connect(cfg *config.Config, log *slog.Logger, onClosed func()) (*nats.Conn,
 			}
 		}),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	// RetryOnFailedConnect means Connect returns a conn that is not yet
+	// established, which is what lets the agent start while the server is
+	// down. The cost is that nothing has told us so, and every JetStream
+	// publish then fails with nats.go's "headers not supported by this
+	// server" -- because the INFO that advertises header support has not
+	// arrived. That error names the SERVER for a problem that is entirely
+	// local, and it cost an hour of looking at the wrong machine.
+	//
+	// Say it plainly instead. The matching "nats connected" line above is
+	// what confirms it later.
+	if !nc.IsConnected() {
+		log.Warn("nats not connected yet, retrying in the background",
+			"url", cfg.NATSURL,
+			"note", "until this connects, publishes fail with "+
+				"\"headers not supported by this server\"; that is this "+
+				"message, not a server problem")
+	}
+	return nc, nil
 }

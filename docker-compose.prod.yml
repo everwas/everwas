@@ -1,37 +1,28 @@
-# Prod overlay: caddy-docker-proxy labels on the external `caddy` network.
-# Web UI + API on one domain; NATS websocket for agents on the same domain
-# under /nats (Caddy proxies the websocket upgrade to the NATS listener).
+# Prod overlay: restart policy and the production web image.
+#
+# The caddy-docker-proxy labels live in docker-compose.yml, not here, because
+# routing is the same in both modes and duplicating it is how the two drift.
+# Only the web service differs: a static build on :80 in prod, the vite dev
+# server on :5173 in dev.
+#
+# The earlier version of this file used named matchers
+# (`caddy.@api.path` plus `caddy.reverse_proxy: "@api ..."`) spread across four
+# containers that each re-declared the same site. That works until two of them
+# want the same directive name, which is why it had grown reverse_proxy,
+# reverse_proxy_1 and reverse_proxy_2: the suffix is not ordering, it is just
+# a way to stop the keys colliding, and the resulting evaluation order is
+# whatever Caddy's directive sort decides. `handle` blocks with an explicit
+# numeric prefix are first-match-wins in the order written, which is what path
+# routing actually needs.
 services:
   openrmm-api:
     restart: unless-stopped
-    networks: [openrmm-internal, caddy]
-    labels:
-      caddy: ${OPENRMM_DOMAIN:?set in .env}
-      caddy.@api.path: /api/*
-      caddy.reverse_proxy: "@api {{upstreams 8000}}"
 
   openrmm-nats:
     restart: unless-stopped
-    networks: [openrmm-internal, caddy]
-    labels:
-      caddy: ${OPENRMM_DOMAIN}
-      caddy.@nats.path: /nats
-      caddy.reverse_proxy_1: "@nats {{upstreams 8080}}"
 
   openrmm-mcp:
     restart: unless-stopped
-    networks: [openrmm-internal, caddy]
-    labels:
-      caddy: ${OPENRMM_DOMAIN}
-      caddy.@mcp.path: /mcp*
-      caddy.reverse_proxy_2: "@mcp {{upstreams 8001}}"
-
-  openrmm-web:
-    restart: unless-stopped
-    networks: [openrmm-internal, caddy]
-    labels:
-      caddy: ${OPENRMM_DOMAIN}
-      caddy.reverse_proxy: "{{upstreams 80}}"
 
   openrmm-postgres:
     restart: unless-stopped
@@ -39,6 +30,13 @@ services:
   openrmm-dispatcher:
     restart: unless-stopped
 
-networks:
-  caddy:
-    external: true
+  openrmm-web:
+    restart: unless-stopped
+    networks: [openrmm-internal, caddy]
+    labels:
+      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      # Last of the three handles. `handle` is first-match-wins, so /api and
+      # /nats claim their paths and this takes everything else, which for a
+      # SPA means every client-side route falls through to index.html.
+      caddy.3_handle: /*
+      caddy.3_handle.reverse_proxy: "{{upstreams 80}}"

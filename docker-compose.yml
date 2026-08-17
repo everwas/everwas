@@ -23,7 +23,29 @@ services:
     volumes:
       - ./docker/nats/nats.conf:/etc/nats/nats.conf:ro
       - openrmm-natsdata:/data
-    networks: [openrmm-internal]
+    networks: [openrmm-internal, caddy]
+    labels:
+      # A hostname of its own, serving at the ROOT.
+      #
+      # It cannot be a path on the main domain. nats.go ignores the path in a
+      # websocket URL and connects to "/", so wss://host/nats silently lands
+      # on whatever handles "/" and the handshake fails. nats-py DOES honour
+      # the path, which is what made this look like a server problem for a
+      # while: the Python probe connected happily to the exact URL the Go
+      # agent could not use.
+      caddy: ${OPENRMM_NATS_DOMAIN:-nats-${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}}
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+      # An agent connection stays open for the life of the agent, so every
+      # timeout that would tidy up an "idle" websocket has to be off. Caddy's
+      # defaults close one after ~10-15s of quiet, which across a fleet is a
+      # reconnect storm every fifteen seconds.
+      caddy.reverse_proxy.flush_interval: "-1"
+      caddy.reverse_proxy.transport: http
+      caddy.reverse_proxy.transport.read_timeout: "0"
+      caddy.reverse_proxy.transport.write_timeout: "0"
+      caddy.reverse_proxy.transport.keepalive: 5m
+      caddy.reverse_proxy.stream_timeout: "0"
+      caddy.reverse_proxy.stream_close_delay: 5s
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8222/healthz"]
       interval: 5s
@@ -49,7 +71,24 @@ services:
       OPENRMM_SMTP_PASSWORD: ${OPENRMM_SMTP_PASSWORD:-}
       OPENRMM_SMTP_FROM: ${OPENRMM_SMTP_FROM:-openrmm@localhost}
       OPENRMM_MCP_ENABLED: ${OPENRMM_MCP_ENABLED:-false}
-    networks: [openrmm-internal]
+    networks: [openrmm-internal, caddy]
+    labels:
+      # Same origin as the SPA on purpose: the session cookie is HttpOnly and
+      # SameSite=Lax, so splitting the API onto its own hostname would mean
+      # CORS plus SameSite=None plus a cross-site cookie, to solve nothing.
+      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      caddy.1_handle: /api/*
+      caddy.1_handle.reverse_proxy: "{{upstreams 8000}}"
+      # /api also carries the remote-shell websocket. It pings every 30s, so
+      # it survives a default idle timeout, but a session is capped at 8h and
+      # a `yes` flood must not be mistaken for a stall.
+      caddy.1_handle.reverse_proxy.flush_interval: "-1"
+      caddy.1_handle.reverse_proxy.transport: http
+      caddy.1_handle.reverse_proxy.transport.read_timeout: "0"
+      caddy.1_handle.reverse_proxy.transport.write_timeout: "0"
+      caddy.1_handle.reverse_proxy.transport.keepalive: 5m
+      caddy.1_handle.reverse_proxy.stream_timeout: "0"
+      caddy.1_handle.reverse_proxy.stream_close_delay: 5s
     depends_on:
       openrmm-postgres:
         condition: service_healthy
@@ -80,7 +119,16 @@ services:
       target: ${OPENRMM_MODE:-dev}
     command: ["openrmm-mcp"]
     environment: *server-env
-    networks: [openrmm-internal]
+    networks: [openrmm-internal, caddy]
+    labels:
+      # Its own hostname: MCP clients authenticate with a bearer API key, not
+      # the browser session, so it shares nothing with the app's origin.
+      caddy: ${OPENRMM_MCP_DOMAIN:-mcp-${OPENRMM_DOMAIN}}
+      caddy.reverse_proxy: "{{upstreams 8001}}"
+      caddy.reverse_proxy.flush_interval: "-1"
+      caddy.reverse_proxy.transport: http
+      caddy.reverse_proxy.transport.read_timeout: "0"
+      caddy.reverse_proxy.transport.write_timeout: "0"
     depends_on:
       openrmm-postgres:
         condition: service_healthy
@@ -100,4 +148,13 @@ volumes:
   openrmm-natsdata:
 
 networks:
+  # Everything talks over this. Postgres and the dispatcher live ONLY here:
+  # they have no HTTP surface, and the caddy network is shared with every
+  # other stack on the host, so putting a database on it would publish its
+  # name into a namespace we do not own.
   openrmm-internal: {}
+
+  # caddy-docker-proxy watches this network and builds its config from the
+  # labels above. Created outside this stack.
+  caddy:
+    external: true
