@@ -5,36 +5,178 @@
   margin-top: 3rem;
 }
 
+/* ---- status-module card ---- */
+
 .feature-card {
-  padding: 1.5rem 1.4rem;
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.35rem 1.4rem 1.15rem;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--amber) 3%, transparent), transparent 40%),
+    var(--bg-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .feature-card:hover {
-  border-color: var(--amber-dim);
-  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--amber) 45%, var(--hairline));
+  transform: translateY(-3px);
+  box-shadow:
+    var(--shadow-card),
+    0 18px 40px -22px color-mix(in srgb, var(--amber) 35%, transparent);
 }
 
-.feature-icon {
+/* HUD corner brackets: two opposite corners, ignite on hover */
+.fc-bracket {
+  position: absolute;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 0 solid var(--text-faint);
+  opacity: 0.55;
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+
+.fc-tl {
+  top: 7px;
+  left: 7px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-top-left-radius: 4px;
+}
+
+.fc-br {
+  bottom: 7px;
+  right: 7px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  border-bottom-right-radius: 4px;
+}
+
+.feature-card:hover .fc-bracket {
+  border-color: var(--amber);
+  opacity: 1;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* ---- header row: icon tile · unit name · index ---- */
+
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.fc-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.6rem;
-  height: 2.6rem;
+  width: 2.3rem;
+  height: 2.3rem;
   border-radius: var(--radius-s);
   background: var(--bg-2);
   border: 1px solid var(--hairline);
   color: var(--amber);
-  margin-bottom: 1rem;
+  flex-shrink: 0;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
+
+.feature-card:hover .fc-icon {
+  border-color: var(--amber-dim);
+  box-shadow: 0 0 16px -2px var(--amber-glow), inset 0 0 8px var(--amber-glow);
+}
+
+.fc-unit {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  transition: color 0.25s ease;
+}
+
+.feature-card:hover .fc-unit {
+  color: var(--amber-bright);
+}
+
+.fc-idx {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+/* ---- body ---- */
 
 .feature-card h3 {
   font-size: 1.08rem;
   margin-bottom: 0.5rem;
 }
 
-.feature-card p {
+.feature-card > p {
   color: var(--text-dim);
   font-size: 0.93rem;
   line-height: 1.6;
+  flex-grow: 1;
+}
+
+/* ---- status line ---- */
+
+.fc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1.05rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.fc-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+}
+
+.fc-status-ok .fc-dot {
+  background: var(--green);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--green) 60%, transparent);
+}
+
+.fc-status-cyan .fc-dot {
+  background: var(--cyan);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--cyan) 60%, transparent);
+}
+
+.fc-status-cyan {
+  color: var(--cyan);
+}
+
+.fc-status-ok {
+  color: color-mix(in srgb, var(--green) 70%, var(--text-dim));
+}
+
+/* the terminal module is recording */
+.fc-status-rec {
+  color: var(--red);
+}
+
+.fc-status-rec .fc-dot {
+  background: var(--red);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--red) 70%, transparent);
+  animation: fc-rec 1.6s ease-in-out infinite;
+}
+
+@keyframes fc-rec {
+  50% { opacity: 0.3; }
 }

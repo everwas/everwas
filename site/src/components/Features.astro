@@ -2,46 +2,73 @@
 import { Icon } from 'astro-icon/components';
 import './Features.css';
 
+// Each capability is presented as a "status module" — unit name in mono,
+// index, corner brackets, and a live status line. The status strings are
+// flavor, but honest flavor: they describe what the subsystem actually does.
 const features = [
   {
     icon: 'lucide:activity',
+    unit: 'mon.telemetry',
     title: 'Monitoring',
     body: 'Heartbeats plus CPU, memory, disk, and network telemetry from every endpoint, charted live in the dashboard.',
+    status: 'streaming',
+    kind: 'ok',
   },
   {
     icon: 'lucide:bell-ring',
+    unit: 'alert.rules',
     title: 'Alerting',
     body: 'Threshold rules with duration windows and cooldowns, heartbeat-miss detection, delivery to email, webhook, ntfy, and gotify with retries.',
+    status: 'armed',
+    kind: 'ok',
   },
   {
     icon: 'lucide:square-terminal',
+    unit: 'term.pty',
     title: 'Browser terminal',
     body: 'A real PTY on any enrolled machine, opened from the dashboard. Every session is recorded as an asciicast you can replay.',
+    status: 'REC',
+    kind: 'rec',
   },
   {
     icon: 'lucide:scroll-text',
+    unit: 'job.queue',
     title: 'Scripts & scheduling',
     body: 'A script library, fleet-wide runs, and cron schedules. Jobs queue durably, so a script sent to a sleeping laptop runs when it wakes.',
+    status: 'durable',
+    kind: 'ok',
   },
   {
     icon: 'lucide:package-search',
+    unit: 'inv.facts',
     title: 'Inventory',
     body: 'Hardware, installed software, processes, and services, with full history you can rewind to any point in time.',
+    status: 'bitemporal',
+    kind: 'cyan',
   },
   {
     icon: 'lucide:shield-check',
+    unit: 'patch.mgr',
     title: 'Patch management',
     body: 'Scan, approve, deploy across apt, dnf, pacman, Windows Update, and macOS softwareupdate from one queue.',
+    status: '5 backends',
+    kind: 'ok',
   },
   {
     icon: 'lucide:refresh-ccw',
+    unit: 'agent.update',
     title: 'Agent self-update',
     body: 'Signed updates with automatic rollback if the new binary fails to check in. Service install for systemd, launchd, and Windows SCM.',
+    status: 'signed',
+    kind: 'ok',
   },
   {
     icon: 'lucide:file-clock',
+    unit: 'audit.log',
     title: 'Audit everything',
     body: 'Shell recordings, script runs, patch approvals, and every MCP call land in an audit log written under the identity that acted.',
+    status: 'append-only',
+    kind: 'cyan',
   },
 ];
 ---
@@ -55,11 +82,21 @@ const features = [
       pricing, no phoning home, no black boxes between you and your machines.
     </p>
     <div class="feature-grid">
-      {features.map((f) => (
-        <article class="feature-card card">
-          <div class="feature-icon"><Icon name={f.icon} size={22} /></div>
+      {features.map((f, i) => (
+        <article class="feature-card" style={`--i: ${i}`}>
+          <span class="fc-bracket fc-tl" aria-hidden="true"></span>
+          <span class="fc-bracket fc-br" aria-hidden="true"></span>
+          <header class="fc-head">
+            <span class="fc-icon"><Icon name={f.icon} size={19} /></span>
+            <span class="fc-unit">{f.unit}</span>
+            <span class="fc-idx">{String(i + 1).padStart(2, '0')}</span>
+          </header>
           <h3>{f.title}</h3>
           <p>{f.body}</p>
+          <footer class={`fc-status fc-status-${f.kind}`}>
+            <span class="fc-dot" aria-hidden="true"></span>
+            {f.status}
+          </footer>
         </article>
       ))}
     </div>
