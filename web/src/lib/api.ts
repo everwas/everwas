@@ -59,7 +59,7 @@ export type Fact = {
   source: string
 }
 
-export type FactKind = "hardware" | "software" | "patchstate"
+export type FactKind = "hardware" | "software" | "patchstate" | "logins"
 export type SnapshotKind = "processes" | "services"
 
 export type User = { id: string; email: string; role: string }

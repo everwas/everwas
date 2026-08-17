@@ -20,7 +20,7 @@ from openrmm.models.telemetry import DeviceSnapshot
 
 log = structlog.get_logger()
 
-FACT_KINDS = {"hardware", "software", "patchstate", "network"}
+FACT_KINDS = {"hardware", "software", "patchstate", "network", "logins"}
 SNAPSHOT_KINDS = {"processes", "services"}
 
 
@@ -53,6 +53,17 @@ def _facts_from(kind: str, data: dict) -> dict[str, dict]:
             for p in data.get("packages", [])
             if p.get("name")
         }
+    if kind == "logins":
+        # Keyed on who and where, not on when. A repeat login at the same seat
+        # is an amend of the same fact rather than a new one, which keeps the
+        # key set bounded by seats instead of growing with every login for the
+        # life of the machine.
+        return {
+            f"login:{login['user']}@{login.get('terminal') or '-'}": login
+            for login in (data.get("logins") or [])
+            if login.get("user")
+        }
+
     if kind == "network":
         # One fact per interface, keyed by name. Per-interface rather than one
         # blob for the machine so that a single NIC changing address amends

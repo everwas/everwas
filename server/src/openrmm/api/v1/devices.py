@@ -12,7 +12,7 @@ from openrmm.api.deps import CurrentUser, DbSession, require_role
 from openrmm.bitemporal.query import get_facts
 from openrmm.config import get_settings
 from openrmm.models.device import Device, DeviceStatus
-from openrmm.models.facts import FactNetwork
+from openrmm.models.facts import FactKind, FactNetwork
 from openrmm.models.script import RunStatus, RunTrigger, ScriptRun
 from openrmm.models.telemetry import DeviceSnapshot, DeviceStatusLatest, telemetry_metrics
 from openrmm.models.user import Role
@@ -155,7 +155,7 @@ async def get_device_facts(
     device_id: uuid.UUID,
     db: DbSession,
     _user: CurrentUser,
-    kind: Literal["hardware", "software", "patchstate"] = "hardware",
+    kind: FactKind = "hardware",
     as_of: datetime | None = None,
     knew_at: datetime | None = None,
 ) -> list[FactOut]:

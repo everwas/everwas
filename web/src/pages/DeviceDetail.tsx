@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ArrowLeft, Cpu, HardDrive, History, MemoryStick } from "lucide-react"
+import { ArrowLeft, Cpu, HardDrive, History, MemoryStick, Monitor, Wifi } from "lucide-react"
 
 import {
   api,
@@ -38,6 +38,7 @@ const TABS = [
   "software",
   "hardware",
   "network",
+  "logins",
   "processes",
   "services",
   "terminal",
@@ -100,7 +101,62 @@ function FactsTable({ facts, kind }: { facts: Fact[]; kind: FactKind }) {
       </Table>
     )
   }
+  if (kind === "logins") {
+    return <LoginsTable facts={facts} />
+  }
   return <HardwareFacts facts={facts} />
+}
+
+/** Who is signed in and where they are sitting.
+ *
+ * Rendered from bitemporal facts like the other tabs, so the time-machine
+ * control scrubs this back too: "who was on this box when the change landed"
+ * is the version of the question people actually need answered.
+ */
+function LoginsTable({ facts }: { facts: Fact[] }) {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>User</TableHead>
+          <TableHead>Seat</TableHead>
+          <TableHead>From</TableHead>
+          <TableHead>Signed in</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {facts.map((f) => {
+          const p = f.payload as Record<string, unknown>
+          const remote = p.kind === "remote"
+          return (
+            <TableRow key={f.fact_key}>
+              <TableCell className="font-mono text-xs">{String(p.user ?? "")}</TableCell>
+              <TableCell>
+                <span className="flex items-center gap-1.5 font-mono text-xs">
+                  {remote ? (
+                    <Wifi className="size-3.5 text-muted-foreground" aria-label="Remote" />
+                  ) : (
+                    <Monitor className="size-3.5 text-muted-foreground" aria-label="Console" />
+                  )}
+                  {String(p.terminal || "n/a")}
+                  {/* Windows keeps a disconnected session alive with the
+                      user's programs still running, which is a different
+                      thing from being signed out and is worth saying. */}
+                  {p.state ? <Badge variant="outline">{String(p.state)}</Badge> : null}
+                </span>
+              </TableCell>
+              <TableCell className="font-mono text-xs text-muted-foreground">
+                {String(p.host || (remote ? "n/a" : "local"))}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">
+                {p.since ? new Date(String(p.since)).toLocaleString() : "n/a"}
+              </TableCell>
+            </TableRow>
+          )
+        })}
+      </TableBody>
+    </Table>
+  )
 }
 
 /** Byte counts, as a person reads them.
@@ -289,7 +345,12 @@ export function DeviceDetailPage() {
     } else if (tab === "sessions") {
       api.shellSessions(id).then(setSessions).catch(() => {})
     } else if (tab !== "terminal" && tab !== "network") {
-      api.facts(id, tab, asOf).then(setFacts).catch(() => {})
+      // Clear first. Facts from the previous tab are shaped for a different
+      // renderer, and if this fetch fails they stay on screen reinterpreted by
+      // it: a few hundred Debian packages once rendered as a few hundred blank
+      // login rows, which looks like data rather than like an error.
+      setFacts([])
+      api.facts(id, tab, asOf).then(setFacts).catch(() => setFacts([]))
     }
   }, [id, tab, asOf])
 
@@ -312,7 +373,7 @@ export function DeviceDetailPage() {
 
   if (!device) return <p className="text-sm text-muted-foreground">Loading…</p>
 
-  const isFactTab = tab === "software" || tab === "hardware"
+  const isFactTab = tab === "software" || tab === "hardware" || tab === "logins"
 
   return (
     <div className="flex flex-col gap-6">

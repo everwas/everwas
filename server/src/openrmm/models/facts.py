@@ -11,6 +11,7 @@ reject overlapping current beliefs as a safety net.
 
 import uuid
 from datetime import datetime
+from typing import Literal, get_args
 
 from sqlalchemy import BigInteger, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, TSTZRANGE, Range
@@ -48,9 +49,29 @@ class FactNetwork(BitemporalFactMixin, Base):
     device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
 
 
+class FactLogins(BitemporalFactMixin, Base):
+    __tablename__ = "fact_logins"
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+
+
 FACT_TABLES = {
     "hardware": FactHardware,
     "software": FactSoftware,
     "patchstate": FactPatchState,
     "network": FactNetwork,
+    "logins": FactLogins,
 }
+
+# The API validates its ?kind= against this. A Literal cannot be built from a
+# dict at type-check time, so the assertion below keeps the two in step instead
+# of trusting them to stay that way.
+#
+# They already drifted once: adding "network" and "logins" to FACT_TABLES left
+# the endpoint's own hardcoded Literal behind, and the only symptom was a 422 in
+# the browser for a kind the server stores perfectly well. Failing at import is
+# a better place to find that out.
+FactKind = Literal["hardware", "software", "patchstate", "network", "logins"]
+
+assert set(get_args(FactKind)) == set(FACT_TABLES), (
+    f"FactKind and FACT_TABLES have drifted: {set(get_args(FactKind)) ^ set(FACT_TABLES)}"
+)

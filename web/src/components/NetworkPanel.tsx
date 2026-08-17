@@ -137,7 +137,7 @@ function InterfaceChart({
               tickLine={false}
               axisLine={false}
               fontSize={11}
-              width={compact ? 40 : 72}
+              width={compact ? 48 : 72}
             />
             <YAxis
               yAxisId="out"
@@ -147,7 +147,7 @@ function InterfaceChart({
               tickLine={false}
               axisLine={false}
               fontSize={11}
-              width={compact ? 40 : 72}
+              width={compact ? 48 : 72}
             />
             <Tooltip
               labelFormatter={(iso) => new Date(iso as string).toLocaleString()}
