@@ -139,7 +139,16 @@ async def verify_agent_secret(db: AsyncSession, agent_id: uuid.UUID, secret: str
             .where(AgentCredential.device_id == agent_id)
             .values(prev_secret_hash=None, prev_valid_until=None)
         )
-        await db.commit()
+        # No commit here: the caller owns the transaction. session_scope() is
+        # `sessionmaker() as s, s.begin()`, so it commits on clean exit.
+        #
+        # There used to be a db.commit() on this line. It did not raise, only
+        # because it was the last statement before the return: SQLAlchemy
+        # objects to work emitted AFTER a commit inside an explicit begin()
+        # block, not to the commit itself. So this was one added line away from
+        # raising inside the NATS auth callout, where the blanket except means
+        # msg.respond is never called and the agent's connect dies on a timeout
+        # rather than on a decision.
 
     return current_ok or prev_ok
 

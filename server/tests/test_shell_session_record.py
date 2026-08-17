@@ -52,9 +52,7 @@ async def test_the_session_exists_before_any_bytes_flow():
     device_id = await _device()
     session_id = uuid.uuid4()
 
-    await open_session_record(
-        session_id, device_id, user_id=None, user_email="admin@example.com"
-    )
+    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
 
     row = await _row(session_id)
     assert row is not None, "a root shell was open with no record of it anywhere"
@@ -66,14 +64,14 @@ async def test_the_audit_entry_is_written_at_open_not_at_close():
     device_id = await _device()
     session_id = uuid.uuid4()
 
-    await open_session_record(
-        session_id, device_id, user_id=None, user_email="admin@example.com"
-    )
+    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
 
     async with get_sessionmaker()() as db:
         rows = (
-            await db.execute(select(AuditLog).where(AuditLog.action == "shell.opened"))
-        ).scalars().all()
+            (await db.execute(select(AuditLog).where(AuditLog.action == "shell.opened")))
+            .scalars()
+            .all()
+        )
     assert any(r.target_id == str(device_id) for r in rows), (
         "no audit entry until the session ended, so a crash mid-session erased "
         "the only record that someone had root on this machine"
@@ -85,17 +83,13 @@ async def test_started_at_is_the_start_not_the_end():
     session_id = uuid.uuid4()
     before = datetime.now(UTC)
 
-    await open_session_record(
-        session_id, device_id, user_id=None, user_email="admin@example.com"
-    )
+    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
     row = await _row(session_id)
-    assert row.started_at >= before.replace(microsecond=0) - __import__(
-        "datetime"
-    ).timedelta(seconds=5)
-
-    await close_session_record(
-        session_id, close_reason="exit", bytes_in=10, bytes_out=200
+    assert row.started_at >= before.replace(microsecond=0) - __import__("datetime").timedelta(
+        seconds=5
     )
+
+    await close_session_record(session_id, close_reason="exit", bytes_in=10, bytes_out=200)
     row = await _row(session_id)
     assert row.ended_at is not None
     assert row.ended_at >= row.started_at
@@ -112,9 +106,7 @@ async def test_an_unclosed_session_is_self_describing():
     """
     device_id = await _device()
     session_id = uuid.uuid4()
-    await open_session_record(
-        session_id, device_id, user_id=None, user_email="admin@example.com"
-    )
+    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
     # No close: the worker died here.
     row = await _row(session_id)
     assert row is not None

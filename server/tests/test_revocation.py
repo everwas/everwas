@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker
+from openrmm.db.engine import get_sessionmaker, session_scope
 from openrmm.models.device import AgentCredential, Device, DeviceStatus, OsFamily
 from openrmm.natsio.auth_callout import _user_jwt
 from openrmm.natsio.jwt import decode_jwt_payload
@@ -258,7 +258,13 @@ async def test_the_agent_connecting_confirms_the_rotation():
         assert await rotation_in_flight(db, device_id) is True
 
     # The agent reconnects with the new secret.
-    async with get_sessionmaker()() as db:
+    #
+    # Through session_scope(), which is what the NATS auth callout uses. This
+    # used to be a bare session with no transaction, and verify_agent_secret
+    # committed its own clearing UPDATE, so the test passed against a session
+    # shape production never uses. The commit now belongs to the caller, which
+    # is why this has to open a transaction like the real caller does.
+    async with session_scope() as db:
         assert await verify_agent_secret(db, device_id, gen1) is True
 
     async with get_sessionmaker()() as db:

@@ -51,7 +51,6 @@ def test_real_coercion(value, expect):
 
 
 async def test_one_unstorable_field_does_not_lose_the_sample():
-    import uuid
 
     from sqlalchemy import select
 
