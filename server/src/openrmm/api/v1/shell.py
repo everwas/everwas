@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -18,7 +17,11 @@ from openrmm.models.script import ShellSession
 from openrmm.models.user import Role
 from openrmm.natsio.client import get_nats
 from openrmm.security.sessions import SESSION_COOKIE, resolve_session
-from openrmm.services.shell_session import bridge_shell
+from openrmm.services.shell_session import (
+    bridge_shell,
+    close_session_record,
+    open_session_record,
+)
 
 log = structlog.get_logger()
 router = APIRouter()
@@ -57,9 +60,16 @@ async def device_shell(
 
     settings = get_settings()
     record_dir = Path(settings.recordings_dir)
-    session_id = None
+
+    # The record exists BEFORE any bytes flow. Everything below this point can
+    # fail, including by the process disappearing, and a root shell that
+    # happened must not depend on this handler surviving to say so.
+    session_id = uuid.uuid4()
+    await open_session_record(session_id, device_id, user_id=user_id, user_email=user_email)
+
+    close_reason, bytes_in, bytes_out = "error", 0, 0
     try:
-        session_id, close_reason, bytes_in, bytes_out = await bridge_shell(
+        _, close_reason, bytes_in, bytes_out = await bridge_shell(
             websocket,
             get_nats(),
             device_id,
@@ -67,27 +77,21 @@ async def device_shell(
             cols=cols,
             rows=rows,
             record_dir=record_dir,
+            session_id=session_id,
         )
     except Exception as exc:
         log.warning("shell session failed", device_id=str(device_id), error=str(exc))
         message = str(exc)[:120]
         with contextlib.suppress(Exception):
             await websocket.send_text(f"\r\n\x1b[31mshell error: {message}\x1b[0m\r\n")
-        close_reason, bytes_in, bytes_out = "error", 0, 0
 
+    await close_session_record(
+        session_id,
+        close_reason=close_reason,
+        bytes_in=bytes_in,
+        bytes_out=bytes_out,
+    )
     async with session_scope() as db:
-        db.add(
-            ShellSession(
-                id=session_id or uuid.uuid4(),
-                device_id=device_id,
-                user_id=user_id,
-                ended_at=datetime.now(UTC),
-                close_reason=close_reason,
-                recording_path=f"{session_id}.cast" if session_id else None,
-                bytes_in=bytes_in,
-                bytes_out=bytes_out,
-            )
-        )
         db.add(
             AuditLog(
                 actor_type=ActorType.user,
@@ -96,7 +100,7 @@ async def device_shell(
                 target_type="device",
                 target_id=str(device_id),
                 detail={
-                    "session_id": str(session_id) if session_id else None,
+                    "session_id": str(session_id),
                     "reason": close_reason,
                     "bytes_in": bytes_in,
                     "bytes_out": bytes_out,

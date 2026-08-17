@@ -24,8 +24,12 @@ from pathlib import Path
 import nats
 import structlog
 from fastapi import WebSocket, WebSocketDisconnect
+from sqlalchemy import update
 
 from openrmm.config import get_settings
+from openrmm.db.engine import session_scope
+from openrmm.models.audit import ActorType, AuditLog
+from openrmm.models.script import ShellSession
 from openrmm.natsio.agent_request import request_agent
 from openrmm.natsio.subjects import shell_ctl, shell_in, shell_out, shell_resize
 
@@ -120,10 +124,17 @@ async def bridge_shell(
     rows: int = 24,
     shell: str = "auto",
     record_dir: Path | None = None,
+    session_id: uuid.UUID | None = None,
 ) -> tuple[uuid.UUID, str, int, int]:
-    """Run one shell session. Returns (session_id, close_reason, bytes_in, bytes_out)."""
+    """Run one shell session. Returns (session_id, close_reason, bytes_in, bytes_out).
+
+    session_id is supplied by the caller so the database row and the audit
+    entry can exist BEFORE any bytes flow. Generating it here meant the record
+    could only be written after the session ended, and a process death in
+    between erased every trace that someone had root on the machine.
+    """
     settings = get_settings()
-    session_id = uuid.uuid4()
+    session_id = session_id or uuid.uuid4()
     agent_id = str(device_id)
     sid = str(session_id)
     close_reason = "client"
@@ -314,3 +325,72 @@ async def bridge_shell(
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+async def open_session_record(
+    session_id: uuid.UUID,
+    device_id: uuid.UUID,
+    *,
+    user_id: uuid.UUID | None,
+    user_email: str,
+) -> None:
+    """Record that a root shell is being opened, before it opens.
+
+    Written first, and separately from the close, because the failure this
+    guards against is the process not surviving to write anything. A worker
+    OOM, a container restart, a deploy mid-session: previously all of those
+    left the .cast file on disk with nothing pointing at it and no row naming
+    who had root on which machine, which is exactly what the recording exists
+    to prevent.
+
+    It also makes a live session visible ("who has a shell open right now"),
+    and gives started_at its real meaning: it used to be evaluated at INSERT,
+    which was session END, so every root shell in the audit trail had a
+    duration of zero.
+    """
+    async with session_scope() as db:
+        db.add(
+            ShellSession(
+                id=session_id,
+                device_id=device_id,
+                user_id=user_id,
+                started_at=datetime.now(UTC),
+                recording_path=f"{session_id}.cast",
+            )
+        )
+        db.add(
+            AuditLog(
+                actor_type=ActorType.user,
+                actor_id=user_email,
+                action="shell.opened",
+                target_type="device",
+                target_id=str(device_id),
+                detail={"session_id": str(session_id)},
+            )
+        )
+
+
+async def close_session_record(
+    session_id: uuid.UUID,
+    *,
+    close_reason: str,
+    bytes_in: int,
+    bytes_out: int,
+) -> None:
+    """Amend the open record with how the session ended.
+
+    A row left with ended_at NULL is self-describing: a session older than the
+    idle timeout that nobody closed is a question an operator can ask, where
+    writing nothing at all was not.
+    """
+    async with session_scope() as db:
+        await db.execute(
+            update(ShellSession)
+            .where(ShellSession.id == session_id)
+            .values(
+                ended_at=datetime.now(UTC),
+                close_reason=close_reason,
+                bytes_in=bytes_in,
+                bytes_out=bytes_out,
+            )
+        )
