@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rsp2k/openrmm/agent/internal/agentcore"
 	"github.com/rsp2k/openrmm/agent/internal/config"
@@ -118,6 +120,30 @@ func runAgent(parent context.Context) int {
 		return 1
 	}
 
+	// Renew BEFORE connecting, so the connection that follows is itself the
+	// proof of receipt: the server clears the old secret the moment it sees
+	// this agent authenticate with the new one.
+	//
+	// Renewing after connecting looked equivalent and was not. The live
+	// connection keeps using the credential it dialled with, so the server
+	// never observes the new one, rotation_in_flight stays true indefinitely,
+	// and an operator pressing "rotate credentials" is refused until the agent
+	// happens to reconnect. Observed on a live agent, not reasoned about.
+	//
+	// Bounded and non-fatal: the old credential still works, so a server that
+	// is down or slow costs nothing here and the periodic loop tries again.
+	renewCtx, cancelRenew := context.WithTimeout(parent, renewAtStartupTimeout)
+	if err := enroll.Renew(renewCtx, cfg); err != nil {
+		if errors.Is(err, enroll.ErrRenewRefused) {
+			log.Error("credential renewal refused; this agent needs re-enrolling", "err", err)
+		} else {
+			log.Warn("credential renewal at startup failed, continuing on the current one", "err", err)
+		}
+	} else {
+		log.Info("agent credential renewed at startup")
+	}
+	cancelRenew()
+
 	// A closed NATS connection is unrecoverable and silent: the agent keeps
 	// running and heartbeating while being unable to receive anything. Dying
 	// is the only way back, so the connection tells us and we exit non-zero
@@ -161,6 +187,9 @@ func runAgent(parent context.Context) int {
 		},
 		Handoff: func(reason string) {
 			restartOnce.Do(func() { restart <- stopReason{handoff: reason} })
+		},
+		RenewCredential: func(ctx context.Context) error {
+			return enroll.Renew(ctx, cfg)
 		},
 		RotateSecret: func(secret string) error {
 			// Write the file before anything else believes the rotation
@@ -207,6 +236,10 @@ func runAgent(parent context.Context) int {
 //
 // Neither code feeds the rollback crash counters, which count process starts
 // inside a window and never inspect an exit code.
+// renewAtStartupTimeout bounds the pre-connect renewal. Short: the agent has a
+// working credential already, so waiting here only delays it becoming useful.
+const renewAtStartupTimeout = 20 * time.Second
+
 const (
 	// exitRestart: the binary on disk changed and only exiting picks it up.
 	exitRestart = 10

@@ -146,6 +146,10 @@ def test_every_route_requires_auth_except_the_documented_few():
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
         "/api/v1/agents/enroll",
+        # An agent that needs a new credential cannot present a valid session
+        # by definition. The secret it currently holds is the authentication,
+        # exactly as the one-time token is for enrollment.
+        "/api/v1/agents/renew",
     }
 
     # Authenticates inside the handler rather than through a dependency,

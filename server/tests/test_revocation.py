@@ -21,6 +21,7 @@ from openrmm.natsio.jwt import decode_jwt_payload
 from openrmm.services.enrollment import (
     RotationInFlightError,
     retire_device,
+    revoke_agent_secret,
     rotate_agent_secret,
     rotation_in_flight,
     verify_agent_secret,
@@ -125,11 +126,19 @@ async def test_rotation_keeps_the_old_secret_alive():
 
 
 async def test_the_old_secret_dies_when_the_window_closes():
-    """Otherwise rotation is not revocation, it is a second permanent key."""
+    """Otherwise revocation is not revocation, it is a second permanent key.
+
+    Now asserted against revoke_agent_secret rather than rotate_agent_secret.
+    The two were one function with a grace argument, which meant the ordinary
+    rollover inherited a wall-clock deadline it did not need: a device switched
+    off past it could never authenticate again, and recovery was a site visit.
+    Rollover now keeps the old secret until the agent proves it has the new one;
+    only revocation kills on a clock, because only revocation is trying to.
+    """
     device_id = await _enrolled("old-secret")
 
     async with get_sessionmaker()() as db, db.begin():
-        new_secret = await rotate_agent_secret(
+        new_secret = await revoke_agent_secret(
             db, device_id, actor="admin@example.com", grace=timedelta(seconds=-1)
         )
 
@@ -190,20 +199,37 @@ def test_jwt_ttl_is_configurable():
     assert claims["exp"] - claims["iat"] == 60
 
 
-async def test_prev_valid_until_is_set_in_the_future():
-    """Guards the sign of the arithmetic: a grace window computed backwards
-    would make every rotation instantly invalidate the old secret, which is
-    the lockout this design exists to avoid."""
+async def test_a_revocation_window_is_set_in_the_future():
+    """Guards the sign of the arithmetic: a window computed backwards would
+    invalidate the old secret instantly, locking out a machine that has not
+    collected its replacement yet."""
     device_id = await _enrolled("old-secret")
     before = datetime.now(UTC)
 
     async with get_sessionmaker()() as db, db.begin():
-        await rotate_agent_secret(db, device_id, actor="admin@example.com")
+        await revoke_agent_secret(db, device_id, actor="admin@example.com")
 
     async with get_sessionmaker()() as db:
         cred = await db.get(AgentCredential, device_id)
         assert cred.prev_valid_until is not None
         assert cred.prev_valid_until > before
+
+
+async def test_an_ordinary_rollover_sets_no_deadline_at_all():
+    """The inverse, and the reason the split exists.
+
+    A rollover that expires on a clock is a delivery deadline dressed as a
+    security control: nothing is safer for it, because the old secret's real
+    death is the agent proving it no longer needs it.
+    """
+    device_id = await _enrolled("old-secret")
+    async with get_sessionmaker()() as db, db.begin():
+        await rotate_agent_secret(db, device_id, actor="admin@example.com")
+
+    async with get_sessionmaker()() as db:
+        cred = await db.get(AgentCredential, device_id)
+        assert cred.prev_secret_hash is not None
+        assert cred.prev_valid_until is None
 
 
 async def test_a_second_rotation_is_refused_while_one_is_unconfirmed():

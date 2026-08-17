@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/rsp2k/openrmm/agent/internal/enroll"
 	"github.com/rsp2k/openrmm/agent/internal/heartbeat"
 	"github.com/rsp2k/openrmm/agent/internal/inventory"
 	"github.com/rsp2k/openrmm/agent/internal/jobs"
@@ -29,6 +30,46 @@ const (
 	initialBackoff = time.Second
 	maxBackoff     = time.Minute
 )
+
+// renewLoop renews at startup and then on a fixed interval.
+//
+// A refusal is terminal and stops the loop: the credential we hold is not
+// coming back (retired device, or a revocation window that closed while we
+// were away), and retrying every twelve hours forever would bury the one log
+// line that explains why this agent is about to go silent.
+func renewLoop(ctx context.Context, renew func(context.Context) error, log *slog.Logger) error {
+	attempt := func() bool {
+		err := renew(ctx)
+		switch {
+		case err == nil:
+			log.Info("agent credential renewed")
+		case errors.Is(err, enroll.ErrRenewRefused):
+			log.Error("credential renewal refused; this agent needs re-enrolling", "err", err)
+			return false
+		default:
+			// Transient: the server is down, DNS is broken, we are offline.
+			// The old credential still works, so there is time.
+			log.Warn("credential renewal failed, will retry", "err", err)
+		}
+		return true
+	}
+
+	// No immediate attempt: runAgent renews before it connects, so that the
+	// connection proves receipt. Starting here as well would renew twice on
+	// every start and leave the second one unconfirmed.
+	ticker := time.NewTicker(enroll.RenewInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if !attempt() {
+				return nil
+			}
+		}
+	}
+}
 
 // probeTimeout bounds one post-update health check. Every check it now makes
 // is local state or a single round trip, so this is generous rather than tight.
@@ -56,6 +97,10 @@ type Supervisor struct {
 	// Link reports asynchronous NATS errors. Optional; when nil the probe
 	// simply cannot check for a silently denied subscription.
 	Link *LinkHealth
+
+	// RenewCredential asks the server for a fresh credential. Optional; when
+	// nil the agent simply never renews, which is the pre-M4.5 behaviour.
+	RenewCredential func(context.Context) error
 
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
@@ -129,6 +174,21 @@ func (s *Supervisor) Start(ctx context.Context) {
 		}},
 		{"patchstate", func(ctx context.Context, _ *slog.Logger) error {
 			return patches.Run(ctx)
+		}},
+		// Credential renewal, PULLED on a timer rather than pushed by the
+		// server. A rotation used to be delivered over NATS to a machine that
+		// might be switched off, with a deadline on the old secret and nothing
+		// retrying, so a laptop away for a long weekend came back holding a
+		// credential that had already expired. An agent that asks cannot miss
+		// the delivery.
+		//
+		// Runs once at startup, which is the case that matters: the machine
+		// that was away is renewing within seconds of coming back.
+		{"renew", func(ctx context.Context, log *slog.Logger) error {
+			if s.RenewCredential == nil {
+				return nil
+			}
+			return renewLoop(ctx, s.RenewCredential, log)
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
 		// one stops being the fallback. Getting this wrong is expensive in one

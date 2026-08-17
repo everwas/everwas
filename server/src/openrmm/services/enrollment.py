@@ -16,6 +16,13 @@ TOKEN_PREFIX = "ore_"
 # How long the superseded secret keeps working after a rotation. Long enough
 # for an offline agent to come back and be told, short enough that a leaked
 # secret is not useful for long.
+#: How long a REVOKED credential keeps working. Short on purpose: the point of
+#: revocation is to stop something, and an agent that misses this window
+#: re-enrolls. Hygiene rollover has no deadline at all; see rotate_agent_secret.
+REVOCATION_GRACE = timedelta(hours=1)
+
+#: Retained for the API's `previous_secret_valid_for_s` field and for tests that
+#: predate the split.
 ROTATION_GRACE = timedelta(hours=24)
 
 
@@ -122,10 +129,14 @@ async def verify_agent_secret(db: AsyncSession, agent_id: uuid.UUID, secret: str
     # would make "you are on the old one" measurably slower than "you are on
     # the new one".
     current_ok = secrets.compare_digest(rec.secret_hash, presented)
+    # prev_valid_until NULL means "no deadline": a hygiene rollover keeps the
+    # old secret alive until the agent proves it holds the new one, which is
+    # what stops a machine that was switched off from being locked out. Only a
+    # REVOCATION sets a timestamp here, and only that expires.
+    prev_unexpired = rec.prev_valid_until is None or rec.prev_valid_until > datetime.now(UTC)
     prev_ok = (
         rec.prev_secret_hash is not None
-        and rec.prev_valid_until is not None
-        and rec.prev_valid_until > datetime.now(UTC)
+        and prev_unexpired
         and secrets.compare_digest(rec.prev_secret_hash, presented)
     )
 
@@ -167,12 +178,24 @@ async def rotation_in_flight(db: AsyncSession, device_id: uuid.UUID) -> bool:
             )
         )
     ).first()
+    # Same NULL semantics as verify_agent_secret: an absent deadline means the
+    # old secret is still live, so the rotation is still unconfirmed. Reading
+    # NULL as "expired" here would report a rollover as confirmed the moment it
+    # happened, which is the opposite of the truth and would let a second
+    # rotation discard the secret the agent is actually holding.
     return (
         rec is not None
         and rec.prev_secret_hash is not None
-        and rec.prev_valid_until is not None
-        and rec.prev_valid_until > datetime.now(UTC)
+        and (rec.prev_valid_until is None or rec.prev_valid_until > datetime.now(UTC))
     )
+
+
+class UnknownCredentialError(Exception):
+    """The secret presented for renewal is not one this device holds."""
+
+
+class RevokedCredentialError(Exception):
+    """The device has no usable credential: retired, or never enrolled."""
 
 
 class RotationInFlightError(Exception):
@@ -216,10 +239,22 @@ async def rotate_agent_secret(
     device_id: uuid.UUID,
     actor: str,
     *,
-    grace: timedelta = ROTATION_GRACE,
     force: bool = False,
 ) -> str | None:
-    """Issue a new agent secret, keeping the old one alive for `grace`.
+    """Roll the agent secret over, keeping the old one alive until it is proven.
+
+    This is HYGIENE rotation. The old secret has no expiry: it stays valid until
+    the agent demonstrably holds the new one (verify_agent_secret clears it on
+    the first connect with the new secret). To lock a machine OUT, call
+    revoke_agent_secret, which is a separate function precisely so that an
+    operator choosing revocation is choosing it rather than inheriting it.
+
+    The old behaviour gave the previous secret 24 hours. That was a delivery
+    deadline dressed up as a security control: a laptop switched off for a long
+    weekend booted holding a secret that had expired on Saturday, with no
+    channel left to receive its replacement, and the recovery was a site visit
+    per host. Nothing was more secure for it, because the way the old secret
+    actually dies is the agent proving it no longer needs it.
 
     Returns the new secret, which is the only time it exists in plaintext, or
     None if the device has no credential row (never enrolled, or retired).
@@ -252,7 +287,9 @@ async def rotate_agent_secret(
 
     new_secret = secrets.token_urlsafe(32)
     cred.prev_secret_hash = cred.secret_hash
-    cred.prev_valid_until = datetime.now(UTC) + grace
+    # No deadline: see the docstring. None means "until the agent proves it has
+    # the new one", which verify_agent_secret enforces.
+    cred.prev_valid_until = None
     cred.secret_hash = _sha256(new_secret)
     cred.rotated_at = datetime.now(UTC)
     db.add(
@@ -262,7 +299,101 @@ async def rotate_agent_secret(
             action="device.credentials_rotated",
             target_type="device",
             target_id=str(device_id),
+            detail={"expires": None},
+        )
+    )
+    await db.flush()
+    return new_secret
+
+
+async def revoke_agent_secret(
+    db: AsyncSession,
+    device_id: uuid.UUID,
+    actor: str,
+    *,
+    grace: timedelta = REVOCATION_GRACE,
+) -> str | None:
+    """Rotate AND put a hard deadline on the old secret.
+
+    The opposite intent from rotate_agent_secret, so it is a separate call. Here
+    the point IS to lock something out, so the old credential dies on the clock
+    whether or not the agent ever collects its replacement, and a machine that
+    misses the window needs re-enrolling. That is the cost of revocation and it
+    is being chosen deliberately.
+
+    For permanent removal use retire_device, which deletes the credential row
+    outright.
+    """
+    new_secret = await rotate_agent_secret(db, device_id, actor, force=True)
+    if new_secret is None:
+        return None
+    cred = (
+        await db.execute(select(AgentCredential).where(AgentCredential.device_id == device_id))
+    ).scalar_one()
+    cred.prev_valid_until = datetime.now(UTC) + grace
+    db.add(
+        AuditLog(
+            actor_type=ActorType.user,
+            actor_id=actor,
+            action="device.credentials_revoked",
+            target_type="device",
+            target_id=str(device_id),
             detail={"grace_s": int(grace.total_seconds())},
+        )
+    )
+    await db.flush()
+    return new_secret
+
+
+async def renew_agent_secret(db: AsyncSession, device_id: uuid.UUID, presented: str) -> str:
+    """Exchange the credential an agent currently holds for a fresh one.
+
+    PULL, not push. The agent asks, authenticating with what it has, so the
+    delivery cannot be missed by a machine that was switched off: it is the one
+    that initiated it. This is the fix for the lockout, and deliberately the
+    same shape the CSR endpoint will need when certificates arrive (ADR-0003).
+
+    Renewing on the PREVIOUS secret is allowed and is the main case: a device
+    that was away during a rotation comes back still holding the old one, and
+    this is how it catches up. Refusing that would leave exactly the machines
+    the lockout threatens unable to save themselves.
+
+    The old secret is NOT retired here. This reply can be lost in flight, and an
+    agent that never receives it is still using what it had; killing that
+    immediately would lock out a machine for doing the right thing. It dies on
+    the next connect with the new secret, which is proof of receipt.
+    """
+    row = await db.execute(
+        select(AgentCredential, Device.status)
+        .join(Device, Device.id == AgentCredential.device_id)
+        .where(AgentCredential.device_id == device_id)
+    )
+    rec = row.first()
+    if rec is None:
+        raise RevokedCredentialError("no credential for this device")
+    cred, device_status = rec
+    if device_status is DeviceStatus.retired:
+        raise RevokedCredentialError("device is retired")
+
+    if not await verify_agent_secret(db, device_id, presented):
+        # Covers a wrong secret and a previous one whose revocation deadline has
+        # passed. A revoked credential must not be renewable back into life, or
+        # revocation is theatre.
+        raise UnknownCredentialError("presented secret is not valid for this device")
+
+    new_secret = secrets.token_urlsafe(32)
+    cred.prev_secret_hash = cred.secret_hash
+    cred.prev_valid_until = None
+    cred.secret_hash = _sha256(new_secret)
+    cred.rotated_at = datetime.now(UTC)
+    db.add(
+        AuditLog(
+            actor_type=ActorType.agent,
+            actor_id=str(device_id),
+            action="agent.renewed",
+            target_type="device",
+            target_id=str(device_id),
+            detail={"initiated_by": "agent"},
         )
     )
     await db.flush()
