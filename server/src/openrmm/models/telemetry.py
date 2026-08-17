@@ -51,6 +51,26 @@ telemetry_disks = Table(
 )
 
 
+telemetry_network = Table(
+    "telemetry_network",
+    Base.metadata,
+    Column("device_id", UUID(as_uuid=True), primary_key=True),
+    Column("ts", DateTime(timezone=True), primary_key=True),
+    Column("iface", Text, primary_key=True),
+    # Cumulative since boot, stored raw. These are counters, not rates: see
+    # migration 0013 for why the derivation is left to query time.
+    Column("bytes_sent", BigInteger),
+    Column("bytes_recv", BigInteger),
+    Column("packets_sent", BigInteger),
+    Column("packets_recv", BigInteger),
+    Column("err_in", BigInteger),
+    Column("err_out", BigInteger),
+    Column("drop_in", BigInteger),
+    Column("drop_out", BigInteger),
+    info={"skip_autogenerate": True},
+)
+
+
 class DeviceStatusLatest(Base):
     """One row per device, upserted on every telemetry sample. The fleet
     dashboard reads only this table — never the partitioned history."""

@@ -43,8 +43,14 @@ class FactPatchState(BitemporalFactMixin, Base):
     device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
 
 
+class FactNetwork(BitemporalFactMixin, Base):
+    __tablename__ = "fact_network"
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+
+
 FACT_TABLES = {
     "hardware": FactHardware,
     "software": FactSoftware,
     "patchstate": FactPatchState,
+    "network": FactNetwork,
 }

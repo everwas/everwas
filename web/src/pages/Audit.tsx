@@ -34,13 +34,13 @@ const CONSEQUENTIAL = /^(device\.(retired|deleted|credentials_rotated)|agent\.up
  *  exactly what a bulk operation produces. Shortening from the right keeps
  *  them distinguishable. */
 function shortId(id: string | null): string {
-  if (!id) return "—"
+  if (!id) return "n/a"
   return id.length > 12 ? `…${id.slice(-12)}` : id
 }
 
 function ActorCell({ entry }: { entry: AuditEntry }) {
   const Icon = ACTOR_ICON[entry.actor_type] ?? Server
-  const who = entry.actor_type === "agent" ? shortId(entry.actor_id) : entry.actor_id || "—"
+  const who = entry.actor_type === "agent" ? shortId(entry.actor_id) : entry.actor_id || "n/a"
   return (
     <span className="flex items-center gap-1.5">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -53,7 +53,7 @@ function ActorCell({ entry }: { entry: AuditEntry }) {
  *  installed, which host was retired) and it is different for every action,
  *  so it is rendered as compact key=value rather than pretty-printed JSON. */
 function Detail({ detail }: { detail: Record<string, unknown> | null }) {
-  if (!detail || Object.keys(detail).length === 0) return <span className="text-muted-foreground">—</span>
+  if (!detail || Object.keys(detail).length === 0) return <span className="text-muted-foreground">n/a</span>
   const text = Object.entries(detail)
     .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
     .join("  ")

@@ -24,6 +24,33 @@ export type TelemetryPoint = {
   load1: number | null
 }
 
+/** One interface sample. Every rate is per second.
+ *
+ * A null is not zero: it marks a point where the rate is genuinely unknown
+ * because the counter reset (reboot, or a 32-bit counter wrapping) or the agent
+ * was away long enough that an average would be misleading. Charts must break
+ * the line there rather than drawing it through zero.
+ */
+export type NetRatePoint = {
+  ts: string
+  bytes_sent: number | null
+  bytes_recv: number | null
+  packets_sent: number | null
+  packets_recv: number | null
+  err_in: number | null
+  err_out: number | null
+  drop_in: number | null
+  drop_out: number | null
+}
+
+export type NetInterfaceSeries = {
+  name: string
+  mac: string | null
+  up: boolean | null
+  addresses: string[]
+  points: NetRatePoint[]
+}
+
 export type Fact = {
   fact_key: string
   payload: Record<string, unknown>
@@ -289,6 +316,8 @@ export const api = {
   device: (id: string) => request<DeviceDetail>(`/api/v1/devices/${id}`),
   telemetry: (id: string, hours = 24) =>
     request<TelemetryPoint[]>(`/api/v1/devices/${id}/telemetry?hours=${hours}`),
+  network: (id: string, hours = 24) =>
+    request<NetInterfaceSeries[]>(`/api/v1/devices/${id}/network?hours=${hours}`),
   facts: (id: string, kind: FactKind, asOf?: Date) => {
     const params = new URLSearchParams({ kind })
     if (asOf) params.set("as_of", asOf.toISOString())

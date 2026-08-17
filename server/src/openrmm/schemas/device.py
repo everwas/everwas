@@ -34,6 +34,36 @@ class TelemetryPoint(BaseModel):
     load1: float | None
 
 
+class NetRatePoint(BaseModel):
+    """One interface sample, as per-second rates.
+
+    Every field is nullable and a null is meaningful: it marks a point where
+    the rate is genuinely unknown (the counter reset, or the agent was away
+    long enough that an average would lie) rather than a measured zero. Chart
+    it as a break in the line, never as 0 and never interpolated.
+    """
+
+    ts: datetime
+    bytes_sent: float | None = None
+    bytes_recv: float | None = None
+    packets_sent: float | None = None
+    packets_recv: float | None = None
+    err_in: float | None = None
+    err_out: float | None = None
+    drop_in: float | None = None
+    drop_out: float | None = None
+
+
+class NetInterfaceSeries(BaseModel):
+    name: str
+    # Carried from inventory so the chart can label a NIC with what it is,
+    # not just what the kernel calls it.
+    mac: str | None = None
+    up: bool | None = None
+    addresses: list[str] = []
+    points: list[NetRatePoint] = []
+
+
 class FactOut(BaseModel):
     fact_key: str
     payload: dict

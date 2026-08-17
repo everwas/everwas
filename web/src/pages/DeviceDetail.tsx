@@ -10,10 +10,12 @@ import {
   type ScriptRun,
   type ShellSessionRow,
   type SnapshotKind,
+  type NetInterfaceSeries,
   type TelemetryPoint,
 } from "@/lib/api"
 import { SessionPlayer } from "@/components/SessionPlayer"
 import { DeviceTerminal } from "@/components/Terminal"
+import { NetworkPanel } from "@/components/NetworkPanel"
 import { TelemetryChart } from "@/components/TelemetryChart"
 import { RunStatusBadge } from "@/pages/Scripts"
 import { Badge } from "@/components/ui/badge"
@@ -28,7 +30,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const TABS = ["software", "hardware", "processes", "services", "terminal", "runs", "sessions"] as const
+const TABS = [
+  "software",
+  "hardware",
+  "network",
+  "processes",
+  "services",
+  "terminal",
+  "runs",
+  "sessions",
+] as const
 type Tab = (typeof TABS)[number]
 
 const TIME_MACHINE_MAX_HOURS = 7 * 24
@@ -95,7 +106,7 @@ function FactsTable({ facts, kind }: { facts: Fact[]; kind: FactKind }) {
  * 2075656192 "2.1 GB" would be arithmetically defensible and would not match
  * the number on the RAM stick. */
 function bytes(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—"
+  if (!Number.isFinite(n) || n <= 0) return "n/a"
   const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
   const i = Math.min(Math.floor(Math.log2(n) / 10), units.length - 1)
   const v = n / 1024 ** i
@@ -143,14 +154,14 @@ function label(key: string): string {
 const BYTE_KEYS = new Set(["total", "available", "used", "free", "swap_total", "size"])
 
 function value(key: string, v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—"
+  if (v === null || v === undefined || v === "") return "n/a"
   if (typeof v === "number") {
     if (BYTE_KEYS.has(key)) return bytes(v)
     if (key === "mhz") return hz(v)
     return v.toLocaleString()
   }
   if (typeof v === "boolean") return v ? "yes" : "no"
-  if (Array.isArray(v)) return v.length ? v.map(String).join(", ") : "—"
+  if (Array.isArray(v)) return v.length ? v.map(String).join(", ") : "n/a"
   if (typeof v === "object") return JSON.stringify(v)
   return String(v)
 }
@@ -243,6 +254,7 @@ export function DeviceDetailPage() {
   const [facts, setFacts] = useState<Fact[]>([])
   const [snapshotRows, setSnapshotRows] = useState<Record<string, unknown>[]>([])
   const [runs, setRuns] = useState<ScriptRun[]>([])
+  const [nets, setNets] = useState<NetInterfaceSeries[]>([])
   const [sessions, setSessions] = useState<ShellSessionRow[]>([])
   const [playing, setPlaying] = useState<string | null>(null)
 
@@ -271,12 +283,23 @@ export function DeviceDetailPage() {
       api.runs(id).then(setRuns).catch(() => {})
     } else if (tab === "sessions") {
       api.shellSessions(id).then(setSessions).catch(() => {})
+    } else if (tab === "network") {
+      api.network(id).then(setNets).catch(() => {})
     } else if (tab !== "terminal") {
       api.facts(id, tab, asOf).then(setFacts).catch(() => {})
     }
   }, [id, tab, asOf])
 
   useEffect(loadTab, [loadTab])
+
+  // Throughput is only interesting live. 30s rather than the 4s runs uses:
+  // the agent samples every 60s, so polling faster only re-renders the same
+  // points.
+  useEffect(() => {
+    if (tab !== "network" || !id) return
+    const timer = setInterval(() => api.network(id).then(setNets).catch(() => {}), 30000)
+    return () => clearInterval(timer)
+  }, [tab, id])
 
   useEffect(() => {
     if (tab !== "runs" || !id) return
@@ -380,7 +403,11 @@ export function DeviceDetailPage() {
           </div>
         )}
 
-        {tab === "sessions" ? (
+        {tab === "network" ? (
+          <div className="p-4">
+            <NetworkPanel interfaces={nets} />
+          </div>
+        ) : tab === "sessions" ? (
           <div className="flex flex-col gap-4 p-4">
             {sessions.length === 0 ? (
               <p className="text-sm text-muted-foreground">

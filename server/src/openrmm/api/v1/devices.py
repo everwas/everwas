@@ -6,12 +6,13 @@ from typing import Literal
 import nats.errors
 import structlog
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from openrmm.api.deps import CurrentUser, DbSession, require_role
 from openrmm.bitemporal.query import get_facts
 from openrmm.config import get_settings
 from openrmm.models.device import Device, DeviceStatus
+from openrmm.models.facts import FactNetwork
 from openrmm.models.script import RunStatus, RunTrigger, ScriptRun
 from openrmm.models.telemetry import DeviceSnapshot, DeviceStatusLatest, telemetry_metrics
 from openrmm.models.user import Role
@@ -22,6 +23,8 @@ from openrmm.schemas.device import (
     DeviceDetailOut,
     DeviceOut,
     FactOut,
+    NetInterfaceSeries,
+    NetRatePoint,
     TelemetryPoint,
 )
 from openrmm.services.devices import DeviceNotRetiredError, delete_device
@@ -31,6 +34,7 @@ from openrmm.services.enrollment import (
     retire_device,
     rotate_agent_secret,
 )
+from openrmm.services.network_telemetry import interface_rates
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -103,6 +107,46 @@ async def get_telemetry(
             load1=r.load1,
         )
         for r in rows
+    ]
+
+
+@router.get("/{device_id}/network")
+async def get_network(
+    device_id: uuid.UUID,
+    db: DbSession,
+    _user: CurrentUser,
+    hours: int = Query(default=24, ge=1, le=168),
+) -> list[NetInterfaceSeries]:
+    """Per-interface throughput, labelled from the current inventory."""
+    await _device_or_404(db, device_id)
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    series = await interface_rates(db, device_id, since)
+
+    # Current beliefs about the interfaces themselves: MAC, up/down, addresses.
+    facts = (
+        await db.execute(
+            select(FactNetwork.fact_key, FactNetwork.payload).where(
+                FactNetwork.device_id == device_id,
+                func.upper_inf(FactNetwork.recorded_during),
+            )
+        )
+    ).all()
+    meta = {k.removeprefix("iface:"): p for k, p in facts}
+
+    # Union, not intersection. An interface that exists but has no traffic
+    # history still belongs on the page (it is how you see a NIC is down), and
+    # one with history that has since disappeared is exactly what someone
+    # investigating a network change is looking for.
+    names = sorted(set(series) | set(meta))
+    return [
+        NetInterfaceSeries(
+            name=name,
+            mac=(meta.get(name) or {}).get("mac"),
+            up=(meta.get(name) or {}).get("up"),
+            addresses=(meta.get(name) or {}).get("addresses") or [],
+            points=[NetRatePoint(**p) for p in series.get(name, [])],
+        )
+        for name in names
     ]
 
 

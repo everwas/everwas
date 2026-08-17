@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger()
 
-PARTITIONED_TABLES = ("telemetry_metrics", "telemetry_disks")
+PARTITIONED_TABLES = ("telemetry_metrics", "telemetry_disks", "telemetry_network")
 CREATE_AHEAD_DAYS = 2
 
 

@@ -1,6 +1,7 @@
 """Inventory ingest: routes snapshot kinds to the right store.
 
-- hardware, software, patchstate -> bitemporal fact tables (sequenced amend)
+- hardware, software, patchstate, network -> bitemporal fact tables
+                                   (sequenced amend)
 - processes, services            -> device_snapshots (latest-only; too churny
                                     for belief history)
 """
@@ -19,7 +20,7 @@ from openrmm.models.telemetry import DeviceSnapshot
 
 log = structlog.get_logger()
 
-FACT_KINDS = {"hardware", "software", "patchstate"}
+FACT_KINDS = {"hardware", "software", "patchstate", "network"}
 SNAPSHOT_KINDS = {"processes", "services"}
 
 
@@ -52,6 +53,13 @@ def _facts_from(kind: str, data: dict) -> dict[str, dict]:
             for p in data.get("packages", [])
             if p.get("name")
         }
+    if kind == "network":
+        # One fact per interface, keyed by name. Per-interface rather than one
+        # blob for the machine so that a single NIC changing address amends
+        # only its own history: a whole-machine fact would rewrite every
+        # interface's belief window every time any one of them moved.
+        return {f"iface:{i['name']}": i for i in (data.get("interfaces") or []) if i.get("name")}
+
     if kind == "hardware":
         return {
             "cpu": {"model": data.get("cpu_model", ""), "cores": data.get("cpu_cores")},

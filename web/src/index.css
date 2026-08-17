@@ -132,6 +132,8 @@
 :root {
     --chart-cpu: #2a78d6;
     --chart-mem: #eb6834;
+    --chart-net-in: #0f8a7e;
+    --chart-net-out: #c07c10;
     --viz-grid: #e1e0d9;
     --viz-axis: #c3c2b7;
     --viz-muted: #898781;
@@ -139,6 +141,8 @@
 .dark {
     --chart-cpu: #3987e5;
     --chart-mem: #d95926;
+    --chart-net-in: #21a596;
+    --chart-net-out: #d99b21;
     --viz-grid: #2c2c2a;
     --viz-axis: #383835;
     --viz-muted: #898781;
