@@ -7,7 +7,7 @@
 # Set DOMAIN in .env to pick the public hostname.
 
 services:
-  site:
+  openrmm-site:
     profiles: ["prod", ""]
     build:
       context: .
@@ -23,7 +23,7 @@ services:
       caddy: ${DOMAIN:-openrmm.supported.systems}
       caddy.reverse_proxy: "{{upstreams 80}}"
 
-  site-dev:
+  openrmm-site-dev:
     profiles: ["dev"]
     build:
       context: .
