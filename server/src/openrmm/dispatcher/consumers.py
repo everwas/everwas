@@ -19,7 +19,7 @@ import structlog
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 
 from openrmm.alerting.engine import AlertEngine
-from openrmm.bitemporal.store import WholesaleRetirementError
+from openrmm.bitemporal.store import StaleObservationError, WholesaleRetirementError
 from openrmm.db.engine import session_scope
 from openrmm.ingest.events import parse_agent_event, record_agent_event
 from openrmm.ingest.inventory import apply_inventory, parse_inventory
@@ -199,6 +199,11 @@ async def _handle_inventory(subject: str, data: bytes) -> None:
     try:
         async with session_scope() as db:
             await apply_inventory(db, device_id, kind, observed_at, payload)
+    except StaleObservationError as exc:
+        # A late snapshot. Never retryable: the timestamps are fixed, so the
+        # sixth delivery is refused for the same reason as the first.
+        log.error("refused stale inventory snapshot", subject=subject, kind=kind, reason=str(exc))
+        raise PermanentIngestError(str(exc)) from exc
     except WholesaleRetirementError as exc:
         # A snapshot asserting the device has none of a kind, when we currently
         # believe it has some. Never retryable: the payload is fixed.

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.audit import ActorType, AuditLog
 from openrmm.models.device import Device, DeviceStatus
-from openrmm.models.telemetry import telemetry_disks, telemetry_metrics
+from openrmm.models.telemetry import PARTITIONED_TELEMETRY
 
 log = structlog.get_logger()
 
@@ -48,7 +48,11 @@ async def delete_device(db: AsyncSession, device_id: uuid.UUID, actor: str) -> D
     # other table does not touch them. Without this they sit orphaned in the
     # partitions until retention drops them, which is weeks of rows belonging
     # to a device that no longer exists.
-    for table in (telemetry_metrics, telemetry_disks):
+    # Every partitioned telemetry table, derived from the maintenance list
+    # rather than written out again. This loop already fell behind once:
+    # telemetry_network was added in migration 0013 and not added here, so a
+    # deleted device kept its per-interface counters for the retention window.
+    for table in PARTITIONED_TELEMETRY:
         await db.execute(delete(table).where(table.c.device_id == device_id))
 
     # Written BEFORE the delete: audit_log has no FK to devices (it outlives

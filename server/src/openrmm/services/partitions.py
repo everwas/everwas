@@ -10,9 +10,13 @@ import structlog
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from openrmm.models.telemetry import PARTITIONED_TELEMETRY
+
 log = structlog.get_logger()
 
-PARTITIONED_TABLES = ("telemetry_metrics", "telemetry_disks", "telemetry_network")
+# Derived from the model definitions, so a new partitioned table cannot be
+# created by a migration and then silently never get partitions or retention.
+PARTITIONED_TABLES = tuple(t.name for t in PARTITIONED_TELEMETRY)
 CREATE_AHEAD_DAYS = 2
 
 

@@ -128,6 +128,15 @@ async def get_network(
             select(FactNetwork.fact_key, FactNetwork.payload).where(
                 FactNetwork.device_id == device_id,
                 func.upper_inf(FactNetwork.recorded_during),
+                # Both filters are required. upper_inf(recorded_during) alone
+                # means "a belief we still hold", which includes CORRECTION
+                # rows: after any change there are two such rows for a fact
+                # key, one describing the value that ended. Without the
+                # valid_during filter the dict comprehension below keeps
+                # whichever row Postgres returned last, so an interface that
+                # changed address shows the old one or the new one depending
+                # on physical row order, and flips after a VACUUM.
+                func.upper_inf(FactNetwork.valid_during),
             )
         )
     ).all()

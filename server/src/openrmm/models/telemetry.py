@@ -71,6 +71,16 @@ telemetry_network = Table(
 )
 
 
+# The partitioned time-series tables, in one place.
+#
+# They carry device_id as a plain column with NO foreign key, so nothing
+# cascades to them: every consumer that cleans up after a device has to walk
+# this list. Keeping it here rather than repeating the tuple is what stops the
+# next table added by a migration from being deleted in one place and forgotten
+# in the other, which is exactly what happened to telemetry_network.
+PARTITIONED_TELEMETRY = (telemetry_metrics, telemetry_disks, telemetry_network)
+
+
 class DeviceStatusLatest(Base):
     """One row per device, upserted on every telemetry sample. The fleet
     dashboard reads only this table — never the partitioned history."""

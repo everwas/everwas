@@ -137,3 +137,44 @@ async def test_retired_devices_are_out_of_the_default_list():
 
     assert {d.id for d in default} == {live}
     assert {d.id for d in every} == {live, gone}
+
+
+async def test_deletion_covers_every_partitioned_telemetry_table():
+    """Asserted against the list, not against the tables that existed today.
+
+    This loop already fell behind once: telemetry_network arrived in migration
+    0013 and was added to partition maintenance but not to deletion, so a
+    deleted device kept its per-interface counters for the whole retention
+    window. Naming the tables again here would have the same failure mode as
+    the code did, so this walks the shared list instead and will fail the day a
+    new partitioned table is added without being wired into deletion.
+    """
+    from sqlalchemy import func, insert, select
+
+    from openrmm.models.telemetry import PARTITIONED_TELEMETRY
+
+    device_id = await _device(DeviceStatus.retired)
+    ts = datetime.now(UTC)
+
+    async with get_sessionmaker()() as db, db.begin():
+        await ensure_partitions(db, retention_days=30)
+        for table in PARTITIONED_TELEMETRY:
+            row = {"device_id": device_id, "ts": ts}
+            # Fill whatever extra key columns the table has, so the insert is
+            # valid for every shape without naming them one by one.
+            for col in table.primary_key.columns:
+                if col.name not in row:
+                    row[col.name] = "x"
+            await db.execute(insert(table).values(row))
+
+    async with get_sessionmaker()() as db, db.begin():
+        await delete_device(db, device_id, actor="admin@example.com")
+
+    async with get_sessionmaker()() as db:
+        for table in PARTITIONED_TELEMETRY:
+            left = (
+                await db.execute(
+                    select(func.count()).select_from(table).where(table.c.device_id == device_id)
+                )
+            ).scalar_one()
+            assert left == 0, f"{table.name} kept rows for a deleted device"

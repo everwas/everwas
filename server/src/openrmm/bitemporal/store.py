@@ -61,6 +61,31 @@ def _closed(lower: datetime, upper: datetime) -> Range:
 EMPTY_IS_IMPLAUSIBLE = frozenset({"software", "network", "hardware"})
 
 
+class StaleObservationError(Exception):
+    """A snapshot observed earlier than a belief it would supersede.
+
+    Two things go wrong when a late snapshot is amended on top of a newer one,
+    and both are silent.
+
+    The older value wins the valid-time axis. `correction()` declines to write
+    a tombstone because the prior belief starts AFTER observed_at, but the
+    prior belief's recorded_during is closed anyway and the older payload is
+    inserted as [observed_at, infinity). The newer truth disappears from the
+    axis that as_of queries read, which is the axis every incident question
+    uses. It is still reachable through knew_at, but only by someone who
+    already suspects.
+
+    And where the fact had already changed, a correction row covers [T0, T1).
+    A snapshot landing inside that window inserts an overlapping range, the
+    GiST exclusion fires, and the whole snapshot is dead-lettered rather than
+    just the conflicting key.
+
+    Neither needs a hostile agent. A machine whose RTC is dead, that boots,
+    gets corrected by NTP, and flushes its spool produces exactly this, well
+    inside MAX_LAG.
+    """
+
+
 class WholesaleRetirementError(Exception):
     """A snapshot would have retired every current fact for a kind.
 
@@ -135,6 +160,30 @@ async def record_facts(
         old_lower = prior.valid_during.lower
         if old_lower is not None and old_lower < observed_at:
             insert(fact_key, prior.payload, _closed(old_lower, observed_at))
+
+    # Refuse an observation older than something we already believe.
+    #
+    # Bitemporality's promise is that recording a new belief never destroys an
+    # old one, and amending on top of a newer observation breaks exactly that.
+    # The right place to refuse is here, before any row is written, because the
+    # two failure shapes below diverge only in whether a correction row happens
+    # to be in the way.
+    #
+    # Strictly older, not older-or-equal: equal timestamps are ordinary (a
+    # re-publish, or two kinds collected in the same cycle) and refusing them
+    # would reject normal traffic.
+    for key in facts:
+        prior = current.get(key)
+        if prior is None:
+            continue
+        prior_lower = prior.valid_during.lower
+        if prior_lower is not None and observed_at < prior_lower:
+            raise StaleObservationError(
+                f"{kind} snapshot for device {device_id} observed at "
+                f"{observed_at.isoformat()} is older than the current belief "
+                f"about {key}, which starts at {prior_lower.isoformat()}: "
+                "amending on top of it would drop the newer value from valid time"
+            )
 
     for key, payload in facts.items():
         prior = current.get(key)
