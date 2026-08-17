@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -25,14 +26,24 @@ import (
 const interval = 60 * time.Second
 
 type sample struct {
-	CPUPct   float64      `json:"cpu_pct"`
-	MemUsed  uint64       `json:"mem_used"`
-	MemTotal uint64       `json:"mem_total"`
-	SwapPct  float64      `json:"swap_pct"`
-	Load1    float64      `json:"load1"`
-	UptimeS  uint64       `json:"uptime_s"`
-	Disks    []diskUsage  `json:"disks"`
-	Nets     []netCounter `json:"nets,omitempty"`
+	CPUPct   float64 `json:"cpu_pct"`
+	MemUsed  uint64  `json:"mem_used"`
+	MemTotal uint64  `json:"mem_total"`
+	SwapPct  float64 `json:"swap_pct"`
+	// Load1 is a POINTER so the field can be absent rather than zero.
+	//
+	// Windows has no load average. gopsutil still answers there, from a
+	// simulated background sampler, and what it answers is meaningless: a real
+	// Windows host reported 7.5e-50, which is a denormal that Postgres cannot
+	// store in a real column at all, so the server rejected the entire
+	// telemetry sample (cpu, memory, disks, network, alert evaluation) once a
+	// minute for hours. Reporting 0.0 instead would have been storable and
+	// worse: a flat zero line on a dashboard is a claim that the machine is
+	// idle, not an admission that the metric does not exist here.
+	Load1   *float64     `json:"load1,omitempty"`
+	UptimeS uint64       `json:"uptime_s"`
+	Disks   []diskUsage  `json:"disks"`
+	Nets    []netCounter `json:"nets,omitempty"`
 }
 
 // netCounter is one interface's CUMULATIVE counters since boot, not a rate.
@@ -115,9 +126,13 @@ func collect(ctx context.Context, log *slog.Logger) sample {
 	} else {
 		log.Warn("collect swap", "err", err)
 	}
-	if avg, err := load.AvgWithContext(ctx); err == nil {
-		s.Load1 = avg.Load1
-	} // unix only; stays 0 elsewhere
+	if runtime.GOOS != "windows" {
+		if avg, err := load.AvgWithContext(ctx); err == nil {
+			s.Load1 = &avg.Load1
+		} else {
+			log.Warn("collect load average", "err", err)
+		}
+	}
 	if up, err := host.UptimeWithContext(ctx); err == nil {
 		s.UptimeS = up
 	} else {

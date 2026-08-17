@@ -35,6 +35,48 @@ COUNTER_FIELDS = (
 )
 
 
+# float4 bounds. Postgres `real` rejects anything outside these outright, and a
+# rejection takes the whole INSERT with it.
+FLOAT4_MAX = 3.4028235e38
+FLOAT4_MIN_NORMAL = 1.1754944e-38
+
+
+def _real(value: object) -> float | None:
+    """Coerce one wire value for a `real` column, or None if it cannot be one.
+
+    Found the hard way: the Windows agent reports load1 = 7.5e-50, because
+    Windows has no load average and gopsutil returns a meaningless decaying
+    value. That is a denormal below float4's smallest normal, so Postgres
+    raised NumericValueOutOfRangeError and the ENTIRE sample was rolled back and
+    eventually dead-lettered. Cpu, memory, disks, network and the alert
+    evaluation, all lost, once a minute, for hours, over one field nobody reads.
+
+    Underflow becomes 0.0 rather than None, because at this precision a value
+    that small is indistinguishable from zero and zero is what it means.
+    Overflow becomes None rather than the maximum, because clamping would
+    invent a specific enormous reading; unknown is the truthful answer.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    v = float(value)
+    if v != v or v in (float("inf"), float("-inf")):  # NaN, +-Inf
+        return None
+    if abs(v) > FLOAT4_MAX:
+        return None
+    if v != 0.0 and abs(v) < FLOAT4_MIN_NORMAL:
+        return 0.0
+    return v
+
+
+def _bigint(value: object) -> int | None:
+    """Coerce one wire value for a bigint column, or None."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if value < -(2**63) or value > BIGINT_MAX:
+        return None
+    return value
+
+
 def _counter(value: object) -> int | None:
     """Coerce one wire counter, or None if it is not a usable bigint."""
     if not isinstance(value, int) or isinstance(value, bool):
@@ -69,7 +111,10 @@ def parse_telemetry(subject: str, payload: bytes) -> tuple[uuid.UUID, datetime, 
 
 
 async def apply_telemetry(db: AsyncSession, device_id: uuid.UUID, ts: datetime, data: dict) -> None:
-    mem_used, mem_total = data.get("mem_used"), data.get("mem_total")
+    # Coerce BEFORE any arithmetic. mem_used / mem_total on raw wire values
+    # raises TypeError for a string, which is the same lost-sample failure by a
+    # different route.
+    mem_used, mem_total = _bigint(data.get("mem_used")), _bigint(data.get("mem_total"))
     mem_pct = (mem_used / mem_total * 100.0) if mem_used and mem_total else None
 
     await db.execute(
@@ -77,12 +122,12 @@ async def apply_telemetry(db: AsyncSession, device_id: uuid.UUID, ts: datetime, 
         .values(
             device_id=device_id,
             ts=ts,
-            cpu_pct=data.get("cpu_pct"),
+            cpu_pct=_real(data.get("cpu_pct")),
             mem_used=mem_used,
             mem_total=mem_total,
-            swap_pct=data.get("swap_pct"),
-            load1=data.get("load1"),
-            uptime_s=data.get("uptime_s"),
+            swap_pct=_real(data.get("swap_pct")),
+            load1=_real(data.get("load1")),
+            uptime_s=_bigint(data.get("uptime_s")),
         )
         .on_conflict_do_nothing()  # JetStream redelivery safety
     )
@@ -98,8 +143,8 @@ async def apply_telemetry(db: AsyncSession, device_id: uuid.UUID, ts: datetime, 
                         "device_id": device_id,
                         "ts": ts,
                         "mount": d["mount"],
-                        "used": d.get("used"),
-                        "total": d.get("total"),
+                        "used": _bigint(d.get("used")),
+                        "total": _bigint(d.get("total")),
                         "fstype": d.get("fstype"),
                     }
                     for d in disks
@@ -107,7 +152,13 @@ async def apply_telemetry(db: AsyncSession, device_id: uuid.UUID, ts: datetime, 
             )
             .on_conflict_do_nothing()
         )
-        pcts = [d["used"] / d["total"] * 100.0 for d in disks if d.get("used") and d.get("total")]
+        # Same coercion before dividing: a string "used" would raise here and
+        # take the sample down exactly as load1 did.
+        pcts = [
+            u / t * 100.0
+            for u, t in ((_bigint(d.get("used")), _bigint(d.get("total"))) for d in disks)
+            if u and t
+        ]
         worst_disk_pct = max(pcts) if pcts else None
 
     # Interfaces are keyed by name and the name is the primary key, so a
