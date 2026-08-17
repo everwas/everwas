@@ -1,0 +1,237 @@
+---
+import { Icon } from 'astro-icon/components';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout
+  title="Why two licenses — OpenRMM"
+  description="Why the OpenRMM server is AGPL-3.0 and the agent is Apache-2.0: copyleft where the commons needs defending, permissive where adoption needs to be frictionless."
+>
+  <Nav />
+  <main class="lic">
+    <div class="container">
+      <p class="section-kicker">Licensing</p>
+      <h1>Why two licenses</h1>
+      <p class="lic-lede">
+        The server is <strong class="lic-amber">AGPL-3.0</strong> and the agent
+        is <strong class="lic-cyan">Apache-2.0</strong>. That isn't
+        indecision — the two halves live in different threat models, and each
+        license is matched to the job its half does. The one-sentence version:
+        copyleft where the commons needs defending, permissive where adoption
+        needs to be frictionless.
+      </p>
+
+      <section id="agpl">
+        <h2><Icon name="lucide:server-cog" size={20} /> The server: AGPL-3.0</h2>
+        <p>
+          Ordinary GPL has a hole exactly the shape of this market. Its
+          obligations trigger on <em>distribution</em>, and a hosted service
+          never distributes anything. Someone could take this server, build a
+          better dashboard on it, sell it as a hosted RMM, and owe nobody a
+          line of source — their customers only ever touch it over the
+          network. That is not hypothetical: hosted is the default commercial
+          shape of this entire product category.
+        </p>
+        <p>
+          AGPL closes that hole. If you modify the server and let users
+          interact with it over a network, those users are entitled to your
+          modified source. The improvements come back. That's the deal.
+        </p>
+        <p>
+          Just as important is who it <em>doesn't</em> burden:
+        </p>
+        <ul class="lic-cases">
+          <li>
+            <Icon name="lucide:building-2" size={16} />
+            <span><strong>Run it internally</strong> — no obligations. Using AGPL software yourself triggers nothing.</span>
+          </li>
+          <li>
+            <Icon name="lucide:cloud" size={16} />
+            <span><strong>Host it unmodified for your clients</strong> — the source offer is satisfied by pointing at this repository. Done.</span>
+          </li>
+          <li>
+            <Icon name="lucide:git-fork" size={16} />
+            <span><strong>Modify it and host it for others</strong> — share your changes. You are the one case the license exists for.</span>
+          </li>
+        </ul>
+        <p>
+          This corner of the ecosystem has already seen the other path: a
+          well-known project reacted to hosting free-riders by moving to a
+          source-available, non-commercial license. That defends the project,
+          but it exits open source entirely, and nothing built on it can ever
+          be open source again. AGPL is the fork in that road where you keep
+          genuine open source <em>and</em> the defense: the free-rider must
+          share, rather than being forbidden to compete.
+        </p>
+      </section>
+
+      <section id="apache">
+        <h2><Icon name="lucide:box" size={20} /> The agent: Apache-2.0</h2>
+        <p>
+          The agent runs on machines you don't own, and that is exactly where
+          copyleft causes friction without protecting anything. An MSP pushing
+          the agent to a thousand customer endpoints is distributing it, in
+          copyright terms. Under AGPL that raises source-offer questions for
+          any patched build; under Apache-2.0 it raises none. Bake it into
+          golden images, MDM payloads, your own installers — no lawyer in the
+          loop.
+        </p>
+        <p>
+          There's also a gate most endpoint software has to pass that servers
+          don't: legal review before installation. Apache-2.0 is on
+          effectively every corporate approved-license list; AGPL is
+          categorically banned at many organizations. An AGPL agent would
+          stall adoption at precisely the gate that matters most — getting
+          the binary onto fleets.
+        </p>
+        <p>
+          And AGPL's teeth would bite nothing here anyway. The loophole it
+          closes is hosted-service free-riding, and nobody builds a hosted
+          business on a hoarded fork of a telemetry collector. The risk the
+          strong license defends against simply doesn't live in this half.
+        </p>
+        <p>
+          Why Apache specifically, over MIT or BSD: the explicit patent grant
+          and retaliation clause. For software that runs with root or SYSTEM
+          privileges on someone else's fleet, that is what corporate counsel
+          wants to see.
+        </p>
+      </section>
+
+      <section id="boundary">
+        <h2><Icon name="lucide:waypoints" size={20} /> The boundary is a wire protocol</h2>
+        <p>
+          The two licenses never entangle because the two halves never link.
+          The agent is its own Go module and talks to the server over a
+          documented NATS subject contract — messages on a wire, not imported
+          code. A protocol is the cleanest license boundary there is: each
+          side can evolve, be replaced, or be reimplemented under any license
+          without contaminating the other. It's also what lets future agent
+          modules — including proprietary ones — exist without touching the
+          server's copyleft.
+        </p>
+      </section>
+
+      <section id="dco">
+        <h2><Icon name="lucide:git-pull-request" size={20} /> The DCO makes it permanent</h2>
+        <p>
+          Contributions come in under a Developer Certificate of Origin
+          sign-off, not a CLA. Every contributor keeps their own copyright,
+          which means no entity — including this project — ever accumulates
+          the rights to relicense the commons out from under you. The license
+          can't be pulled, because nobody owns enough of it to pull. If you
+          build a business on OpenRMM, that permanence is the point.
+        </p>
+        <p>
+          The choice has already cost us something, which is how you know it's
+          real: telemetry storage uses plain PostgreSQL range partitioning
+          rather than a popular time-series extension, because that
+          extension's license can't ship alongside an AGPL server. We took the
+          constraint. The license is a design input here, not a README
+          ornament.
+        </p>
+      </section>
+
+      <p class="lic-close">
+        Same family of choices as Grafana, Mastodon, MinIO, and Nextcloud —
+        projects whose commercial gravity is hosting, defended accordingly.
+        Questions about a specific use case?
+        <a href="https://github.com/openrmm">Open an issue</a>; licensing
+        questions get answered in public so the answers accumulate.
+      </p>
+    </div>
+  </main>
+  <Footer />
+</BaseLayout>
+
+<style>
+  .lic {
+    padding-block: clamp(4rem, 9vw, 7rem);
+  }
+
+  .lic .container {
+    max-width: 46rem;
+  }
+
+  .lic h1 {
+    font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+    margin-bottom: 1.2rem;
+  }
+
+  .lic-lede {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    margin-bottom: 3rem;
+    text-wrap: pretty;
+  }
+
+  .lic-amber { color: var(--amber); }
+  .lic-cyan { color: var(--cyan); }
+
+  .lic section {
+    margin-bottom: 3rem;
+  }
+
+  .lic h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.35rem;
+    margin-bottom: 1rem;
+  }
+
+  .lic h2 svg {
+    color: var(--amber);
+    flex-shrink: 0;
+  }
+
+  #apache h2 svg {
+    color: var(--cyan);
+  }
+
+  .lic p {
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+    text-wrap: pretty;
+  }
+
+  .lic p strong,
+  .lic li strong {
+    color: var(--text);
+  }
+
+  .lic-cases {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .lic-cases li {
+    display: flex;
+    gap: 0.7rem;
+    align-items: baseline;
+    padding: 0.8rem 1rem;
+    background: var(--bg-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-s);
+    color: var(--text-dim);
+    font-size: 0.95rem;
+  }
+
+  .lic-cases svg {
+    color: var(--amber);
+    flex-shrink: 0;
+    transform: translateY(2px);
+  }
+
+  .lic-close {
+    border-top: 1px solid var(--hairline);
+    padding-top: 1.5rem;
+    color: var(--text-dim);
+  }
+</style>

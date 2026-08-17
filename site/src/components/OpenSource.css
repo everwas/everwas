@@ -51,3 +51,21 @@
   font-size: 0.93rem;
   line-height: 1.65;
 }
+
+.oss-more {
+  margin-top: 1.6rem;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+
+.oss-more a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 600;
+  margin-left: 0.35rem;
+}
+
+.oss-more a svg {
+  transform: translateY(1px);
+}
