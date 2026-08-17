@@ -1,5 +1,5 @@
 ---
-// All SEO flows through this layout — pages pass props, never raw meta tags.
+// All SEO flows through this layout: pages pass props, never raw meta tags.
 import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
 import '@fontsource-variable/jetbrains-mono';
@@ -50,7 +50,7 @@ const jsonLd = {
   <body>
     <slot />
     <script>
-      // Self-hosted session replay, marketing site ONLY — never the console.
+      // Self-hosted session replay, marketing site ONLY, never the console.
       // See /privacy for what this collects; DNT is honored before start().
       // analytics.active enables CUSTOM events (without it the instance only
       // derives CLICK/PERFORMANCE rows with empty descriptions).

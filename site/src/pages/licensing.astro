@@ -6,7 +6,7 @@ import Footer from '../components/Footer.astro';
 ---
 
 <BaseLayout
-  title="Why two licenses — OpenRMM"
+  title="Why two licenses · OpenRMM"
   description="Why the OpenRMM server is AGPL-3.0 and the agent is Apache-2.0: copyleft where the commons needs defending, permissive where adoption needs to be frictionless."
 >
   <Nav />
@@ -17,7 +17,7 @@ import Footer from '../components/Footer.astro';
       <p class="lic-lede">
         The server is <strong class="lic-amber">AGPL-3.0</strong> and the agent
         is <strong class="lic-cyan">Apache-2.0</strong>. That isn't
-        indecision — the two halves live in different threat models, and each
+        indecision. The two halves live in different threat models, and each
         license is matched to the job its half does. The one-sentence version:
         copyleft where the commons needs defending, permissive where adoption
         needs to be frictionless.
@@ -30,7 +30,7 @@ import Footer from '../components/Footer.astro';
           obligations trigger on <em>distribution</em>, and a hosted service
           never distributes anything. Someone could take this server, build a
           better dashboard on it, sell it as a hosted RMM, and owe nobody a
-          line of source — their customers only ever touch it over the
+          line of source, because their customers only ever touch it over the
           network. That is not hypothetical: hosted is the default commercial
           shape of this entire product category.
         </p>
@@ -45,15 +45,15 @@ import Footer from '../components/Footer.astro';
         <ul class="lic-cases">
           <li>
             <Icon name="lucide:building-2" size={16} />
-            <span><strong>Run it internally</strong> — no obligations. Using AGPL software yourself triggers nothing.</span>
+            <span><strong>Run it internally</strong>: no obligations. Using AGPL software yourself triggers nothing.</span>
           </li>
           <li>
             <Icon name="lucide:cloud" size={16} />
-            <span><strong>Host it unmodified for your clients</strong> — the source offer is satisfied by pointing at this repository. Done.</span>
+            <span><strong>Host it unmodified for your clients</strong>: the source offer is satisfied by pointing at this repository. Done.</span>
           </li>
           <li>
             <Icon name="lucide:git-fork" size={16} />
-            <span><strong>Modify it and host it for others</strong> — share your changes. You are the one case the license exists for.</span>
+            <span><strong>Modify it and host it for others</strong>: share your changes. You are the one case the license exists for.</span>
           </li>
         </ul>
         <p>
@@ -75,15 +75,15 @@ import Footer from '../components/Footer.astro';
           the agent to a thousand customer endpoints is distributing it, in
           copyright terms. Under AGPL that raises source-offer questions for
           any patched build; under Apache-2.0 it raises none. Bake it into
-          golden images, MDM payloads, your own installers — no lawyer in the
-          loop.
+          golden images, MDM payloads, your own installers, all with no
+          lawyer in the loop.
         </p>
         <p>
           There's also a gate most endpoint software has to pass that servers
           don't: legal review before installation. Apache-2.0 is on
           effectively every corporate approved-license list; AGPL is
           categorically banned at many organizations. An AGPL agent would
-          stall adoption at precisely the gate that matters most — getting
+          stall adoption at precisely the gate that matters most: getting
           the binary onto fleets.
         </p>
         <p>
@@ -105,11 +105,11 @@ import Footer from '../components/Footer.astro';
         <p>
           The two licenses never entangle because the two halves never link.
           The agent is its own Go module and talks to the server over a
-          documented NATS subject contract — messages on a wire, not imported
+          documented NATS subject contract: messages on a wire, not imported
           code. A protocol is the cleanest license boundary there is: each
           side can evolve, be replaced, or be reimplemented under any license
           without contaminating the other. It's also what lets future agent
-          modules — including proprietary ones — exist without touching the
+          modules, including proprietary ones, exist without touching the
           server's copyleft.
         </p>
       </section>
@@ -119,7 +119,7 @@ import Footer from '../components/Footer.astro';
         <p>
           Contributions come in under a Developer Certificate of Origin
           sign-off, not a CLA. Every contributor keeps their own copyright,
-          which means no entity — including this project — ever accumulates
+          which means no entity, including this project, ever accumulates
           the rights to relicense the commons out from under you. The license
           can't be pulled, because nobody owns enough of it to pull. If you
           build a business on OpenRMM, that permanence is the point.
@@ -135,7 +135,7 @@ import Footer from '../components/Footer.astro';
       </section>
 
       <p class="lic-close">
-        Same family of choices as Grafana, Mastodon, MinIO, and Nextcloud —
+        Same family of choices as Grafana, Mastodon, MinIO, and Nextcloud:
         projects whose commercial gravity is hosting, defended accordingly.
         Questions about a specific use case?
         <a href="https://github.com/openrmm">Open an issue</a>; licensing
