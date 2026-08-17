@@ -15,6 +15,7 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/config"
 	"github.com/rsp2k/openrmm/agent/internal/conn"
 	"github.com/rsp2k/openrmm/agent/internal/enroll"
+	"github.com/rsp2k/openrmm/agent/internal/svc"
 	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
@@ -68,7 +69,26 @@ func cmdEnroll(args []string) int {
 	return 0
 }
 
+// cmdRun starts the agent, under the Windows service control dispatcher when
+// the SCM launched us and directly otherwise.
+//
+// The split matters: a Windows service that never reports SERVICE_RUNNING is
+// killed after 30 seconds with error 1053, however healthy it is. systemd has
+// no such protocol, so this seam is invisible on Linux and the agent ran
+// correctly there while being unstartable as a Windows service.
 func cmdRun() int {
+	if isService, err := svc.IsService(); err == nil && isService {
+		return svc.RunAsService(svc.Name, runAgent)
+	}
+	// Interactive: Ctrl-C and SIGTERM are the stop signal.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runAgent(ctx)
+}
+
+// runAgent is the agent proper. Its parent context is whatever asked it to
+// stop, so the shutdown path is identical either way.
+func runAgent(parent context.Context) int {
 	log := newLogger()
 
 	// Rollback runs FIRST, before anything that can fail. A build that broke
@@ -98,9 +118,6 @@ func cmdRun() int {
 		return 1
 	}
 
-	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	// A closed NATS connection is unrecoverable and silent: the agent keeps
 	// running and heartbeating while being unable to receive anything. Dying
 	// is the only way back, so the connection tells us and we exit non-zero
@@ -116,7 +133,7 @@ func cmdRun() int {
 	}
 	log.Info("agent started", "agent_id", cfg.AgentID, "version", Version, "nats_url", cfg.NATSURL)
 
-	ctx, cancel := context.WithCancel(signalCtx)
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	// A self-update swaps the binary on disk; only exiting makes the service

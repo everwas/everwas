@@ -80,6 +80,18 @@ class AsciicastRecorder:
         ]
         self._append(json.dumps(event) + "\n")
 
+    def write_resize(self, cols: int, rows: int) -> None:
+        """Buffer a resize event so playback follows the real terminal size.
+
+        asciicast v2 has an "r" event for this, and without it a recording
+        replays at whatever size the session opened with. Anything the user
+        resized to see (a wide table, a full-screen editor) then renders
+        wrapped and unreadable in playback, which is precisely the session
+        somebody goes back to watch.
+        """
+        event = [round(time.monotonic() - self._start, 6), "r", f"{cols}x{rows}"]
+        self._append(json.dumps(event) + "\n")
+
     async def maybe_flush(self) -> None:
         if self._pending_bytes >= self.FLUSH_BYTES:
             await self.flush()
@@ -237,12 +249,18 @@ async def bridge_shell(
                 except json.JSONDecodeError:
                     continue
                 if event.get("type") == "resize":
+                    try:
+                        cols, rows = int(event["cols"]), int(event["rows"])
+                    except (KeyError, TypeError, ValueError):
+                        # A malformed resize is the browser's problem, not a
+                        # reason to tear down a working shell.
+                        continue
                     await nc.publish(
                         shell_resize(agent_id, sid),
-                        json.dumps(
-                            {"cols": int(event["cols"]), "rows": int(event["rows"])}
-                        ).encode(),
+                        json.dumps({"cols": cols, "rows": rows}).encode(),
                     )
+                    if recorder is not None:
+                        recorder.write_resize(cols, rows)
 
     async def ping_agent() -> None:
         while True:
