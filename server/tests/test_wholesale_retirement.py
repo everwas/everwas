@@ -11,8 +11,6 @@ plausible-looking when it happens, because the tombstones are legitimate
 bitemporal history: an `as_of` query afterwards agrees that the packages ended.
 """
 
-import uuid
-
 import pytest
 
 from openrmm.bitemporal.store import WholesaleRetirementError, record_facts

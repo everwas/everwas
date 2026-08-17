@@ -139,3 +139,40 @@ async def client(pg_database):
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def client_as(pg_database):
+    """A client factory that authenticates as a chosen role.
+
+    The `client` fixture above overrides current_user with a hardcoded admin, so
+    every HTTP test in this suite has always run with full privileges. That made
+    a missing role dependency structurally undetectable: `require_role` had zero
+    tests, and two routes serving fleet credentials and root-shell recordings to
+    any authenticated user passed a green suite for months.
+
+    Usage: `async with client_as(Role.viewer) as c: ...`
+    """
+    import contextlib
+
+    import httpx
+
+    from openrmm.api.app import create_app
+    from openrmm.api.deps import current_user
+    from openrmm.models.user import User
+
+    @contextlib.asynccontextmanager
+    async def make(role):
+        app = create_app()
+        app.dependency_overrides[current_user] = lambda: User(
+            id=uuid.uuid4(),
+            email=f"{role.value}@example.com",
+            password_hash="x",
+            role=role,
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+        app.dependency_overrides.clear()
+
+    return make

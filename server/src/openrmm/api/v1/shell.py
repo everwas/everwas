@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 
-from openrmm.api.deps import CurrentUser, DbSession
+from openrmm.api.deps import CurrentUser, DbSession, require_role
 from openrmm.config import get_settings
 from openrmm.db.engine import session_scope
 from openrmm.models.audit import ActorType, AuditLog
@@ -22,6 +22,10 @@ from openrmm.services.shell_session import bridge_shell
 
 log = structlog.get_logger()
 router = APIRouter()
+
+# Reading a session back is as sensitive as opening one, so this matches the
+# role check the WebSocket handler does inline.
+OPERATOR = require_role(Role.admin, Role.operator)
 
 
 @router.websocket("/{device_id}/shell")
@@ -104,7 +108,7 @@ async def device_shell(
         await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
 
 
-@router.get("/sessions/recent")
+@router.get("/sessions/recent", dependencies=[OPERATOR])
 async def recent_sessions(
     db: DbSession,
     _user: CurrentUser,
@@ -112,9 +116,12 @@ async def recent_sessions(
 ) -> list[dict]:
     """Who has had a root shell on which machine, and when.
 
-    This was the one route in the API with no authentication dependency, so
-    an anonymous caller could enumerate device UUIDs and read admin session
-    history. Every other read route takes CurrentUser; this one now does too.
+    Gated on operator, matching the WebSocket that opens a session: a recording
+    is a verbatim transcript of a root shell, including every credential pasted
+    into it, so read-back has to be at least as restricted as the act. It was
+    first missing authentication entirely (anonymous callers could enumerate
+    device UUIDs and read admin session history), then had authentication but no
+    role, which let a viewer download an admin's session.
     """
     stmt = select(ShellSession).order_by(ShellSession.started_at.desc()).limit(50)
     if device_id is not None:
@@ -134,7 +141,7 @@ async def recent_sessions(
     ]
 
 
-@router.get("/sessions/{session_id}/recording")
+@router.get("/sessions/{session_id}/recording", dependencies=[OPERATOR])
 async def session_recording(
     session_id: uuid.UUID, db: DbSession, _user: CurrentUser
 ) -> FileResponse:

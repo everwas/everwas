@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from openrmm.models.alert import (
     AlertState,
@@ -79,6 +79,13 @@ class ChannelOut(BaseModel):
     change the name, PUT the object back, which writes the literal mask over
     the real secret. Absent means absent, and `secrets_set` tells the UI a
     credential exists without saying what it is.
+
+    Redaction is enforced by a validator rather than only by `redacted()`,
+    because relying on every caller to pick the safe constructor is what failed:
+    three routes existed, one used `redacted()`, and the other two shipped the
+    credential to anyone with a login for months. A validator makes the unsafe
+    object unconstructable, so `model_validate` straight off the ORM row is now
+    safe too and there is no door left to pick the wrong one.
     """
 
     id: uuid.UUID
@@ -89,6 +96,18 @@ class ChannelOut(BaseModel):
     secrets_set: list[str] = []
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _strip_credentials(self) -> "ChannelOut":
+        raw = self.config or {}
+        present = sorted(k for k in SECRET_CONFIG_KEYS if raw.get(k))
+        if present:
+            self.config = {k: v for k, v in raw.items() if k not in SECRET_CONFIG_KEYS}
+            # Only widen: redacted() may have already reported these, and a
+            # caller that constructed the object with an explicit list should
+            # not lose it.
+            self.secrets_set = sorted(set(self.secrets_set) | set(present))
+        return self
 
     @classmethod
     def redacted(cls, channel) -> "ChannelOut":

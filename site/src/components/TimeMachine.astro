@@ -24,11 +24,6 @@ import './TimeMachine.css';
 
       <div class="tm-tracks" role="img"
         aria-label="Two timelines. Valid time: patch installed Tuesday 09:14. Record time: server learns of it Thursday 16:02. An incident occurs Wednesday, between the two.">
-        <!-- day scale -->
-        <div class="tm-scale" aria-hidden="true">
-          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
-        </div>
-
         <!-- incident marker spans both tracks -->
         <div class="tm-incident" aria-hidden="true">
           <span class="tm-incident-label"><Icon name="lucide:siren" size={13} /> incident</span>
@@ -50,6 +45,11 @@ import './TimeMachine.css';
               <span class="tm-event-tip">report arrives<br /><strong>Thu 16:02</strong></span>
             </span>
           </div>
+        </div>
+
+        <!-- day scale (x-axis, shared by both tracks) -->
+        <div class="tm-scale" aria-hidden="true">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
         </div>
 
         <!-- dashed connector between the two events -->

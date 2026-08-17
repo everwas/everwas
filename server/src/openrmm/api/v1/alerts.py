@@ -201,7 +201,13 @@ async def resolve_alert(alert_id: uuid.UUID, db: DbSession, user: CurrentUser) -
 @router.get("/channels")
 async def list_channels(db: DbSession, _user: CurrentUser) -> list[ChannelOut]:
     rows = await db.execute(select(NotificationChannel).order_by(NotificationChannel.name))
-    return [ChannelOut.model_validate(c) for c in rows.scalars()]
+    # redacted(), never model_validate(). ChannelOut.config is a plain dict, so
+    # validating straight off the model serialises the webhook signing secret
+    # and the gotify token to whoever asked, and this route required only *a*
+    # user, which by default is a viewer. Nothing in the product needs the
+    # plaintext: the edit form cannot echo a credential back, which is why
+    # update_channel treats an absent key as unchanged.
+    return [ChannelOut.redacted(c) for c in rows.scalars()]
 
 
 @router.post("/channels", status_code=status.HTTP_201_CREATED, dependencies=[OPERATOR])
@@ -209,7 +215,11 @@ async def create_channel(body: ChannelIn, db: DbSession, _user: CurrentUser) -> 
     channel = NotificationChannel(**body.model_dump())
     db.add(channel)
     await db.commit()
-    return ChannelOut.model_validate(channel)
+    # The caller just sent this credential, so echoing it is not a disclosure
+    # to them; it is redacted anyway so that no response body on this router
+    # ever carries one. A single exception is how the next reader concludes
+    # that sometimes it is fine.
+    return ChannelOut.redacted(channel)
 
 
 @router.put("/channels/{channel_id}", dependencies=[OPERATOR])
