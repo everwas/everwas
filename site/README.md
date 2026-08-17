@@ -1,43 +1,32 @@
-# Astro Starter Kit: Minimal
+# OpenRMM marketing site
+
+Static Astro site for openrmm.supported.systems (domain swappable via
+`DOMAIN` in `.env` — nothing else changes).
+
+## Local development
 
 ```sh
-npm create astro@latest -- --template minimal
+npm install
+npm run dev        # http://localhost:4321
+npm run build      # static build into dist/
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+Or containerized, behind caddy-docker-proxy:
 
-## 🚀 Project Structure
-
-Inside of your Astro project, you'll see the following folders and files:
-
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+```sh
+cp .env.example .env
+make dev           # Astro dev server with HMR
+make prod          # Caddy serving the built dist/
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Layout
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- `src/pages/index.astro` — the single landing page, assembled from components
+- `src/components/` — one `.astro` + one `.css` per section
+- `src/styles/tokens.css` — design tokens. Amber marks valid time (true on
+  the machine), cyan marks record time (known to the server); every section
+  that touches the bitemporal story reuses that pairing.
+- `Dockerfile` / `Caddyfile` / `docker-compose.yml` / `Makefile` — the
+  standard static-site deploy: Node builder stage, Caddy prod stage,
+  `dev` compose profile for HMR. The Caddyfile serves missing paths with a
+  real HTTP 404 status.
