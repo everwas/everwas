@@ -7,6 +7,7 @@ package inventory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -56,6 +57,14 @@ func RefreshNow(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Lo
 	for _, c := range collectors {
 		payload, err := c.collect(ctx)
 		if err != nil {
+			if !kindFailed(err) {
+				// A platform gap, not a fault. Logged once per cycle at info
+				// so it is discoverable, but it must not publish and must not
+				// count as a failure: nobody can fix "macOS has no software
+				// collector yet" by looking at a warning every 30 minutes.
+				log.Info("inventory kind not collected here", "kind", c.kind, "reason", err)
+				continue
+			}
 			log.Warn("inventory collect failed", "kind", c.kind, "err", err)
 			failed = append(failed, c.kind)
 			continue
@@ -70,6 +79,14 @@ func RefreshNow(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Lo
 	}
 	return nil
 }
+
+// kindFailed reports whether an error from a collector is a real failure to
+// look, as opposed to this platform simply not having that collector.
+//
+// The distinction matters because both must skip the publish (an empty
+// snapshot is a false claim either way) but only one is worth an operator's
+// attention.
+func kindFailed(err error) bool { return !errors.Is(err, errNoCollector) }
 
 // publishSnapshot hashes the payload, folds snapshot_hash into the data
 // object, and publishes with a Nats-Msg-Id header for JetStream dedup.

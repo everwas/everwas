@@ -1,0 +1,71 @@
+.qs-panes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
+  gap: 1.1rem;
+  margin-top: 3rem;
+}
+
+.qs-pane {
+  overflow: hidden;
+}
+
+.qs-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-2);
+}
+
+.qs-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--amber);
+  color: #1a1206;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.qs-pane-head h3 {
+  font-size: 1rem;
+  margin-right: auto;
+}
+
+.qs-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--bg-1);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.qs-copy:hover {
+  color: var(--text);
+  border-color: var(--amber-dim);
+}
+
+.qs-copy.copied {
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.qs-pane pre {
+  margin: 0;
+  padding: 1.1rem 1.2rem;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  color: var(--text-dim);
+}

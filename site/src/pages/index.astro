@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Hero from '../components/Hero.astro';
+import Features from '../components/Features.astro';
+import TimeMachine from '../components/TimeMachine.astro';
+import McpSection from '../components/McpSection.astro';
+import Architecture from '../components/Architecture.astro';
+import QuickStart from '../components/QuickStart.astro';
+import OpenSource from '../components/OpenSource.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout
+  title="OpenRMM — Remote monitoring with a memory"
+  description="Open-source remote monitoring and management for Windows, macOS, and Linux. Telemetry, alerting, browser terminal, scripts, patching, and bitemporal device history. AGPL server, Apache agent, self-hosted."
+>
+  <Nav />
+  <main>
+    <Hero />
+    <Features />
+    <TimeMachine />
+    <McpSection />
+    <Architecture />
+    <QuickStart />
+    <OpenSource />
+  </main>
+  <Footer />
+</BaseLayout>

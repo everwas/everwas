@@ -1,0 +1,80 @@
+---
+import { Icon } from 'astro-icon/components';
+import './TimeMachine.css';
+---
+
+<section id="time-machine" class="section tm">
+  <div class="container">
+    <p class="section-kicker">Bitemporal inventory</p>
+    <h2 class="section-title">Every fact, on two time axes</h2>
+    <p class="section-lede">
+      Most tools store one timestamp and quietly overwrite the past. OpenRMM
+      records when a fact was <strong class="tm-valid">true on the machine</strong> and
+      when the server <strong class="tm-record">learned about it</strong>. They differ
+      whenever an agent reports late, which is exactly the case that matters
+      after an incident.
+    </p>
+
+    <figure class="tm-diagram card" aria-describedby="tm-caption">
+      <div class="tm-scenario">
+        <span class="tm-scenario-label">Scenario</span>
+        web-01 gets patched Tuesday, then goes offline before it can report.
+        The patch report arrives Thursday. Your incident was Wednesday.
+      </div>
+
+      <div class="tm-tracks" role="img"
+        aria-label="Two timelines. Valid time: patch installed Tuesday 09:14. Record time: server learns of it Thursday 16:02. An incident occurs Wednesday, between the two.">
+        <!-- day scale -->
+        <div class="tm-scale" aria-hidden="true">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
+        </div>
+
+        <!-- incident marker spans both tracks -->
+        <div class="tm-incident" aria-hidden="true">
+          <span class="tm-incident-label"><Icon name="lucide:siren" size={13} /> incident</span>
+        </div>
+
+        <div class="tm-track tm-track-valid" aria-hidden="true">
+          <span class="tm-track-label"><span class="tm-swatch tm-swatch-amber"></span>Valid time <em>· true on the machine</em></span>
+          <div class="tm-line">
+            <span class="tm-event tm-event-amber" style="--x: 30%">
+              <span class="tm-event-tip">patch installed<br /><strong>Tue 09:14</strong></span>
+            </span>
+          </div>
+        </div>
+
+        <div class="tm-track tm-track-record" aria-hidden="true">
+          <span class="tm-track-label"><span class="tm-swatch tm-swatch-cyan"></span>Record time <em>· known to the server</em></span>
+          <div class="tm-line">
+            <span class="tm-event tm-event-cyan" style="--x: 70%">
+              <span class="tm-event-tip">report arrives<br /><strong>Thu 16:02</strong></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- dashed connector between the two events -->
+        <svg class="tm-connector" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="30" y1="8" x2="70" y2="92" stroke="currentColor" stroke-width="0.5" stroke-dasharray="2 2" />
+        </svg>
+      </div>
+
+      <figcaption id="tm-caption" class="tm-caption">
+        For a day and a half those axes disagree. A single-timestamp system
+        overwrites the disagreement; OpenRMM keeps both.
+      </figcaption>
+    </figure>
+
+    <div class="tm-queries">
+      <div class="tm-query card">
+        <p class="tm-query-q">"Was web-01 patched during Wednesday's incident?"</p>
+        <pre><code><span class="tq-dim">GET /devices/web-01/facts</span>?<span class="tq-amber">as_of</span>=wed-14:00</code></pre>
+        <p class="tm-query-a"><Icon name="lucide:check" size={16} class="tq-yes" /> <strong>Yes.</strong> Installed Tuesday 09:14. That was the truth on the wire.</p>
+      </div>
+      <div class="tm-query card">
+        <p class="tm-query-q">"Did we <em>know</em> it was patched when we triaged?"</p>
+        <pre><code><span class="tq-dim">GET /devices/web-01/facts</span>?<span class="tq-cyan">knew_at</span>=wed-14:00</code></pre>
+        <p class="tm-query-a"><Icon name="lucide:x" size={16} class="tq-no" /> <strong>No.</strong> The server still believed the old version. Your Wednesday decisions make sense now.</p>
+      </div>
+    </div>
+  </div>
+</section>

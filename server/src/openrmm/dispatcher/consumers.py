@@ -19,6 +19,7 @@ import structlog
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 
 from openrmm.alerting.engine import AlertEngine
+from openrmm.bitemporal.store import WholesaleRetirementError
 from openrmm.db.engine import session_scope
 from openrmm.ingest.events import parse_agent_event, record_agent_event
 from openrmm.ingest.inventory import apply_inventory, parse_inventory
@@ -57,6 +58,15 @@ def _delivery_count(msg) -> int:
         return int(msg.metadata.num_delivered or 1)
     except Exception:
         return 1
+
+
+class PermanentIngestError(Exception):
+    """A message that cannot be processed now and will not be later.
+
+    Retrying a deterministic refusal wastes deliveries and buries the reason
+    under six identical stack traces. Handlers raise this to say "park it and
+    move on"; anything else is treated as possibly transient and retried.
+    """
 
 
 async def _dead_letter(stream: str, durable: str, msg, delivered: int) -> None:
@@ -122,6 +132,13 @@ async def _consume(
             await handler(msg.subject, msg.data)
             await msg.ack()
             _mark_progress(durable)
+        except PermanentIngestError:
+            # Deterministically unprocessable: the same bytes will be refused
+            # every time, so five more deliveries are five more identical
+            # refusals. Park it now with the reason rather than after 60
+            # seconds of retries and a stack trace that buries it.
+            await _dead_letter(stream, durable, msg, _delivery_count(msg))
+            await msg.ack()
         except Exception:
             delivered = _delivery_count(msg)
             if delivered >= MAX_DELIVER:
@@ -179,8 +196,14 @@ async def _handle_inventory(subject: str, data: bytes) -> None:
         log.warning("malformed inventory", subject=subject)
         return
     device_id, kind, observed_at, payload = parsed
-    async with session_scope() as db:
-        await apply_inventory(db, device_id, kind, observed_at, payload)
+    try:
+        async with session_scope() as db:
+            await apply_inventory(db, device_id, kind, observed_at, payload)
+    except WholesaleRetirementError as exc:
+        # A snapshot asserting the device has none of a kind, when we currently
+        # believe it has some. Never retryable: the payload is fixed.
+        log.error("refused inventory snapshot", subject=subject, kind=kind, reason=str(exc))
+        raise PermanentIngestError(str(exc)) from exc
 
 
 async def _handle_job_output(subject: str, data: bytes) -> None:

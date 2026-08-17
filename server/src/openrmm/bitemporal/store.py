@@ -48,6 +48,28 @@ def _closed(lower: datetime, upper: datetime) -> Range:
     return Range(lower, upper, bounds="[)")
 
 
+# Kinds where an empty snapshot cannot describe a working machine.
+#
+# The distinction is not "is empty surprising" but "can a functioning host
+# genuinely have none of these". A host always has software, always has at
+# least a loopback interface, and always has a CPU and an OS.
+#
+# The kinds NOT listed here go empty as a matter of routine and must never be
+# guarded: `patchstate` is empty on a fully patched host, and `logins` is empty
+# every single time the last person logs out. Guarding those would refuse the
+# most ordinary event each of them has.
+EMPTY_IS_IMPLAUSIBLE = frozenset({"software", "network", "hardware"})
+
+
+class WholesaleRetirementError(Exception):
+    """A snapshot would have retired every current fact for a kind.
+
+    Raised rather than returned so it cannot be ignored by a caller that only
+    reads AmendResult counts. Ingest converts it to a dead letter with a named
+    reason, which is what makes it answerable later.
+    """
+
+
 async def record_facts(
     db: AsyncSession,
     kind: str,
@@ -132,6 +154,31 @@ async def record_facts(
             result.removed += 1
             to_close.append(prior.id)
             correction(prior, key)
+
+    # Refuse a snapshot that retires EVERYTHING we currently believe.
+    #
+    # A snapshot is treated as complete, so `{}` is not "no news", it is the
+    # assertion that this device now has no packages, no pending patches, no
+    # interfaces. The agent is careful never to publish an unverified empty set,
+    # but the server must not depend on one publisher's discipline: a truncated
+    # body, a collector added later without the rule, or a third-party agent
+    # would all erase a device's inventory here.
+    #
+    # What makes this worth a hard refusal rather than a warning is that the
+    # damage looks like legitimate history afterwards. The tombstones are real
+    # bitemporal records, so an as_of query agrees the packages ended, and
+    # nothing distinguishes the erasure from a genuine mass uninstall.
+    #
+    # Losing one real mass-removal to a false positive costs one stale kind
+    # until the next poll. Accepting one bad empty snapshot costs the device's
+    # entire inventory and its history.
+    if kind in EMPTY_IS_IMPLAUSIBLE and current and result.removed == len(current) and not facts:
+        raise WholesaleRetirementError(
+            f"refusing a {kind} snapshot that retires all {result.removed} "
+            f"current facts for device {device_id}: an empty snapshot asserts "
+            "the device has none, which a failed collector cannot distinguish "
+            "itself from"
+        )
 
     if to_close:
         # The ONE permitted UPDATE: closing belief windows, set-based.

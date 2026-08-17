@@ -1,0 +1,67 @@
+---
+import { Icon } from 'astro-icon/components';
+import './Features.css';
+
+const features = [
+  {
+    icon: 'lucide:activity',
+    title: 'Monitoring',
+    body: 'Heartbeats plus CPU, memory, disk, and network telemetry from every endpoint, charted live in the dashboard.',
+  },
+  {
+    icon: 'lucide:bell-ring',
+    title: 'Alerting',
+    body: 'Threshold rules with duration windows and cooldowns, heartbeat-miss detection, delivery to email, webhook, ntfy, and gotify with retries.',
+  },
+  {
+    icon: 'lucide:square-terminal',
+    title: 'Browser terminal',
+    body: 'A real PTY on any enrolled machine, opened from the dashboard. Every session is recorded as an asciicast you can replay.',
+  },
+  {
+    icon: 'lucide:scroll-text',
+    title: 'Scripts & scheduling',
+    body: 'A script library, fleet-wide runs, and cron schedules. Jobs queue durably, so a script sent to a sleeping laptop runs when it wakes.',
+  },
+  {
+    icon: 'lucide:package-search',
+    title: 'Inventory',
+    body: 'Hardware, installed software, processes, and services, with full history you can rewind to any point in time.',
+  },
+  {
+    icon: 'lucide:shield-check',
+    title: 'Patch management',
+    body: 'Scan, approve, deploy across apt, dnf, pacman, Windows Update, and macOS softwareupdate from one queue.',
+  },
+  {
+    icon: 'lucide:refresh-ccw',
+    title: 'Agent self-update',
+    body: 'Signed updates with automatic rollback if the new binary fails to check in. Service install for systemd, launchd, and Windows SCM.',
+  },
+  {
+    icon: 'lucide:file-clock',
+    title: 'Audit everything',
+    body: 'Shell recordings, script runs, patch approvals, and every MCP call land in an audit log written under the identity that acted.',
+  },
+];
+---
+
+<section id="features" class="section">
+  <div class="container">
+    <p class="section-kicker">What works today</p>
+    <h2 class="section-title">The whole RMM job, self-hosted</h2>
+    <p class="section-lede">
+      One static Go binary on each endpoint, one server you control. No per-seat
+      pricing, no phoning home, no black boxes between you and your machines.
+    </p>
+    <div class="feature-grid">
+      {features.map((f) => (
+        <article class="feature-card card">
+          <div class="feature-icon"><Icon name={f.icon} size={22} /></div>
+          <h3>{f.title}</h3>
+          <p>{f.body}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

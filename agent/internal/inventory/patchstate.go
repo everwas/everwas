@@ -69,6 +69,11 @@ type PatchCollector struct {
 	mgr      patch.Manager
 	detected bool
 	detErr   error
+
+	// publishFn overrides the real publish. Present only so a test can count
+	// publishes: the defect this guards against is publishing at all after a
+	// failed scan, which is unobservable through the nc == nil path.
+	publishFn func(PatchState) error
 }
 
 // NewPatchCollector builds a collector bound to a connection and identity.
@@ -118,13 +123,24 @@ func (c *PatchCollector) Run(ctx context.Context) error {
 // would look like an agent that has stopped reporting.
 func (c *PatchCollector) RefreshNow(ctx context.Context) (PatchState, error) {
 	state, err := c.collect(ctx)
+	if err != nil {
+		// Do NOT publish. A failed scan produces Patches:[] with a real
+		// backend name, which on the wire is byte-identical to a genuinely
+		// fully-patched host, and the server treats a snapshot as complete: it
+		// retires every pending patch and the bitemporal history records a
+		// tombstone, so even an as_of query agrees with the lie. A host with
+		// outstanding CVEs then looks clean until the next successful scan.
+		//
+		// The unsupported-backend case is different and still publishes: see
+		// collect, where it returns a nil error on purpose.
+		c.log.Warn("patch scan failed, not publishing a patchstate snapshot", "err", err)
+		return state, err
+	}
 	if perr := c.publish(state); perr != nil {
 		c.log.Warn("patchstate publish failed", "err", perr)
-		if err == nil {
-			err = perr
-		}
+		return state, perr
 	}
-	return state, err
+	return state, nil
 }
 
 // collect runs the scan. It always returns a publishable state, even on
@@ -160,6 +176,9 @@ func (c *PatchCollector) collect(ctx context.Context) (PatchState, error) {
 
 // publish sends the snapshot on the INVENTORY stream.
 func (c *PatchCollector) publish(state PatchState) error {
+	if c.publishFn != nil {
+		return c.publishFn(state)
+	}
 	if c.nc == nil {
 		return nil
 	}

@@ -145,6 +145,11 @@ async def test_idempotent_snapshot_writes_nothing():
 async def test_fact_can_come_back_after_removal():
     """A fact that disappears and returns must become visible again.
 
+    Uses `logins` deliberately: everyone logging out and back in is the
+    everyday version of vanish-and-return, whereas a host going to zero
+    installed packages is not a thing that happens (and `software` is now
+    guarded against exactly that, see EMPTY_IS_IMPLAUSIBLE).
+
     Regression: the reconciliation SELECT filtered only on
     upper_inf(recorded_during), so it also matched CORRECTION rows, which are
     current beliefs with a CLOSED valid range. A returning fact compared equal
@@ -153,26 +158,26 @@ async def test_fact_can_come_back_after_removal():
     """
     device_id = await _mk_device()
     sm = get_sessionmaker()
-    snapshot = {"pkg:openssl": {"version": "3.0"}}
+    snapshot = {"login:rmm@pts/0": {"user": "rmm", "kind": "remote"}}
 
     async with sm() as db, db.begin():
-        await record_facts(db, "software", device_id, snapshot)
+        await record_facts(db, "logins", device_id, snapshot)
     async with sm() as db:
-        assert set(_keys(await get_facts(db, "software", device_id))) == {"pkg:openssl"}
+        assert set(_keys(await get_facts(db, "logins", device_id))) == {"login:rmm@pts/0"}
 
     # it goes away
     async with sm() as db, db.begin():
-        r = await record_facts(db, "software", device_id, {})
+        r = await record_facts(db, "logins", device_id, {})
     assert r.removed == 1
     async with sm() as db:
-        assert await get_facts(db, "software", device_id) == []
+        assert await get_facts(db, "logins", device_id) == []
 
     # ...and comes back, identical
     async with sm() as db, db.begin():
-        r = await record_facts(db, "software", device_id, snapshot)
+        r = await record_facts(db, "logins", device_id, snapshot)
     assert r.added == 1, "a returning fact must be recorded again"
     async with sm() as db:
-        current = _keys(await get_facts(db, "software", device_id))
+        current = _keys(await get_facts(db, "logins", device_id))
     assert current == snapshot, "the fact must be visible again after returning"
 
 

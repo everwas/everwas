@@ -1,0 +1,53 @@
+.oss-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1.1rem;
+  margin-top: 3rem;
+}
+
+.oss-card {
+  padding: 1.6rem 1.5rem;
+  position: relative;
+}
+
+.oss-badge {
+  position: absolute;
+  top: 1.3rem;
+  right: 1.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+}
+
+.oss-badge-cyan {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 50%, transparent);
+}
+
+.oss-badge-dim {
+  color: var(--text-dim);
+  border-color: var(--hairline);
+}
+
+.oss-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.08rem;
+  margin-bottom: 0.7rem;
+}
+
+.oss-card h3 svg {
+  color: var(--amber);
+}
+
+.oss-card p {
+  color: var(--text-dim);
+  font-size: 0.93rem;
+  line-height: 1.65;
+}

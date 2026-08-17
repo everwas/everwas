@@ -1,0 +1,26 @@
+---
+import { Icon } from 'astro-icon/components';
+import './Nav.css';
+---
+
+<header class="nav-wrap">
+  <nav class="nav container" aria-label="Main">
+    <a class="nav-logo" href="/">
+      <img src="/favicon.svg" alt="" width="28" height="28" />
+      <span>Open<em>RMM</em></span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#time-machine">Time machine</a>
+      <a href="#mcp">MCP</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#open-source">Open source</a>
+    </div>
+    <div class="nav-actions">
+      <a class="nav-gh" href="https://github.com/openrmm" aria-label="OpenRMM on GitHub">
+        <Icon name="lucide:github" size={20} />
+      </a>
+      <a class="btn btn-primary nav-cta" href="#quick-start">Get started</a>
+    </div>
+  </nav>
+</header>

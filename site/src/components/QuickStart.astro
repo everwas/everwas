@@ -1,0 +1,61 @@
+---
+import { Icon } from 'astro-icon/components';
+import './QuickStart.css';
+
+const serverCmds = `git clone https://github.com/openrmm/openrmm && cd openrmm
+cp .env.example .env
+cd server && uv run openrmm gen-nats-keys   # paste both values into .env
+cd .. && make dev
+make migrate
+make admin EMAIL=you@example.com`;
+
+const agentCmds = `make enroll-token        # prints ore_...
+cd agent && go build -o bin/openrmm-agent ./cmd/openrmm-agent
+sudo ./bin/openrmm-agent install \\
+  --server https://rmm.example.com --token ore_...`;
+---
+
+<section id="quick-start" class="section">
+  <div class="container">
+    <p class="section-kicker">Quick start</p>
+    <h2 class="section-title">Fleet by lunch</h2>
+    <p class="section-lede">
+      Docker, uv, Go 1.22+, and Node 20+ on the server box. The agent side is a
+      single binary and an enrollment token.
+    </p>
+
+    <div class="qs-panes">
+      <div class="qs-pane card">
+        <div class="qs-pane-head">
+          <span class="qs-step">1</span>
+          <h3>Bring up the server</h3>
+          <button class="qs-copy" type="button" data-copy={serverCmds} aria-label="Copy server commands">
+            <Icon name="lucide:copy" size={15} />
+          </button>
+        </div>
+        <pre><code>{serverCmds}</code></pre>
+      </div>
+      <div class="qs-pane card">
+        <div class="qs-pane-head">
+          <span class="qs-step">2</span>
+          <h3>Enroll a machine</h3>
+          <button class="qs-copy" type="button" data-copy={agentCmds} aria-label="Copy agent commands">
+            <Icon name="lucide:copy" size={15} />
+          </button>
+        </div>
+        <pre><code>{agentCmds}</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Clipboard copy with a brief confirmation state on the button.
+  document.querySelectorAll<HTMLButtonElement>('.qs-copy').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(btn.dataset.copy ?? '');
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1500);
+    });
+  });
+</script>

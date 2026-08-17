@@ -18,7 +18,20 @@ type softwareSnapshot struct {
 }
 
 func collectSoftware(ctx context.Context) (any, error) {
-	return softwareSnapshot{Packages: listPackages(ctx)}, nil
+	return collectSoftwareWith(ctx, run)
+}
+
+// collectSoftwareWith enumerates installed packages.
+//
+// Returns an error rather than an empty list when the enumeration fails, for
+// the reason spelled out in services.go: the server treats a snapshot as
+// complete, so an empty list retires every package on the host.
+func collectSoftwareWith(ctx context.Context, exec runner) (any, error) {
+	pkgs, err := listPackages(ctx, exec)
+	if err != nil {
+		return nil, err
+	}
+	return softwareSnapshot{Packages: pkgs}, nil
 }
 
 // parseTabPackages parses "name<TAB>version" lines (dpkg-query and rpm with

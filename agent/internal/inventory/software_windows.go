@@ -2,6 +2,9 @@ package inventory
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -42,13 +45,21 @@ var uninstallKeys = []uninstallKey{
 // known to reinstall or repair software as a side effect of being *asked what
 // is installed*. An inventory agent must never change the machine it is
 // inventorying. The registry is what Add/Remove Programs itself reads.
-func listPackages(ctx context.Context) []pkg {
+func listPackages(ctx context.Context, _ runner) ([]pkg, error) {
 	seen := make(map[pkg]struct{})
 	for _, k := range uninstallKeys {
 		if err := ctx.Err(); err != nil {
-			break
+			return nil, err
 		}
-		for _, p := range readUninstallKey(ctx, k) {
+		found, err := readUninstallKey(ctx, k)
+		if err != nil {
+			// Enumeration failed on a key that exists. Reporting the packages
+			// we happened to read before the failure would understate what is
+			// installed, and the server records anything missing from a
+			// snapshot as removed.
+			return nil, fmt.Errorf("software: %s: %w", k.path, err)
+		}
+		for _, p := range found {
 			seen[p] = struct{}{}
 		}
 	}
@@ -70,21 +81,27 @@ func listPackages(ctx context.Context) []pkg {
 	if len(pkgs) > maxPackages {
 		pkgs = pkgs[:maxPackages]
 	}
-	return pkgs
+	return pkgs, nil
 }
 
-func readUninstallKey(ctx context.Context, k uninstallKey) []pkg {
+func readUninstallKey(ctx context.Context, k uninstallKey) ([]pkg, error) {
 	key, err := registry.OpenKey(k.root, k.path, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE|k.access)
 	if err != nil {
-		// A missing key is normal: WOW6432Node does not exist on 32-bit
-		// Windows, and SYSTEM's HKCU may have no Uninstall key at all.
-		return nil
+		// A missing key is genuinely normal and is NOT a failure to look:
+		// WOW6432Node does not exist on 32-bit Windows, and SYSTEM's HKCU may
+		// have no Uninstall key at all. Anything else is a real failure, and
+		// access-denied in particular must not read as "nothing installed".
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	defer key.Close()
 
 	names, err := key.ReadSubKeyNames(-1)
 	if err != nil {
-		return nil
+		// The key opened and then would not enumerate. Never normal.
+		return nil, err
 	}
 
 	pkgs := make([]pkg, 0, len(names))
@@ -96,7 +113,7 @@ func readUninstallKey(ctx context.Context, k uninstallKey) []pkg {
 			pkgs = append(pkgs, p)
 		}
 	}
-	return pkgs
+	return pkgs, nil
 }
 
 // readUninstallEntry reads one product, reporting whether it counts as

@@ -1,0 +1,49 @@
+/* OpenRMM marketing site — design tokens.
+ *
+ * Dark graphite base, amber-phosphor primary. The two accent hues are
+ * load-bearing: amber marks VALID time (what was true on the machine),
+ * cyan marks RECORD time (what the server believed). Every section that
+ * touches the bitemporal story reuses this pairing, so keep them apart.
+ */
+:root {
+  /* surfaces */
+  --bg-0: #0b0d11;
+  --bg-1: #10131a;
+  --bg-2: #161a23;
+  --bg-3: #1d2230;
+  --hairline: #272d3b;
+  --hairline-bright: #38405333;
+
+  /* type */
+  --text: #e9e7e1;
+  --text-dim: #a3a8b4;
+  --text-faint: #6d7280;
+
+  /* accents */
+  --amber: #ffb454;        /* valid time, primary CTA, cursor glow */
+  --amber-bright: #ffcf8a;
+  --amber-dim: #b97f3a;
+  --cyan: #5fc9e8;         /* record time, secondary */
+  --cyan-bright: #9addf2;
+  --green: #7bd88f;        /* healthy / ok */
+  --red: #ff7373;          /* alerting */
+
+  --amber-glow: rgba(255, 180, 84, 0.14);
+  --cyan-glow: rgba(95, 201, 232, 0.12);
+
+  /* type scale */
+  --font-display: 'Space Grotesk Variable', system-ui, sans-serif;
+  --font-body: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', monospace;
+
+  /* rhythm */
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 18px;
+  --section-pad: clamp(4rem, 9vw, 7.5rem);
+  --content-width: 72rem;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.8);
+
+  color-scheme: dark;
+}

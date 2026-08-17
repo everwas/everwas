@@ -1,0 +1,87 @@
+---
+import { Icon } from 'astro-icon/components';
+import './Architecture.css';
+
+const notes = [
+  {
+    icon: 'lucide:lock',
+    title: 'Per-agent credentials',
+    body: 'A NATS auth callout issues each agent its own credentials with pinned subject permissions. No agent can see another agent’s traffic, and revoking one is a database update.',
+  },
+  {
+    icon: 'lucide:inbox',
+    title: 'Durable job delivery',
+    body: 'Jobs queue in JetStream until the target machine is reachable. A script sent to a sleeping laptop runs when it wakes, not never.',
+  },
+  {
+    icon: 'lucide:network',
+    title: 'Outbound only',
+    body: 'Agents dial out over wss:// on 443 through Caddy. Nothing listens on the endpoint, so it works behind NAT, firewalls, and hotel Wi-Fi.',
+  },
+];
+---
+
+<section id="architecture" class="section arch">
+  <div class="container">
+    <p class="section-kicker">Architecture</p>
+    <h2 class="section-title">Boring plumbing, deliberately</h2>
+    <p class="section-lede">
+      A Go agent, NATS for transport, FastAPI and PostgreSQL on the server.
+      Pieces you already know how to run, arranged so the endpoints never have
+      to be reachable.
+    </p>
+
+    <div class="arch-flow card" role="img" aria-label="Architecture: OS agents connect outbound over secure WebSocket to NATS with JetStream, which feeds the dispatcher and API backed by PostgreSQL, surfaced by the web dashboard and MCP server">
+      <div class="arch-col">
+        <span class="arch-col-label">Endpoints</span>
+        <div class="arch-node">
+          <Icon name="lucide:app-window" size={16} /> Windows agent
+        </div>
+        <div class="arch-node">
+          <Icon name="lucide:laptop" size={16} /> macOS agent
+        </div>
+        <div class="arch-node">
+          <Icon name="lucide:server" size={16} /> Linux agent
+        </div>
+        <span class="arch-note">one static Go binary</span>
+      </div>
+
+      <div class="arch-arrow" aria-hidden="true">
+        <span class="arch-arrow-label">outbound wss:// :443</span>
+        <span class="arch-arrow-line"></span>
+      </div>
+
+      <div class="arch-col">
+        <span class="arch-col-label">Transport</span>
+        <div class="arch-node arch-node-hub">
+          <Icon name="lucide:waypoints" size={16} /> NATS + JetStream
+        </div>
+        <span class="arch-note">auth callout pins per-agent permissions</span>
+      </div>
+
+      <div class="arch-arrow" aria-hidden="true">
+        <span class="arch-arrow-line arch-arrow-both"></span>
+      </div>
+
+      <div class="arch-col">
+        <span class="arch-col-label">Server · AGPL</span>
+        <div class="arch-node"><Icon name="lucide:split" size={16} /> Dispatcher</div>
+        <div class="arch-node"><Icon name="lucide:braces" size={16} /> FastAPI</div>
+        <div class="arch-node"><Icon name="lucide:database" size={16} /> PostgreSQL</div>
+        <span class="arch-note">web dashboard · MCP server</span>
+      </div>
+    </div>
+
+    <div class="arch-notes">
+      {notes.map((n) => (
+        <div class="arch-note-card">
+          <Icon name={n.icon} size={19} />
+          <div>
+            <h3>{n.title}</h3>
+            <p>{n.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

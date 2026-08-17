@@ -1,0 +1,45 @@
+---
+import { Icon } from 'astro-icon/components';
+import './OpenSource.css';
+---
+
+<section id="open-source" class="section oss">
+  <div class="container">
+    <p class="section-kicker">Licensing</p>
+    <h2 class="section-title">Genuinely open source</h2>
+    <p class="section-lede">
+      The commercial RMMs are excellent and expensive. The open-source ones are
+      either monitoring-only or carry licenses that stop you building on them.
+      OpenRMM picks a lane and stays in it.
+    </p>
+
+    <div class="oss-grid">
+      <div class="oss-card card">
+        <div class="oss-badge">AGPL-3.0</div>
+        <h3><Icon name="lucide:server-cog" size={18} /> Server</h3>
+        <p>
+          Run it, modify it, offer it as a service. If you improve it and host
+          it for others, those improvements come back. That's the deal, and
+          it's a good one.
+        </p>
+      </div>
+      <div class="oss-card card">
+        <div class="oss-badge oss-badge-cyan">Apache-2.0</div>
+        <h3><Icon name="lucide:box" size={18} /> Agent</h3>
+        <p>
+          Permissive on purpose: the binary that runs on customer machines
+          should be auditable, embeddable, and redistributable without a
+          lawyer in the loop.
+        </p>
+      </div>
+      <div class="oss-card card">
+        <div class="oss-badge oss-badge-dim">DCO</div>
+        <h3><Icon name="lucide:git-pull-request" size={18} /> Contributions</h3>
+        <p>
+          Sign-off, not CLA. Your contribution stays yours, the project stays
+          open, and nobody can relicense the commons out from under you.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

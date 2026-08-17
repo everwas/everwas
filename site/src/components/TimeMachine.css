@@ -1,0 +1,223 @@
+.tm {
+  background: var(--bg-1);
+  border-block: 1px solid var(--hairline);
+}
+
+.tm-valid { color: var(--amber); }
+.tm-record { color: var(--cyan); }
+
+/* ---- diagram ---- */
+
+.tm-diagram {
+  margin: 3rem 0 0;
+  padding: 1.8rem clamp(1.2rem, 3vw, 2.4rem) 1.4rem;
+  background: var(--bg-0);
+}
+
+.tm-scenario {
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  max-width: 40rem;
+  margin-bottom: 2.2rem;
+}
+
+.tm-scenario-label {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  margin-right: 0.6rem;
+}
+
+.tm-tracks {
+  position: relative;
+  padding-top: 1.4rem;
+}
+
+.tm-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  padding-inline: 0 0;
+  margin-bottom: 0.8rem;
+}
+
+/* incident: vertical line at Wednesday (50%) spanning both tracks */
+.tm-incident {
+  position: absolute;
+  left: 50%;
+  top: 2.4rem;
+  bottom: 0.4rem;
+  width: 0;
+  border-left: 2px dashed color-mix(in srgb, var(--red) 55%, transparent);
+}
+
+.tm-incident-label {
+  position: absolute;
+  top: -1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--red);
+  white-space: nowrap;
+}
+
+.tm-track {
+  position: relative;
+  padding: 1.6rem 0 2.6rem;
+}
+
+.tm-track-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0.9rem;
+}
+
+.tm-track-label em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text-faint);
+  font-size: 0.85rem;
+}
+
+.tm-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 3px;
+}
+
+.tm-swatch-amber { background: var(--amber); }
+.tm-swatch-cyan { background: var(--cyan); }
+
+.tm-line {
+  position: relative;
+  height: 2px;
+  background: var(--hairline);
+  border-radius: 1px;
+}
+
+.tm-event {
+  position: absolute;
+  left: var(--x);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+}
+
+.tm-event-amber {
+  background: var(--amber);
+  box-shadow: 0 0 0 4px var(--amber-glow), 0 0 14px var(--amber-glow);
+}
+
+.tm-event-cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 0 4px var(--cyan-glow), 0 0 14px var(--cyan-glow);
+}
+
+.tm-event-tip {
+  position: absolute;
+  top: 1.1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tm-event-tip strong {
+  color: var(--text);
+}
+
+.tm-connector {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 5.4rem;
+  height: calc(100% - 7rem);
+  width: 100%;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.tm-caption {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hairline);
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
+
+/* ---- query pair ---- */
+
+.tm-queries {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.1rem;
+  margin-top: 1.1rem;
+}
+
+.tm-query {
+  padding: 1.4rem 1.5rem;
+}
+
+.tm-query-q {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.02rem;
+  margin-bottom: 0.9rem;
+}
+
+.tm-query pre {
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-s);
+  font-size: 0.8rem;
+  overflow-x: auto;
+}
+
+.tq-dim { color: var(--text-faint); }
+.tq-amber { color: var(--amber); font-weight: 700; }
+.tq-cyan { color: var(--cyan); font-weight: 700; }
+
+.tm-query-a {
+  font-size: 0.93rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.tm-query-a strong { color: var(--text); }
+.tm-query-a svg { flex-shrink: 0; transform: translateY(2px); }
+.tq-yes { color: var(--green); }
+.tq-no { color: var(--red); }
+
+@media (max-width: 640px) {
+  .tm-event-tip { white-space: normal; width: 7rem; }
+  .tm-track { padding-bottom: 3.4rem; }
+}

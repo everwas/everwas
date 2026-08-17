@@ -1,0 +1,48 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+---
+
+<BaseLayout
+  title="404 — OpenRMM"
+  description="Page not found."
+>
+  <Nav />
+  <main class="nf">
+    <div class="container">
+      <p class="nf-code">HTTP 404</p>
+      <h1>This page hasn't reported in.</h1>
+      <p class="nf-lede">
+        Valid time: never existed. Record time: you just found out.
+      </p>
+      <a class="btn btn-primary" href="/">Back to the fleet</a>
+    </div>
+  </main>
+  <Footer />
+</BaseLayout>
+
+<style>
+  .nf {
+    padding-block: clamp(6rem, 16vw, 11rem);
+    text-align: center;
+  }
+
+  .nf-code {
+    font-family: var(--font-mono);
+    color: var(--red);
+    font-size: 0.85rem;
+    letter-spacing: 0.14em;
+    margin-bottom: 1rem;
+  }
+
+  .nf h1 {
+    font-size: clamp(1.8rem, 4.5vw, 2.8rem);
+    margin-bottom: 1rem;
+  }
+
+  .nf-lede {
+    color: var(--text-dim);
+    margin-bottom: 2.2rem;
+  }
+</style>

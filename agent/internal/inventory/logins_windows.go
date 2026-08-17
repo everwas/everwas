@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 	"unsafe"
@@ -104,19 +105,32 @@ func currentLogins(ctx context.Context) ([]Login, error) {
 			continue
 		}
 
-		user := queryString(s.SessionID, wtsUserName)
+		user, err := queryString(s.SessionID, wtsUserName)
+		if err != nil {
+			// Fail the whole collector rather than skipping this session.
+			// Skipping would silently understate who is logged in, and the
+			// server records anything missing from a snapshot as ended.
+			return nil, fmt.Errorf("logins: session %d user name: %w", s.SessionID, err)
+		}
 		if user == "" {
 			// An unoccupied console session still enumerates, with no user.
 			continue
 		}
-		if domain := queryString(s.SessionID, wtsDomainName); domain != "" {
+		domain, err := queryString(s.SessionID, wtsDomainName)
+		if err != nil {
+			return nil, fmt.Errorf("logins: session %d domain: %w", s.SessionID, err)
+		}
+		if domain != "" {
 			user = domain + `\` + user
 		}
 
 		station := windows.UTF16PtrToString(s.WinStationName)
 		// WTSClientName is the name of the machine an RDP client connected
 		// from, and is empty for a console session.
-		host := queryString(s.SessionID, wtsClientName)
+		host, err := queryString(s.SessionID, wtsClientName)
+		if err != nil {
+			return nil, fmt.Errorf("logins: session %d client name: %w", s.SessionID, err)
+		}
 
 		logins = append(logins, Login{
 			User:     user,
@@ -172,23 +186,39 @@ func stateName(state uint32) string {
 }
 
 // queryString reads one string-valued session property.
-func queryString(sessionID uint32, class uint32) string {
+//
+// Returns an error rather than an empty string when the query fails. This
+// distinction is the whole collector: the caller treats an empty user name as
+// "an unoccupied console session" and skips the row, so an agent that is not
+// LocalSystem, where WTSQuerySessionInformationW returns ERROR_ACCESS_DENIED
+// for every session it does not own, would skip every session and publish
+// "nobody is logged in" as fact. That is a confident wrong answer to the exact
+// question this collector exists to answer.
+func queryString(sessionID uint32, class uint32) (string, error) {
 	var (
 		buf   *uint16
 		bytes uint32
 	)
-	r, _, _ := procWTSQuerySessionInformation.Call(
+	r, _, callErr := procWTSQuerySessionInformation.Call(
 		0,
 		uintptr(sessionID),
 		uintptr(class),
 		uintptr(unsafe.Pointer(&buf)),
 		uintptr(unsafe.Pointer(&bytes)),
 	)
-	if r == 0 || buf == nil {
-		return ""
+	if r == 0 {
+		if callErr == nil {
+			callErr = windows.ERROR_INVALID_FUNCTION
+		}
+		return "", callErr
+	}
+	if buf == nil {
+		// Succeeded with no value. A genuinely absent property, which is
+		// normal: WTSClientName is empty for a console session.
+		return "", nil
 	}
 	defer procWTSFreeMemory.Call(uintptr(unsafe.Pointer(buf)))
-	return strings.TrimSpace(windows.UTF16PtrToString(buf))
+	return strings.TrimSpace(windows.UTF16PtrToString(buf)), nil
 }
 
 // logonTime reads when the session started, or the zero time if it cannot be

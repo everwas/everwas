@@ -1,0 +1,66 @@
+---
+import { Icon } from 'astro-icon/components';
+import './McpSection.css';
+
+const guarantees = [
+  {
+    icon: 'lucide:eye',
+    title: 'Read-only by default',
+    body: 'Querying the fleet needs no special grants. Anything that changes a machine takes an explicit confirm and returns a dry-run plan without one.',
+  },
+  {
+    icon: 'lucide:key-round',
+    title: 'Scoped per API key',
+    body: 'Each key carries its own scopes. An assistant that can read inventory cannot run scripts unless you decided it can.',
+  },
+  {
+    icon: 'lucide:file-clock',
+    title: 'Every call logged',
+    body: 'Successful or refused, every MCP call lands in the audit log under the key that made it. Assume someone will read it, because they will.',
+  },
+];
+---
+
+<section id="mcp" class="section">
+  <div class="container mcp-grid">
+    <div class="mcp-copy">
+      <p class="section-kicker">First-class MCP server</p>
+      <h2 class="section-title">Your fleet, legible to an assistant</h2>
+      <p class="section-lede">
+        OpenRMM ships an MCP server, so an AI assistant can ask real questions
+        about your machines, including history on both time axes, and help act
+        on the answers without ever holding the keys itself.
+      </p>
+      <ul class="mcp-guarantees">
+        {guarantees.map((g) => (
+          <li>
+            <Icon name={g.icon} size={19} />
+            <div>
+              <h3>{g.title}</h3>
+              <p>{g.body}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <div class="mcp-chat card" role="img" aria-label="Chat transcript: an assistant queries the fleet, proposes a patch plan, and waits for explicit confirmation before anything runs">
+      <div class="mcp-chat-bar">
+        <Icon name="lucide:bot" size={15} />
+        <span>assistant session · key: oncall-ro+patch</span>
+      </div>
+      <div class="mcp-chat-body">
+        <p class="mcp-msg mcp-user">Which machines still have OpenSSL older than 3.0.12?</p>
+        <p class="mcp-tool"><Icon name="lucide:wrench" size={12} /> list_devices · get_device_facts</p>
+        <p class="mcp-msg mcp-bot">3 of 41: <code>web-01</code>, <code>win-lab-3</code>, <code>mac-mini-2</code>. web-01 was patched but hasn't reported since Tuesday, per record time it's still on the old build.</p>
+        <p class="mcp-msg mcp-user">Queue the patch on the other two for tonight.</p>
+        <p class="mcp-tool"><Icon name="lucide:wrench" size={12} /> approve_patches <em>confirm=false</em></p>
+        <div class="mcp-plan">
+          <p class="mcp-plan-title"><Icon name="lucide:clipboard-list" size={13} /> Plan, nothing ran yet</p>
+          <p>approve <code>openssl-3.0.12</code> on 2 devices · window 02:00–04:00</p>
+          <button class="mcp-confirm" type="button" tabindex="-1" aria-hidden="true">Confirm to proceed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

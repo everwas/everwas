@@ -1,0 +1,82 @@
+.nav-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--bg-0) 82%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 4rem;
+}
+
+.nav-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.nav-logo:hover {
+  text-decoration: none;
+}
+
+.nav-logo em {
+  font-style: normal;
+  color: var(--amber);
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.4rem;
+  margin-inline: auto;
+}
+
+.nav-links a {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-gh {
+  color: var(--text-dim);
+  display: inline-flex;
+}
+
+.nav-gh:hover {
+  color: var(--text);
+}
+
+.nav-cta {
+  padding: 0.55rem 1.1rem;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 780px) {
+  .nav-links {
+    display: none;
+  }
+
+  .nav-actions {
+    margin-left: auto;
+  }
+}
