@@ -23,7 +23,7 @@ func TestConnectReportsAClosedConnection(t *testing.T) {
 		NATSURL:     "nats://127.0.0.1:1",
 		AgentID:     "01991111-2222-7333-8444-555566667777",
 		AgentSecret: "secret",
-	}, log, func() { close(closed) })
+	}, log, func() { close(closed) }, nil)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestConnectToleratesNoCallback(t *testing.T) {
 		NATSURL:     "nats://127.0.0.1:1",
 		AgentID:     "a",
 		AgentSecret: "s",
-	}, log, nil)
+	}, log, nil, nil)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}

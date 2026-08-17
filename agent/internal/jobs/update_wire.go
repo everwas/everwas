@@ -55,6 +55,12 @@ type UpdateDeps struct {
 	// the host is updated when it is not. A nil Restart therefore REFUSES
 	// the job rather than doing the swap and lying about the outcome.
 	Restart func(reason string)
+
+	// Handoff exits without requesting a restart, for the Windows finalizer
+	// case. The finalizer's FIRST action is to wait for this process to exit
+	// before it can swap a binary that is currently mapped, so not exiting
+	// means it waits out its timeout and the update never lands.
+	Handoff func(reason string)
 }
 
 // ready reports whether an update can be attempted at all. It is checked
@@ -176,10 +182,23 @@ func (d UpdateDeps) finish(
 			"to_version", req.Version, "status", res.Status, "summary", summary)
 	}
 
-	// Only a completed in-process swap restarts. A handed-off finalizer
-	// restarts the process itself when it is done, and every refusal leaves
-	// the running binary exactly as it was.
-	if out != nil && res.Status == scripts.StatusSucceeded && !res.Finalizing && d.Restart != nil {
+	// Exit after publishing the result, by whichever route fits.
+	//
+	// The finalizing case used to do nothing at all, on the reasoning that the
+	// helper "restarts the process itself when it is done" and racing it would
+	// kill the agent mid-swap. That has it backwards: SpawnFinalizer passes
+	// this process's own pid and the helper's first action is to wait for it to
+	// exit, precisely because the swap cannot touch a mapped binary. Nothing
+	// asked this process to exit, so the helper waited out its two minutes,
+	// wrote finalize_error, and the host stayed on the old version. The Windows
+	// fallback could not succeed by construction.
+	if out == nil || res.Status != scripts.StatusSucceeded {
+		return res
+	}
+	switch {
+	case res.Finalizing && d.Handoff != nil:
+		d.Handoff("update finalizer is waiting to swap to " + req.Version)
+	case !res.Finalizing && d.Restart != nil:
 		d.Restart("updated to " + req.Version)
 	}
 	return res

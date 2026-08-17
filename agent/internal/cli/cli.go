@@ -124,9 +124,15 @@ func runAgent(parent context.Context) int {
 	// for the service manager to restart.
 	deaf := make(chan struct{})
 	var deafOnce sync.Once
-	nc, err := conn.Connect(cfg, log, func() {
-		deafOnce.Do(func() { close(deaf) })
-	})
+	// A permissions violation leaves the agent connected and unable to hear
+	// anything on the denied subject. The health tracker below is what stops a
+	// freshly updated build in that state from being confirmed healthy and
+	// disarming its own rollback.
+	health := agentcore.NewLinkHealth()
+	nc, err := conn.Connect(cfg, log,
+		func() { deafOnce.Do(func() { close(deaf) }) },
+		health.RecordAsyncError,
+	)
 	if err != nil {
 		log.Error("nats connect", "err", err)
 		return 1
@@ -140,7 +146,7 @@ func runAgent(parent context.Context) int {
 	// manager start it. The restart is deferred to here rather than done in
 	// the update handler so the job's result is published first and the
 	// shutdown path is the same one SIGTERM takes.
-	restart := make(chan string, 1)
+	restart := make(chan stopReason, 1)
 	var restartOnce sync.Once
 
 	sup := &agentcore.Supervisor{
@@ -149,8 +155,12 @@ func runAgent(parent context.Context) int {
 		Version:  Version,
 		StateDir: stateDir,
 		Log:      log,
+		Link:     health,
 		Restart: func(reason string) {
-			restartOnce.Do(func() { restart <- reason })
+			restartOnce.Do(func() { restart <- stopReason{restart: reason} })
+		},
+		Handoff: func(reason string) {
+			restartOnce.Do(func() { restart <- stopReason{handoff: reason} })
 		},
 		RotateSecret: func(secret string) error {
 			// Write the file before anything else believes the rotation
@@ -170,6 +180,8 @@ func runAgent(parent context.Context) int {
 		log.Error("nats connection is closed and cannot recover, exiting for restart")
 	case why.restart != "":
 		log.Info("restarting", "reason", why.restart)
+	case why.handoff != "":
+		log.Info("exiting for the update finalizer", "reason", why.handoff)
 	default:
 		log.Info("shutting down")
 	}
@@ -177,12 +189,45 @@ func runAgent(parent context.Context) int {
 	if why.deaf {
 		// The conn is already closed; there is nothing to drain, and the exit
 		// code is what makes the service manager act.
-		return 1
+		return exitCodeFor(why)
 	}
 	if err := nc.Drain(); err != nil {
 		log.Warn("nats drain", "err", err)
 	}
-	return 0
+	return exitCodeFor(why)
+}
+
+// Exit codes. Only "asked to stop" is zero.
+//
+// The service manager reads these, and on Windows it reads them to decide
+// whether to start the agent again at all: the SCM runs its recovery actions
+// on a non-zero exit and treats zero as "finished, leave it stopped". A
+// self-update that exited 0 therefore left the host with no agent until the
+// next reboot. StartType=Automatic does not help; it only applies at boot.
+//
+// Neither code feeds the rollback crash counters, which count process starts
+// inside a window and never inspect an exit code.
+const (
+	// exitRestart: the binary on disk changed and only exiting picks it up.
+	exitRestart = 10
+	// exitDeaf: the NATS connection is closed and cannot recover, so the
+	// process is alive and unable to be told anything.
+	exitDeaf = 11
+)
+
+// exitCodeFor maps a shutdown reason to the code the service manager sees.
+func exitCodeFor(why stopReason) int {
+	switch {
+	case why.deaf:
+		return exitDeaf
+	case why.restart != "":
+		return exitRestart
+	case why.handoff != "":
+		// Zero on purpose: the finalizer restarts the service after it swaps.
+		return 0
+	default:
+		return 0
+	}
 }
 
 // stopReason says why the agent is shutting down. Zero value means it was
@@ -190,6 +235,14 @@ func runAgent(parent context.Context) int {
 type stopReason struct {
 	deaf    bool
 	restart string
+	// handoff is a self-update that could not swap in place and handed the
+	// swap to a helper process. That helper is BLOCKED waiting for this
+	// process to exit, and it starts the service itself once the swap is
+	// done, so this exit must be clean: a non-zero exit would have the SCM
+	// restart us into the old binary at +5s, racing the finalizer, and
+	// whichever won, the host would be running the old code with the new
+	// binary sitting unused on disk.
+	handoff string
 }
 
 // waitForShutdown blocks until the agent should stop and reports why.
@@ -198,7 +251,7 @@ type stopReason struct {
 // being asked to stop always wins. The explicit ctx check comes first
 // because a select with several ready cases picks at random, and a SIGTERM
 // that arrives alongside the close must not be reported as a crash.
-func waitForShutdown(ctx context.Context, deaf <-chan struct{}, restart <-chan string) stopReason {
+func waitForShutdown(ctx context.Context, deaf <-chan struct{}, restart <-chan stopReason) stopReason {
 	if ctx.Err() != nil {
 		return stopReason{}
 	}
@@ -207,8 +260,8 @@ func waitForShutdown(ctx context.Context, deaf <-chan struct{}, restart <-chan s
 		return stopReason{}
 	case <-deaf:
 		return stopReason{deaf: true}
-	case reason := <-restart:
-		return stopReason{restart: reason}
+	case why := <-restart:
+		return why
 	}
 }
 

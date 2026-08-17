@@ -7,7 +7,7 @@ import (
 )
 
 // never is a restart channel nothing ever sends on.
-func never() chan string { return make(chan string) }
+func never() chan stopReason { return make(chan stopReason) }
 
 // TestWaitForShutdownTellsCrashFromShutdown pins the difference cmdRun's exit
 // code depends on. A closed NATS connection is not recoverable, so the agent
@@ -64,8 +64,8 @@ func TestWaitForShutdownTellsCrashFromShutdown(t *testing.T) {
 // rollback tracker count a crash against a version that is working fine, and
 // enough of those roll it back.
 func TestRestartIsNotACrash(t *testing.T) {
-	restart := make(chan string, 1)
-	restart <- "updated to 2026.8.16"
+	restart := make(chan stopReason, 1)
+	restart <- stopReason{restart: "updated to 2026.8.16"}
 
 	why := waitForShutdown(context.Background(), make(chan struct{}), restart)
 	if why.deaf {

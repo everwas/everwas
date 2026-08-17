@@ -30,6 +30,10 @@ const (
 	maxBackoff     = time.Minute
 )
 
+// probeTimeout bounds one post-update health check. Every check it now makes
+// is local state or a single round trip, so this is generous rather than tight.
+const probeTimeout = 15 * time.Second
+
 // Supervisor wires the modules to a shared NATS connection.
 type Supervisor struct {
 	NC       *nats.Conn
@@ -42,6 +46,16 @@ type Supervisor struct {
 	// binary that self-update just swapped in. Without it the swap succeeds
 	// and the old code keeps running, so self-update is refused instead.
 	Restart func(reason string)
+
+	// Handoff asks the process to exit WITHOUT asking to be restarted,
+	// because something else is going to start it. Used by the Windows
+	// update finalizer, which cannot swap the binary until this process
+	// releases it.
+	Handoff func(reason string)
+
+	// Link reports asynchronous NATS errors. Optional; when nil the probe
+	// simply cannot check for a silently denied subscription.
+	Link *LinkHealth
 
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
@@ -87,6 +101,7 @@ func (s *Supervisor) Start(ctx context.Context) {
 			Audit:    aud,
 			Log:      s.Log,
 			Restart:  s.Restart,
+			Handoff:  s.Handoff,
 		},
 		RotateSecret: s.RotateSecret,
 	}
@@ -116,17 +131,33 @@ func (s *Supervisor) Start(ctx context.Context) {
 			return patches.Run(ctx)
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
-		// one stops being the fallback. "Stayed alive 60 seconds" was not
-		// evidence: the supervisor restarts crashed tasks forever, so a build
-		// whose jobs module panicked on every start still cleared that bar.
-		// The flush proves the connection answers in both directions; the
-		// patchstate publish proves a real unit of work completes end to end.
+		// one stops being the fallback. Getting this wrong is expensive in one
+		// direction only: a probe that passes too easily clears the probation
+		// marker and DELETES the rollback, so the fallback is gone precisely
+		// when it was needed.
+		//
+		// It used to flush the connection and run a patch scan, described as
+		// proving "the connection answers in both directions" and that "a real
+		// unit of work completes end to end". Neither held. A flush is a
+		// PING/PONG on the connection and says nothing about whether any
+		// subscription is live; the patchstate publish is fire-and-forget core
+		// NATS with no ack, so it returns success as soon as bytes reach the
+		// local write buffer. Both are send-side checks, and the failure this
+		// exists to catch is receive-side: a build whose jobs module cannot
+		// bind, or whose subscription the server denied, publishes heartbeats
+		// happily forever while being unable to accept a single job.
+		//
+		// The scan was also actively harmful here. A WUA search routinely takes
+		// minutes inside one uninterruptible COM call, so a 30 second deadline
+		// could never be met on Windows: the probe failed every time, retried
+		// every 30 seconds for 24 hours, and queued another search onto the COM
+		// thread on each attempt.
 		{"update-health", func(ctx context.Context, log *slog.Logger) error {
 			return update.Watch(ctx, update.WatchConfig{
 				StateDir: s.StateDir,
 				Log:      log,
 				Probe: func(ctx context.Context) error {
-					ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 					defer cancel()
 					if !s.NC.IsConnected() {
 						return errors.New("nats connection is not established")
@@ -134,8 +165,17 @@ func (s *Supervisor) Start(ctx context.Context) {
 					if err := s.NC.FlushWithContext(ctx); err != nil {
 						return fmt.Errorf("nats round trip: %w", err)
 					}
-					if _, err := patches.RefreshNow(ctx); err != nil {
-						return fmt.Errorf("patchstate publish: %w", err)
+					// The receive side, which is the whole point.
+					if err := jobsMod.Ready(); err != nil {
+						return fmt.Errorf("cannot accept jobs: %w", err)
+					}
+					if s.Link != nil {
+						if err := s.Link.PermissionViolation(); err != nil {
+							// Connected, publishing, and refused on a subject
+							// it needs. Confirming this build would delete the
+							// only way back from it.
+							return fmt.Errorf("nats permissions violation: %w", err)
+						}
 					}
 					return nil
 				},

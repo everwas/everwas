@@ -6,6 +6,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -32,6 +33,10 @@ const EventJobPanicked = "job.panicked"
 
 // Module wires the job consumer and command handler to the other modules.
 type Module struct {
+	// readyMu guards cmdSub, which Ready() reads from another goroutine.
+	readyMu sync.Mutex
+	cmdSub  *nats.Subscription
+
 	NC      *nats.Conn
 	AgentID string
 	Version string
@@ -81,7 +86,9 @@ func (m *Module) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	m.setCmdSub(sub)
 	defer func() {
+		m.setCmdSub(nil)
 		if err := sub.Unsubscribe(); err != nil {
 			m.Log.Debug("cmd unsubscribe", "err", err)
 		}
@@ -113,6 +120,34 @@ func (m *Module) Run(ctx context.Context) error {
 // data gets parsed. An unrecovered panic there takes the whole agent down,
 // and because a panic can beat the ack, JetStream then redelivers the same
 // job and crash-loops every agent that receives it.
+func (m *Module) setCmdSub(sub *nats.Subscription) {
+	m.readyMu.Lock()
+	defer m.readyMu.Unlock()
+	m.cmdSub = sub
+}
+
+// Ready reports whether the agent can actually RECEIVE work.
+//
+// Every other liveness signal the agent has is about sending: the process is
+// up, the connection is up, heartbeats publish. None of them notice a
+// subscription that was refused or torn down, which is the state where an
+// agent looks perfectly healthy and cannot be told to do anything. The
+// post-update probe asks this before confirming a build, because confirming
+// one deletes the rollback.
+func (m *Module) Ready() error {
+	m.readyMu.Lock()
+	sub := m.cmdSub
+	m.readyMu.Unlock()
+
+	if sub == nil {
+		return errors.New("command handler is not subscribed")
+	}
+	if !sub.IsValid() {
+		return errors.New("command subscription is no longer valid")
+	}
+	return nil
+}
+
 func (m *Module) runJob(ctx context.Context, spec scripts.JobSpec) {
 	defer func() {
 		if r := recover(); r != nil {

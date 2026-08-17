@@ -10,8 +10,6 @@ import (
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
-
-	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // recoveryResetPeriod is how long the SCM waits with no failures before it
@@ -69,23 +67,48 @@ func Install(cfg InstallConfig) error {
 		defer s.Close()
 	}
 
-	// The third action is the Windows stand-in for the unix ExecStartPre
-	// guard: two restarts, then a command that puts the previous binary back.
-	// It runs from the SCM, not from the agent, which is what makes it work
-	// when the new build cannot execute at all.
-	if err := s.SetRecoveryCommand(recoveryCommand(cfg)); err != nil {
-		return fmt.Errorf("svc: set recovery command: %w", err)
-	}
+	// Restart on every failure, with backoff. Deliberately no RunCommand.
+	//
+	// The third action used to be `move /Y <target>.old <target> && sc start`,
+	// intended as the Windows stand-in for the unix ExecStartPre guard. It was
+	// not one. The unix guard reads the probation file, checks the version
+	// under test, and records a denial; this command did none of that. It fired
+	// on ANY three failures inside recoveryResetPeriod, whatever the cause,
+	// then moved an arbitrarily old backup over the current binary. Backups are
+	// never retired, so on a host running a version from two months ago that is
+	// a silent two-month downgrade, and because it MOVES rather than copies,
+	// the only backup a real rollback could have used is gone afterwards. No
+	// denylist entry, no state file change, nothing in the audit trail.
+	//
+	// Three unrelated failures in 24 hours is not a rare shape: a revoked NATS
+	// credential produces exactly that, and so does anything else that makes
+	// the agent exit non-zero on a schedule. It became likelier still once a
+	// deliberate restart-after-update started exiting non-zero, which it must
+	// (see exitRestart) for the SCM to restart the agent at all.
+	//
+	// What this leaves uncovered is a Windows binary that cannot execute at
+	// all, where the in-process rollback cannot run either. That is a real gap
+	// and narrower than what the command cost: repeated restarts are always
+	// safe, a blind downgrade is not.
 	if err := s.SetRecoveryActions([]mgr.RecoveryAction{
 		{Type: mgr.ServiceRestart, Delay: 5 * time.Second},
 		{Type: mgr.ServiceRestart, Delay: 30 * time.Second},
-		{Type: mgr.RunCommand, Delay: 60 * time.Second},
+		{Type: mgr.ServiceRestart, Delay: 60 * time.Second},
 	}, recoveryResetPeriod); err != nil {
 		return fmt.Errorf("svc: set recovery actions: %w", err)
 	}
-	// A clean exit(0) after a self-update is not a crash as far as the SCM is
-	// concerned, so ask it to run the recovery actions anyway. That is what
-	// restarts the agent into the new binary.
+	// Clear the command a previous version registered. No action references it
+	// any more, so it is inert, but a host upgraded from an older agent would
+	// otherwise keep the downgrade one-liner sitting in its service config
+	// indefinitely, waiting for anyone who adds a RunCommand action back.
+	if err := s.SetRecoveryCommand(""); err != nil {
+		return fmt.Errorf("svc: clear recovery command: %w", err)
+	}
+	// The agent exits non-zero for both of its abnormal reasons (a restart
+	// after a self-update, and a connection it cannot recover), and neither is
+	// a crash in the SCM's sense: the process terminated normally. Without
+	// this, neither gets a restart, and a self-update leaves the host with no
+	// agent process until the next reboot.
 	if err := s.SetRecoveryActionsOnNonCrashFailures(true); err != nil {
 		return fmt.Errorf("svc: set recovery on non-crash exit: %w", err)
 	}
@@ -94,18 +117,6 @@ func Install(cfg InstallConfig) error {
 		return fmt.Errorf("svc: start service: %w", err)
 	}
 	return nil
-}
-
-// recoveryCommand restores the previous binary and starts the service again.
-// A failed move (there is no backup) leaves the start out, because there is
-// nothing to start into.
-//
-// It is a cmd.exe one liner rather than a call back into the agent on
-// purpose: the agent is the thing that could not run.
-func recoveryCommand(cfg InstallConfig) string {
-	target := cfg.BinaryPath
-	backup := update.BackupPath(target)
-	return fmt.Sprintf(`cmd.exe /C move /Y "%s" "%s" && sc.exe start %s`, backup, target, Name)
 }
 
 // binaryPathName renders the quoted "exe args" string the SCM stores.

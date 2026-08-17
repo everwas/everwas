@@ -55,13 +55,25 @@ func TestSuccessfulUpdateRestarts(t *testing.T) {
 	}
 }
 
-// TestFinalizingUpdateDoesNotRestart covers the Windows hand-off. The helper
-// process does the swap after this one exits and restarts the service itself;
-// racing it from here would kill the agent mid-swap.
-func TestFinalizingUpdateDoesNotRestart(t *testing.T) {
+// TestFinalizingUpdateHandsOffRatherThanRestarting covers the Windows fallback.
+//
+// This test previously asserted the opposite, that the agent must do nothing,
+// on the reasoning that the helper "restarts the process itself" and racing it
+// would kill the agent mid-swap. The model was inverted: SpawnFinalizer passes
+// this process's own pid and the helper BLOCKS waiting for it to exit, because
+// the swap cannot touch a mapped binary. Doing nothing meant the helper waited
+// out its two-minute timeout every time and the update never landed.
+//
+// It must exit, and it must exit via Handoff rather than Restart: the helper
+// runs `sc start` after the swap, so a non-zero exit that has the SCM restart
+// us at +5s would put the old binary back in memory while the new one sits
+// unused on disk.
+func TestFinalizingUpdateHandsOffRatherThanRestarting(t *testing.T) {
 	d, restarts := deps(&update.Result{
 		Version: "2026.8.16", Finalizing: true, FinalizerPID: 4242,
 	}, nil)
+	var handoffs []string
+	d.Handoff = func(reason string) { handoffs = append(handoffs, reason) }
 
 	res := d.Execute(context.Background(), updateSpec(t, update.Request{Version: "2026.8.16"}), nil)
 
@@ -69,8 +81,29 @@ func TestFinalizingUpdateDoesNotRestart(t *testing.T) {
 		t.Error("finalizing was not reported, so the server records the host as updated while " +
 			"it is still on the old version")
 	}
+	if len(handoffs) != 1 {
+		t.Fatalf("handoffs = %v, want exactly one: the finalizer is blocked on this process exiting",
+			handoffs)
+	}
 	if len(*restarts) != 0 {
-		t.Errorf("restarts = %v, want none while a finalizer is doing the swap", *restarts)
+		t.Errorf("restarts = %v, want none: a restart races the finalizer's own sc start", *restarts)
+	}
+}
+
+// A finalizing update with no Handoff wired must not silently do nothing.
+func TestFinalizingWithoutAHandoffIsStillReported(t *testing.T) {
+	d, restarts := deps(&update.Result{
+		Version: "2026.8.16", Finalizing: true, FinalizerPID: 4242,
+	}, nil)
+	d.Handoff = nil
+
+	res := d.Execute(context.Background(), updateSpec(t, update.Request{Version: "2026.8.16"}), nil)
+
+	if !res.Finalizing {
+		t.Error("finalizing was not reported")
+	}
+	if len(*restarts) != 0 {
+		t.Errorf("restarts = %v, want none", *restarts)
 	}
 }
 
