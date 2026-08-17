@@ -31,6 +31,7 @@ from openrmm.services.admin import (
     create_user,
     delete_site,
     mint_api_key,
+    rename_site,
     revoke_api_key,
     set_user_active,
     set_user_role,
@@ -156,6 +157,16 @@ async def list_sites(db: DbSession, _user: CurrentUser) -> list[SiteOut]:
 async def add_site(body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
     try:
         site = await create_site(db, name=body.name, actor=user.email)
+    except AdminError as exc:
+        raise _refused(exc) from exc
+    await db.commit()
+    return SiteOut.model_validate(site)
+
+
+@router.put("/sites/{site_id}")
+async def edit_site(site_id: uuid.UUID, body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
+    try:
+        site = await rename_site(db, site_id, name=body.name, actor=user.email)
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()

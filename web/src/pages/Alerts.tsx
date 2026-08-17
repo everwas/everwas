@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
-import { BellRing, Check, MailWarning, Plus, Send, Trash2, TriangleAlert } from "lucide-react"
+import {
+  BellRing,
+  Check,
+  MailWarning,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react"
 
 import {
   api,
@@ -54,21 +63,26 @@ function since(iso: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
+/** One form for create and edit; `editing` null means create. Two components
+ *  would drift, and on this form a drifted field means a rule that silently
+ *  stops matching what the operator thinks it matches. */
 function NewRuleForm({
   channels,
+  editing,
   onCreated,
   onClose,
 }: {
   channels: Channel[]
+  editing: AlertRule | null
   onCreated: () => void
   onClose: () => void
 }) {
-  const [name, setName] = useState("")
-  const [metric, setMetric] = useState<AlertMetric>("cpu")
-  const [threshold, setThreshold] = useState(90)
-  const [durationS, setDurationS] = useState(300)
-  const [severity, setSeverity] = useState<Severity>("warning")
-  const [channelIds, setChannelIds] = useState<string[]>([])
+  const [name, setName] = useState(editing?.name ?? "")
+  const [metric, setMetric] = useState<AlertMetric>(editing?.metric ?? "cpu")
+  const [threshold, setThreshold] = useState(editing?.threshold ?? 90)
+  const [durationS, setDurationS] = useState(editing?.duration_s ?? 300)
+  const [severity, setSeverity] = useState<Severity>(editing?.severity ?? "warning")
+  const [channelIds, setChannelIds] = useState<string[]>(editing?.channel_ids ?? [])
   const [error, setError] = useState<string | null>(null)
 
   // The server REFUSES an enabled rule with no channel: it would open alerts
@@ -80,7 +94,9 @@ function NewRuleForm({
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">New alert rule</CardTitle>
+        <CardTitle className="text-base">
+          {editing ? `Edit ${editing.name}` : "New alert rule"}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-3">
@@ -186,19 +202,23 @@ function NewRuleForm({
             disabled={!name}
             onClick={async () => {
               setError(null)
+              const payload = {
+                name,
+                metric,
+                operator: "gt" as const,
+                threshold: metric === "heartbeat_missed" ? 0 : threshold,
+                duration_s: durationS,
+                severity,
+                target: editing?.target ?? { all: true },
+                cooldown_s: editing?.cooldown_s ?? 900,
+                // An edit keeps whatever enabled state the rule had, unless
+                // it now has no channel at all, which the server refuses.
+                enabled: silent ? false : (editing?.enabled ?? true),
+                channel_ids: channelIds,
+              }
               try {
-                await api.createRule({
-                  name,
-                  metric,
-                  operator: "gt",
-                  threshold: metric === "heartbeat_missed" ? 0 : threshold,
-                  duration_s: durationS,
-                  severity,
-                  target: { all: true },
-                  cooldown_s: 900,
-                  enabled: !silent,
-                  channel_ids: channelIds,
-                })
+                if (editing) await api.updateRule(editing.id, payload)
+                else await api.createRule(payload)
               } catch (e) {
                 // The save used to fail in total silence: the request 422'd,
                 // the form stayed open, and the operator had no way to know
@@ -212,7 +232,7 @@ function NewRuleForm({
               onCreated()
             }}
           >
-            {silent ? "Save as disabled" : "Save"}
+            {silent ? "Save as disabled" : editing ? "Save changes" : "Save"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => onClose()}>
             Cancel
@@ -230,10 +250,37 @@ function NewRuleForm({
   )
 }
 
-function NewChannelForm({ onCreated, onClose }: { onCreated: () => void; onClose: () => void }) {
-  const [name, setName] = useState("")
-  const [kind, setKind] = useState<Channel["kind"]>("email")
-  const [value, setValue] = useState("")
+/** Create and edit. `editing` null means create.
+ *
+ * The server never sends the browser a webhook secret or a gotify token, so
+ * this form cannot show one. Leaving the secret box empty PRESERVES whatever
+ * is stored; typing in it rotates. The alternative -- treating empty as
+ * "clear it" -- means renaming a channel silently breaks its authentication.
+ */
+function NewChannelForm({
+  editing,
+  onCreated,
+  onClose,
+}: {
+  editing: Channel | null
+  onCreated: () => void
+  onClose: () => void
+}) {
+  const initialValue = (c: Channel | null): string => {
+    if (!c) return ""
+    const cfg = c.config as Record<string, unknown>
+    if (c.kind === "email") return ((cfg.to as string[]) ?? []).join(", ")
+    if (c.kind === "ntfy") return (cfg.topic as string) ?? ""
+    return (cfg.url as string) ?? ""
+  }
+
+  const [name, setName] = useState(editing?.name ?? "")
+  const [kind, setKind] = useState<Channel["kind"]>(editing?.kind ?? "email")
+  const [value, setValue] = useState(initialValue(editing))
+  const [secret, setSecret] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const hasSecret = (editing?.secrets_set ?? []).length > 0
+  const wantsSecret = kind === "webhook" || kind === "gotify"
 
   const placeholder =
     kind === "email"
@@ -247,7 +294,9 @@ function NewChannelForm({ onCreated, onClose }: { onCreated: () => void; onClose
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">New notification channel</CardTitle>
+        <CardTitle className="text-base">
+          {editing ? `Edit ${editing.name}` : "New notification channel"}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-wrap items-end gap-3">
         <div className="flex flex-1 flex-col gap-1.5">
@@ -280,30 +329,63 @@ function NewChannelForm({ onCreated, onClose }: { onCreated: () => void; onClose
             placeholder={placeholder}
           />
         </div>
+        {wantsSecret && (
+          <div className="flex flex-1 flex-col gap-1.5">
+            <Label htmlFor="ch-secret">{kind === "gotify" ? "Token" : "Signing secret"}</Label>
+            <Input
+              id="ch-secret"
+              type="password"
+              value={secret}
+              onChange={(e) => setSecret(e.target.value)}
+              placeholder={hasSecret ? "unchanged" : ""}
+            />
+            <span className="text-xs text-muted-foreground">
+              {hasSecret
+                ? "One is set. Leave blank to keep it; type to rotate."
+                : "Stored write-only; it is never sent back to this page."}
+            </span>
+          </div>
+        )}
         <Button
           size="sm"
           disabled={!name || !value}
           onClick={async () => {
-            const config =
+            setError(null)
+            const base =
               kind === "email"
-                ? { to: [value] }
+                ? { to: value.split(",").map((v) => v.trim()).filter(Boolean) }
                 : kind === "ntfy"
                   ? { topic: value }
-                  : kind === "gotify"
-                    ? { url: value.split("|")[0], token: value.split("|")[1] ?? "" }
-                    : { url: value }
-            await api.createChannel({ name, kind, config, enabled: true })
+                  : { url: value }
+            // Only send the credential when one was typed. Absent means keep.
+            const config = secret
+              ? { ...base, [kind === "gotify" ? "token" : "secret"]: secret }
+              : base
+            try {
+              if (editing) await api.updateChannel(editing.id, { name, kind, config, enabled: true })
+              else await api.createChannel({ name, kind, config, enabled: true })
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "could not save the channel")
+              return
+            }
             setName("")
             setValue("")
+            setSecret("")
             onClose()
             onCreated()
           }}
         >
-          Save
+          {editing ? "Save changes" : "Save"}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => onClose()}>
           Cancel
         </Button>
+        {error && (
+          <p className="flex w-full items-start gap-2 text-sm text-destructive">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -388,7 +470,9 @@ export function AlertsPage() {
   const [notice, setNotice] = useState<string | null>(null)
   // One form at a time. Both could be open at once before, stacked in the
   // header, which is not a state anyone wants to be in.
-  const [form, setForm] = useState<"rule" | "channel" | null>(null)
+  const [form, setForm] = useState<"rule" | "channel" | AlertRule | Channel | null>(null)
+  const editingRule = form && typeof form === "object" && "metric" in form ? form : null
+  const editingChannel = form && typeof form === "object" && "kind" in form ? form : null
 
   const load = useCallback(() => {
     api.alerts().then(setAlerts).catch(() => {})
@@ -438,11 +522,22 @@ export function AlertsPage() {
         </div>
       </div>
 
-      {form === "channel" && (
-        <NewChannelForm onCreated={load} onClose={() => setForm(null)} />
+      {(form === "channel" || editingChannel) && (
+        <NewChannelForm
+          key={editingChannel?.id ?? "new"}
+          editing={editingChannel}
+          onCreated={load}
+          onClose={() => setForm(null)}
+        />
       )}
-      {form === "rule" && (
-        <NewRuleForm channels={channels} onCreated={load} onClose={() => setForm(null)} />
+      {(form === "rule" || editingRule) && (
+        <NewRuleForm
+          key={editingRule?.id ?? "new"}
+          channels={channels}
+          editing={editingRule}
+          onCreated={load}
+          onClose={() => setForm(null)}
+        />
       )}
 
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
@@ -564,6 +659,9 @@ export function AlertsPage() {
                         for {r.duration_s}s · {r.channel_ids.length} channel(s)
                       </p>
                     </div>
+                    <Button size="sm" variant="ghost" onClick={() => setForm(r)} aria-label="Edit">
+                      <Pencil className="size-4" />
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"
@@ -596,6 +694,9 @@ export function AlertsPage() {
                       <p className="text-sm font-medium">{c.name}</p>
                       <p className="text-xs text-muted-foreground">{c.kind}</p>
                     </div>
+                    <Button size="sm" variant="ghost" onClick={() => setForm(c)} aria-label="Edit">
+                      <Pencil className="size-4" />
+                    </Button>
                     <Button
                       size="sm"
                       variant="ghost"

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
+	psnet "github.com/shirou/gopsutil/v4/net"
 
 	"github.com/rsp2k/openrmm/agent/internal/wire"
 )
@@ -23,13 +25,37 @@ import (
 const interval = 60 * time.Second
 
 type sample struct {
-	CPUPct   float64     `json:"cpu_pct"`
-	MemUsed  uint64      `json:"mem_used"`
-	MemTotal uint64      `json:"mem_total"`
-	SwapPct  float64     `json:"swap_pct"`
-	Load1    float64     `json:"load1"`
-	UptimeS  uint64      `json:"uptime_s"`
-	Disks    []diskUsage `json:"disks"`
+	CPUPct   float64      `json:"cpu_pct"`
+	MemUsed  uint64       `json:"mem_used"`
+	MemTotal uint64       `json:"mem_total"`
+	SwapPct  float64      `json:"swap_pct"`
+	Load1    float64      `json:"load1"`
+	UptimeS  uint64       `json:"uptime_s"`
+	Disks    []diskUsage  `json:"disks"`
+	Nets     []netCounter `json:"nets,omitempty"`
+}
+
+// netCounter is one interface's CUMULATIVE counters since boot, not a rate.
+//
+// Rates are computed server-side from consecutive samples, for two reasons.
+// Sending a rate would bake in this agent's sampling interval, so changing
+// the interval would silently rescale every historical value; and a counter
+// survives a missed sample, where a rate does not -- if one publish is lost,
+// the next delta still covers the whole gap.
+//
+// The consumer MUST handle counters going backwards. They reset on reboot,
+// on driver reload, and on some virtual NICs at 32-bit wraparound, and a
+// naive subtraction then reports a spike of several exabytes per second.
+type netCounter struct {
+	Name        string `json:"name"`
+	BytesSent   uint64 `json:"bytes_sent"`
+	BytesRecv   uint64 `json:"bytes_recv"`
+	PacketsSent uint64 `json:"packets_sent"`
+	PacketsRecv uint64 `json:"packets_recv"`
+	ErrIn       uint64 `json:"err_in"`
+	ErrOut      uint64 `json:"err_out"`
+	DropIn      uint64 `json:"drop_in"`
+	DropOut     uint64 `json:"drop_out"`
 }
 
 type diskUsage struct {
@@ -98,7 +124,46 @@ func collect(ctx context.Context, log *slog.Logger) sample {
 		log.Warn("collect uptime", "err", err)
 	}
 	s.Disks = collectDisks(ctx, log)
+	s.Nets = collectNets(ctx, log)
 	return s
+}
+
+// collectNets reads per-interface counters.
+//
+// Loopback is skipped: it carries real traffic on any busy host and none of
+// it says anything about the network, so leaving it in makes the busiest row
+// in the table the one nobody cares about.
+func collectNets(ctx context.Context, log *slog.Logger) []netCounter {
+	stats, err := psnet.IOCountersWithContext(ctx, true)
+	if err != nil {
+		log.Warn("net counters", "err", err)
+		return nil
+	}
+	out := make([]netCounter, 0, len(stats))
+	for _, st := range stats {
+		name := strings.ToLower(st.Name)
+		if name == "lo" || name == "lo0" || strings.HasPrefix(name, "loopback") {
+			continue
+		}
+		// An interface that has never moved a byte is noise on a machine with
+		// a dozen virtual adapters, and it is the common case on Windows.
+		if st.BytesSent == 0 && st.BytesRecv == 0 {
+			continue
+		}
+		out = append(out, netCounter{
+			Name:        st.Name,
+			BytesSent:   st.BytesSent,
+			BytesRecv:   st.BytesRecv,
+			PacketsSent: st.PacketsSent,
+			PacketsRecv: st.PacketsRecv,
+			ErrIn:       st.Errin,
+			ErrOut:      st.Errout,
+			DropIn:      st.Dropin,
+			DropOut:     st.Dropout,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func collectDisks(ctx context.Context, log *slog.Logger) []diskUsage {

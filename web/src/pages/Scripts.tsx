@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { CalendarClock, Play, Plus, Trash2, TriangleAlert } from "lucide-react"
+import { CalendarClock, Pencil, Play, Plus, Trash2, TriangleAlert } from "lucide-react"
 
 import {
   api,
@@ -45,26 +45,36 @@ export function RunStatusBadge({ status }: { status: ScriptRun["status"] }) {
   )
 }
 
-function NewScriptForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [shell, setShell] = useState<ShellKind>("bash")
-  const [body, setBody] = useState("")
+/** One form for create AND edit.
+ *
+ * Deliberately not two components. A separate edit form is the thing that
+ * drifts: a field gets added to create, nobody remembers the other one, and
+ * editing a script silently resets whatever the new field controls.
+ *
+ * `editing` null means create.
+ */
+function ScriptForm({
+  editing,
+  onDone,
+  onCancel,
+}: {
+  editing: Script | null
+  onDone: () => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState(editing?.name ?? "")
+  const [shell, setShell] = useState<ShellKind>(editing?.shell ?? "bash")
+  const [body, setBody] = useState(editing?.body ?? "")
+  const [timeoutS, setTimeoutS] = useState(editing?.timeout_s ?? 300)
   const [busy, setBusy] = useState(false)
-
-  if (!open) {
-    return (
-      <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
-        <Plus className="size-4" />
-        New script
-      </Button>
-    )
-  }
+  const [error, setError] = useState<string | null>(null)
 
   return (
     <Card className="w-full">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">New script</CardTitle>
+        <CardTitle className="text-base">
+          {editing ? `Edit ${editing.name}` : "New script"}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-3">
@@ -105,29 +115,58 @@ function NewScriptForm({ onCreated }: { onCreated: () => void }) {
             placeholder={"#!/usr/bin/env bash\ndf -h"}
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="script-timeout">Timeout (sec)</Label>
+            <Input
+              id="script-timeout"
+              type="number"
+              value={timeoutS}
+              onChange={(e) => setTimeoutS(Number(e.target.value))}
+              className="w-32"
+            />
+          </div>
+        </div>
+        {editing && (
+          /* Editing a script changes what its SCHEDULES run: the sched.sync
+             document is built from the script each time, so the next
+             reconcile pushes the new body to every agent that has it. */
+          <p className="text-xs text-muted-foreground">
+            Saving bumps this script to v{editing.version + 1}. Any schedule using it will run
+            the new body from the next agent check-in.
+          </p>
+        )}
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             disabled={busy || !name || !body}
             onClick={async () => {
               setBusy(true)
+              setError(null)
+              const payload = { name, shell, body, timeout_s: timeoutS, os_filter: [] }
               try {
-                await api.createScript({ name, shell, body, timeout_s: 300, os_filter: [] })
-                setName("")
-                setBody("")
-                setOpen(false)
-                onCreated()
+                if (editing) await api.updateScript(editing.id, payload)
+                else await api.createScript(payload)
+                onDone()
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "could not save the script")
               } finally {
                 setBusy(false)
               }
             }}
           >
-            Save
+            {editing ? "Save changes" : "Save"}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
         </div>
+        {error && (
+          <p className="flex items-start gap-2 text-sm text-destructive">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            {error}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -145,13 +184,26 @@ function NewScriptForm({ onCreated }: { onCreated: () => void }) {
 function Schedules({ scripts }: { scripts: Script[] }) {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [preview, setPreview] = useState<Record<string, SchedulePreview>>({})
-  const [open, setOpen] = useState(false)
+  // null = closed, "new" = create, otherwise the schedule being edited.
+  const [form, setForm] = useState<"new" | Schedule | null>(null)
+  const editing = form && form !== "new" ? form : null
   const [name, setName] = useState("")
   const [scriptId, setScriptId] = useState("")
   const [cron, setCron] = useState("0 2 * * *")
   const [tz, setTz] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")
   const [jitterS, setJitterS] = useState(300)
   const [error, setError] = useState<string | null>(null)
+
+  // Prefill when the target changes. Keyed on id so opening a different
+  // schedule refills rather than showing the previous one's values.
+  useEffect(() => {
+    setError(null)
+    setName(editing?.name ?? "")
+    setScriptId(editing?.script_id ?? "")
+    setCron(editing?.cron ?? "0 2 * * *")
+    setTz(editing?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC")
+    setJitterS(editing?.jitter_s ?? 300)
+  }, [editing?.id])
 
   const load = useCallback(() => {
     api
@@ -179,13 +231,18 @@ function Schedules({ scripts }: { scripts: Script[] }) {
           <CalendarClock className="size-4" />
           Schedules ({schedules.length})
         </h2>
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(!open)}>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => setForm(form ? null : "new")}
+        >
           <Plus className="size-4" />
           New schedule
         </Button>
       </div>
 
-      {open && (
+      {form && (
         <Card>
           <CardContent className="flex flex-col gap-3 py-4">
             <div className="flex flex-wrap gap-3">
@@ -243,29 +300,31 @@ function Schedules({ scripts }: { scripts: Script[] }) {
                 disabled={!name || !scriptId}
                 onClick={async () => {
                   setError(null)
+                  const payload = {
+                    name,
+                    script_id: scriptId,
+                    cron,
+                    tz,
+                    target: editing?.target ?? { all: true },
+                    jitter_s: jitterS,
+                    misfire_grace_s: editing?.misfire_grace_s ?? 3600,
+                    enabled: editing?.enabled ?? true,
+                  }
                   try {
-                    await api.createSchedule({
-                      name,
-                      script_id: scriptId,
-                      cron,
-                      tz,
-                      target: { all: true },
-                      jitter_s: jitterS,
-                      misfire_grace_s: 3600,
-                      enabled: true,
-                    })
+                    if (editing) await api.updateSchedule(editing.id, payload)
+                    else await api.createSchedule(payload)
                   } catch (e) {
                     setError(e instanceof Error ? e.message : "could not save the schedule")
                     return
                   }
                   setName("")
-                  setOpen(false)
+                  setForm(null)
                   load()
                 }}
               >
-                Save
+                {editing ? "Save changes" : "Save"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              <Button size="sm" variant="ghost" onClick={() => setForm(null)}>
                 Cancel
               </Button>
             </div>
@@ -327,6 +386,9 @@ function Schedules({ scripts }: { scripts: Script[] }) {
                         : "has not run yet"}
                     </p>
                   </div>
+                  <Button size="sm" variant="ghost" onClick={() => setForm(sc)} aria-label="Edit">
+                    <Pencil className="size-4" />
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -353,6 +415,9 @@ export function ScriptsPage() {
   const [runs, setRuns] = useState<ScriptRun[]>([])
   const [selected, setSelected] = useState<string>("")
   const [message, setMessage] = useState<string | null>(null)
+  // null = closed, "new" = create, otherwise the script being edited. One
+  // piece of state so the form cannot be open in two modes at once.
+  const [form, setForm] = useState<"new" | Script | null>(null)
 
   const load = useCallback(() => {
     api.scripts().then(setScripts).catch(() => {})
@@ -373,10 +438,25 @@ export function ScriptsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="text-xl font-semibold">Scripts</h1>
-        <NewScriptForm onCreated={load} />
+        <Button size="sm" className="gap-1.5" onClick={() => setForm(form ? null : "new")}>
+          <Plus className="size-4" />
+          New script
+        </Button>
       </div>
 
       {message && <p className="text-sm text-muted-foreground">{message}</p>}
+
+      {form && (
+        <ScriptForm
+          key={form === "new" ? "new" : form.id}
+          editing={form === "new" ? null : form}
+          onDone={() => {
+            setForm(null)
+            load()
+          }}
+          onCancel={() => setForm(null)}
+        />
+      )}
 
       {scripts.length > 0 && <Schedules scripts={scripts} />}
 
@@ -395,6 +475,9 @@ export function ScriptsPage() {
                     {s.shell} · timeout {s.timeout_s}s · v{s.version}
                   </p>
                 </div>
+                <Button size="sm" variant="ghost" onClick={() => setForm(s)} aria-label="Edit">
+                  <Pencil className="size-4" />
+                </Button>
                 <select
                   value={selected}
                   onChange={(e) => setSelected(e.target.value)}

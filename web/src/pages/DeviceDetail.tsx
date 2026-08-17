@@ -85,25 +85,120 @@ function FactsTable({ facts, kind }: { facts: Fact[]; kind: FactKind }) {
       </Table>
     )
   }
+  return <HardwareFacts facts={facts} />
+}
+
+/** Byte counts, as a person reads them.
+ *
+ * Binary units because that is what the agent measures: gopsutil reports what
+ * the kernel reports, and a kernel counts memory in powers of two. Calling
+ * 2075656192 "2.1 GB" would be arithmetically defensible and would not match
+ * the number on the RAM stick. */
+function bytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "—"
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
+  const i = Math.min(Math.floor(Math.log2(n) / 10), units.length - 1)
+  const v = n / 1024 ** i
+  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`
+}
+
+function hz(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(2)} GHz` : `${Math.round(n)} MHz`
+}
+
+/** snake_case -> Sentence case, with the abbreviations people actually write. */
+const LABELS: Record<string, string> = {
+  cpu: "Processor",
+  memory: "Memory",
+  os: "Operating system",
+  system: "System",
+  bios: "Firmware",
+  baseboard: "Motherboard",
+  cores: "Cores",
+  logical_cores: "Logical cores",
+  model: "Model",
+  mhz: "Clock",
+  total: "Total",
+  available: "Available",
+  swap_total: "Swap",
+  family: "Family",
+  kernel: "Kernel",
+  version: "Version",
+  build: "Build",
+  arch: "Architecture",
+  hostname: "Hostname",
+  virtualization: "Virtualization",
+  serial: "Serial number",
+  vendor: "Vendor",
+  uuid: "Machine UUID",
+}
+
+function label(key: string): string {
+  return LABELS[key] ?? key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+}
+
+/** Which keys are byte counts. Chosen by NAME rather than by guessing from
+ *  magnitude: a 2000000000 that happens to be a serial number must not be
+ *  rendered as "1.9 GiB". */
+const BYTE_KEYS = new Set(["total", "available", "used", "free", "swap_total", "size"])
+
+function value(key: string, v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—"
+  if (typeof v === "number") {
+    if (BYTE_KEYS.has(key)) return bytes(v)
+    if (key === "mhz") return hz(v)
+    return v.toLocaleString()
+  }
+  if (typeof v === "boolean") return v ? "yes" : "no"
+  if (Array.isArray(v)) return v.length ? v.map(String).join(", ") : "—"
+  if (typeof v === "object") return JSON.stringify(v)
+  return String(v)
+}
+
+//: Stable, most-identifying first. Unknown keys keep their own order after
+//: these, so a new fact from a future agent still renders sensibly.
+const FACT_ORDER = ["system", "cpu", "memory", "os", "baseboard", "bios"]
+
+function HardwareFacts({ facts }: { facts: Fact[] }) {
+  const ordered = [...facts].sort((a, b) => {
+    const ia = FACT_ORDER.indexOf(a.fact_key)
+    const ib = FACT_ORDER.indexOf(b.fact_key)
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.fact_key.localeCompare(b.fact_key)
+  })
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Fact</TableHead>
-          <TableHead>Value</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {facts.map((f) => (
-          <TableRow key={f.fact_key}>
-            <TableCell className="font-medium">{f.fact_key}</TableCell>
-            <TableCell className="font-mono text-xs">
-              {JSON.stringify(f.payload)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+      {ordered.map((f) => {
+        const entries = Object.entries((f.payload ?? {}) as Record<string, unknown>)
+        return (
+          <Card key={f.fact_key}>
+            <CardContent className="flex flex-col gap-2 py-4">
+              <p className="text-sm font-medium">{label(f.fact_key)}</p>
+              <dl className="flex flex-col gap-1">
+                {entries.map(([k, v]) => (
+                  <div key={k} className="flex items-baseline justify-between gap-4">
+                    <dt className="shrink-0 text-xs text-muted-foreground">{label(k)}</dt>
+                    <dd
+                      className="truncate text-right text-sm tabular-nums"
+                      title={typeof v === "string" ? v : undefined}
+                    >
+                      {value(k, v)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {f.valid_from && (
+                /* Facts are bitemporal, so "since" is the wire time this
+                   became true, not when the row was written. */
+                <p className="text-xs text-muted-foreground">
+                  since {new Date(f.valid_from).toLocaleString()}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })}
+    </div>
   )
 }
 

@@ -218,6 +218,32 @@ async def create_site(db: AsyncSession, *, name: str, actor: str) -> Site:
     return site
 
 
+async def rename_site(db: AsyncSession, site_id: uuid.UUID, *, name: str, actor: str) -> Site:
+    """Rename in place. Devices reference the site by id, so nothing moves."""
+    site = await db.get(Site, site_id)
+    if site is None:
+        raise AdminError("unknown site")
+    clash = (
+        await db.execute(select(Site).where(Site.name == name, Site.id != site_id))
+    ).scalar_one_or_none()
+    if clash is not None:
+        raise AdminError(f"a site called {name!r} already exists")
+
+    was, site.name = site.name, name
+    db.add(
+        AuditLog(
+            actor_type=ActorType.user,
+            actor_id=actor,
+            action="site.renamed",
+            target_type="site",
+            target_id=str(site_id),
+            detail={"from": was, "to": name},
+        )
+    )
+    await db.flush()
+    return site
+
+
 async def delete_site(db: AsyncSession, site_id: uuid.UUID, actor: str) -> Site:
     """Refused while devices still point at it.
 

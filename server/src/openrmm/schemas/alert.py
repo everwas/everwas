@@ -65,14 +65,43 @@ class ChannelIn(BaseModel):
     enabled: bool = True
 
 
+#: Config keys that are credentials. A webhook's HMAC `secret` lets anyone
+#: forge signed deliveries; a gotify `token` posts as you.
+SECRET_CONFIG_KEYS = frozenset({"secret", "token"})
+
+
 class ChannelOut(BaseModel):
+    """A channel, with its credentials REMOVED rather than masked.
+
+    `config` used to be returned raw, so every browser session that listed
+    channels received the webhook signing secret in plaintext. Masking it with
+    a placeholder is worse than removing it: the obvious edit flow is GET,
+    change the name, PUT the object back, which writes the literal mask over
+    the real secret. Absent means absent, and `secrets_set` tells the UI a
+    credential exists without saying what it is.
+    """
+
     id: uuid.UUID
     name: str
     kind: ChannelKind
     config: dict
     enabled: bool
+    secrets_set: list[str] = []
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def redacted(cls, channel) -> "ChannelOut":
+        raw = channel.config or {}
+        present = sorted(k for k in SECRET_CONFIG_KEYS if raw.get(k))
+        return cls(
+            id=channel.id,
+            name=channel.name,
+            kind=channel.kind,
+            config={k: v for k, v in raw.items() if k not in SECRET_CONFIG_KEYS},
+            enabled=channel.enabled,
+            secrets_set=present,
+        )
 
 
 class OutboxOut(BaseModel):

@@ -229,6 +229,9 @@ export type Alert = {
 }
 
 export type Channel = {
+  /** Which credentials exist, WITHOUT their values. The server never sends
+   *  a webhook secret or a gotify token to the browser. */
+  secrets_set?: string[]
   id: string
   name: string
   kind: "email" | "webhook" | "ntfy" | "gotify"
@@ -330,6 +333,11 @@ export const api = {
   sites: () => request<SiteRow[]>("/api/v1/admin/sites"),
   createSite: (name: string) =>
     request<SiteRow>("/api/v1/admin/sites", { method: "POST", body: JSON.stringify({ name }) }),
+  renameSite: (id: string, name: string) =>
+    request<SiteRow>(`/api/v1/admin/sites/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    }),
   deleteSite: (id: string) => request<void>(`/api/v1/admin/sites/${id}`, { method: "DELETE" }),
 
   audit: (params: {
@@ -354,12 +362,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  updateSchedule: (id: string, body: Partial<Schedule>) =>
+    request<Schedule>(`/api/v1/scripts/schedules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   deleteSchedule: (id: string) =>
     request<void>(`/api/v1/scripts/schedules/${id}`, { method: "DELETE" }),
   previewSchedule: (id: string) =>
     request<SchedulePreview>(`/api/v1/scripts/schedules/${id}/preview`),
 
   scripts: () => request<Script[]>("/api/v1/scripts"),
+  updateScript: (id: string, body: Partial<Script>) =>
+    request<Script>(`/api/v1/scripts/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   createScript: (body: Partial<Script>) =>
     request<Script>("/api/v1/scripts", { method: "POST", body: JSON.stringify(body) }),
   deleteScript: (id: string) => request<void>(`/api/v1/scripts/${id}`, { method: "DELETE" }),
@@ -381,11 +396,23 @@ export const api = {
   alertRules: () => request<AlertRule[]>("/api/v1/alerts/rules"),
   createRule: (body: Partial<AlertRule>) =>
     request<AlertRule>("/api/v1/alerts/rules", { method: "POST", body: JSON.stringify(body) }),
+  updateRule: (id: string, body: Partial<AlertRule>) =>
+    request<AlertRule>(`/api/v1/alerts/rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   deleteRule: (id: string) =>
     request<void>(`/api/v1/alerts/rules/${id}`, { method: "DELETE" }),
   channels: () => request<Channel[]>("/api/v1/alerts/channels"),
   createChannel: (body: Partial<Channel>) =>
     request<Channel>("/api/v1/alerts/channels", { method: "POST", body: JSON.stringify(body) }),
+  /** Omitting a credential PRESERVES it: the browser never received one, so
+   *  sending nothing must not clear it. Send a value only to rotate it. */
+  updateChannel: (id: string, body: Partial<Channel>) =>
+    request<Channel>(`/api/v1/alerts/channels/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   deleteChannel: (id: string) =>
     request<void>(`/api/v1/alerts/channels/${id}`, { method: "DELETE" }),
   testChannel: (id: string) =>

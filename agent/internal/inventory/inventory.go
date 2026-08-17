@@ -47,6 +47,7 @@ func RefreshNow(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Lo
 	collectors := []collector{
 		{"hardware", collectHardware},
 		{"software", collectSoftware},
+		{"network", collectNetwork},
 		{"processes", collectProcesses},
 		{"services", collectServices},
 	}

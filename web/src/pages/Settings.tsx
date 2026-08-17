@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from "react"
-import { Building2, Copy, KeyRound, Plus, Trash2, TriangleAlert, Users } from "lucide-react"
+import {
+  Building2,
+  Copy,
+  KeyRound,
+  Pencil,
+  Plus,
+  Trash2,
+  TriangleAlert,
+  Users,
+} from "lucide-react"
 
 import { api, type ApiKeyRow, type SiteRow, type UserRow } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
@@ -365,6 +374,10 @@ function SitesSection() {
 
   const { error, run } = useAdminAction(load)
   const [name, setName] = useState("")
+  // Rename in place. Devices reference a site by id, so nothing moves and no
+  // machine changes hands; the only thing that changes is what it is called.
+  const [renaming, setRenaming] = useState<SiteRow | null>(null)
+  const [renameTo, setRenameTo] = useState("")
 
   return (
     <section className="flex flex-col gap-3">
@@ -399,11 +412,47 @@ function SitesSection() {
 
       <Refusal error={error} />
 
+      {renaming && (
+        <div className="flex items-end gap-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="s-rename">Rename “{renaming.name}” to</Label>
+            <Input
+              id="s-rename"
+              value={renameTo}
+              onChange={(e) => setRenameTo(e.target.value)}
+              className="w-64"
+            />
+          </div>
+          <Button
+            size="sm"
+            disabled={!renameTo || renameTo === renaming.name}
+            onClick={async () => {
+              if (await run(() => api.renameSite(renaming.id, renameTo))) setRenaming(null)
+            }}
+          >
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setRenaming(null)}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {sites.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {sites.map((s) => (
             <Badge key={s.id} variant="outline" className="gap-2 py-1.5 pl-3 pr-1.5">
               {s.name}
+              <button
+                className="rounded p-0.5 hover:bg-accent"
+                onClick={() => {
+                  setRenaming(s)
+                  setRenameTo(s.name)
+                }}
+                aria-label={`Rename ${s.name}`}
+              >
+                <Pencil className="size-3.5" />
+              </button>
               <button
                 className="rounded p-0.5 hover:bg-accent"
                 onClick={() => run(() => api.deleteSite(s.id))}

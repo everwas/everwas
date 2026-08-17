@@ -17,6 +17,7 @@ from openrmm.models.alert import (
 from openrmm.models.audit import ActorType, AuditLog
 from openrmm.models.user import Role
 from openrmm.schemas.alert import (
+    SECRET_CONFIG_KEYS,
     AlertOut,
     AlertRuleIn,
     AlertRuleOut,
@@ -209,6 +210,37 @@ async def create_channel(body: ChannelIn, db: DbSession, _user: CurrentUser) -> 
     db.add(channel)
     await db.commit()
     return ChannelOut.model_validate(channel)
+
+
+@router.put("/channels/{channel_id}", dependencies=[OPERATOR])
+async def update_channel(
+    channel_id: uuid.UUID, body: ChannelIn, db: DbSession, _user: CurrentUser
+) -> ChannelOut:
+    """Edit a channel, PRESERVING any credential the caller did not supply.
+
+    The browser is never sent the webhook secret or the gotify token, so an
+    edit form cannot echo them back. Treating an absent key as "clear it"
+    would mean renaming a channel silently breaks its authentication, and the
+    only symptom is deliveries failing a signature check somewhere else.
+    Absent means unchanged; to change a credential, send it.
+    """
+    channel = (
+        await db.execute(select(NotificationChannel).where(NotificationChannel.id == channel_id))
+    ).scalar_one_or_none()
+    if channel is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown channel")
+
+    merged = dict(body.config or {})
+    for key in SECRET_CONFIG_KEYS:
+        if not merged.get(key) and (channel.config or {}).get(key):
+            merged[key] = channel.config[key]
+
+    channel.name = body.name
+    channel.kind = body.kind
+    channel.config = merged
+    channel.enabled = body.enabled
+    await db.commit()
+    return ChannelOut.redacted(channel)
 
 
 @router.delete(
