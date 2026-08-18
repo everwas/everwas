@@ -29,6 +29,36 @@ def parse_heartbeat(subject: str, payload: bytes) -> tuple[uuid.UUID, dict] | No
     return agent_id, envelope.get("data") or {}
 
 
+def _reported_certificate(data: dict) -> dict:
+    """What the agent says it is holding, as columns to write.
+
+    An agent that omits the field entirely is one too old to report, or one
+    whose fleet does not use 802.1X. That is NOT the same as an agent reporting
+    it holds nothing, which means the material is genuinely gone, so the absent
+    case must leave the stored value alone rather than clearing it: overwriting
+    a known serial with NULL every thirty seconds because half the fleet has
+    not been upgraded yet would erase the very signal this exists to carry.
+    """
+    if "cert_serial" not in data:
+        return {}
+
+    serial = str(data.get("cert_serial") or "")[:64]
+    not_after = None
+    if raw := data.get("cert_not_after"):
+        try:
+            not_after = datetime.fromisoformat(str(raw))
+        except ValueError:
+            # A malformed timestamp from a broken agent build must not cost us
+            # the serial, which is the part that matters.
+            log.warning("heartbeat carried an unparseable certificate expiry", value=raw)
+
+    return {
+        "reported_cert_serial": serial or None,
+        "reported_cert_not_after": not_after,
+        "reported_cert_at": datetime.now(UTC),
+    }
+
+
 async def apply_heartbeat(db: AsyncSession, agent_id: uuid.UUID, data: dict) -> Device | None:
     """Mark the device active. Returns the device, or None if unknown."""
     values: dict = {
@@ -37,6 +67,7 @@ async def apply_heartbeat(db: AsyncSession, agent_id: uuid.UUID, data: dict) -> 
     }
     if data.get("version"):
         values["agent_version"] = str(data["version"])[:64]
+    values.update(_reported_certificate(data))
     rows = await db.execute(
         update(Device)
         .where(Device.id == agent_id, Device.status != DeviceStatus.retired)

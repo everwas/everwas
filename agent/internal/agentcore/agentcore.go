@@ -19,6 +19,7 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/heartbeat"
 	"github.com/rsp2k/openrmm/agent/internal/inventory"
 	"github.com/rsp2k/openrmm/agent/internal/jobs"
+	"github.com/rsp2k/openrmm/agent/internal/netcert"
 	"github.com/rsp2k/openrmm/agent/internal/sched"
 	"github.com/rsp2k/openrmm/agent/internal/scripts"
 	"github.com/rsp2k/openrmm/agent/internal/shell"
@@ -71,6 +72,132 @@ func renewLoop(ctx context.Context, renew func(context.Context) error, log *slog
 	}
 }
 
+// netcertCheckEvery is how often the device re-examines its network
+// certificate. Renewal starts at half of a ninety-day life, so twice a day is
+// far more often than strictly needed; it is cheap because a certificate that
+// is not yet due costs one file read and no network at all. The frequency buys
+// two things: a server that has the CA enabled after the fleet was already
+// deployed is picked up the same day without touching a single agent, and a
+// machine that was switched off through its entire renewal window starts
+// catching up within hours of coming back rather than at its next restart.
+const netcertCheckEvery = 12 * time.Hour
+
+// netcertUrgentEvery is the cadence once the certificate is past its urgent
+// point. Borrowed from DHCP, where passing the rebinding timer changes the
+// client's strategy rather than merely repeating it: at this point renewal has
+// been failing for most of the margin and the deadline is close enough that
+// twelve hours between attempts throws away most of the remaining chances.
+const netcertUrgentEvery = time.Hour
+
+// netcertLoop keeps the device's 802.1X certificate current.
+//
+// Unlike renewLoop this DOES attempt immediately, because there is no earlier
+// step that already did it. The management credential is renewed before the
+// NATS connection is made, so the connection itself proves receipt; a network
+// certificate has no such proof available here and the machine may be holding
+// nothing at all.
+//
+// The intervals are parameters rather than constants read from inside so a
+// test can drive many cycles: with them hard-coded, any assertion about
+// repeated behaviour observes exactly one startup attempt and passes whether
+// or not the behaviour it claims to check exists.
+
+// netcertConfig is a struct rather than six positional parameters because
+// three of them are now durations and two are callbacks, and a call site with
+// two adjacent time.Durations is one transposition away from a fleet that
+// retries urgently forever and routinely never.
+type netcertConfig struct {
+	// ensure obtains or renews, and reports what the device holds afterwards.
+	// On failure it still returns whatever is on disk, because the urgency of
+	// the failure depends entirely on that.
+	ensure func(context.Context) (*netcert.Material, error)
+	// agentID picks this device's renewal offset within the fleet's spread.
+	agentID string
+	// every is the routine cadence; urgent applies past netcert.UrgentAt.
+	every, urgent time.Duration
+	// warnUser interrupts whoever is at the machine. Optional.
+	warnUser func(context.Context, netcert.Phase, time.Time)
+	// observe publishes what the device holds, so the heartbeat can report it.
+	// Optional.
+	observe func(*netcert.Material)
+	log     *slog.Logger
+}
+
+func netcertLoop(ctx context.Context, cfg netcertConfig) error {
+	// Whether we have already said the server is not issuing certificates.
+	// Most deployments will never turn this on, and an agent that warns about
+	// an unused feature twice a day forever teaches its operators that its
+	// warnings are noise, which is expensive the day one of them matters.
+	var reportedUnconfigured bool
+
+	// attempt reports how long to wait before the next one.
+	attempt := func() time.Duration {
+		m, err := cfg.ensure(ctx)
+		// m is whatever the device holds now, which on a failed renewal is the
+		// certificate it had before. Published even on failure: the server
+		// needs to know what this machine is ACTUALLY using, and a failed
+		// renewal is exactly when that stops matching what we last issued.
+		if cfg.observe != nil {
+			cfg.observe(m)
+		}
+
+		phase := m.PhaseAt(time.Now(), cfg.agentID)
+		var expires time.Time
+		if m != nil {
+			expires = m.NotAfter
+		}
+
+		switch {
+		case err == nil:
+		case errors.Is(err, netcert.ErrNotConfigured):
+			if !reportedUnconfigured {
+				cfg.log.Info("server is not issuing device certificates; 802.1X material will not be requested")
+				reportedUnconfigured = true
+			}
+			// No CA on the server means there is no deadline to escalate
+			// towards, so stay on the relaxed cadence and say nothing further.
+			return cfg.every
+		case errors.Is(err, context.Canceled):
+			return cfg.every
+		case phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired:
+			// Past the point where this is a routine retry. Renewal has been
+			// failing for most of the margin and the machine is heading for,
+			// or already in, an outage.
+			cfg.log.Error("the network certificate is about to expire and cannot be renewed",
+				"phase", phase.String(), "expires", expires.Format(time.RFC3339), "err", err)
+			// The server cannot be told, because the broken thing IS the path
+			// to the server: that is why renewal is failing. The person at the
+			// machine is the only party still reachable, and the only one who
+			// can plug in a cable or join the VPN.
+			if cfg.warnUser != nil {
+				cfg.warnUser(ctx, phase, expires)
+			}
+		default:
+			// Ordinary. A failure here leaves whatever the device already held
+			// untouched, so the machine keeps its network access, and there is
+			// most of the margin still ahead.
+			cfg.log.Warn("could not obtain a network certificate, will retry", "err", err)
+		}
+
+		if phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired {
+			return min(cfg.every, cfg.urgent)
+		}
+		return cfg.every
+	}
+
+	wait := attempt()
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			timer.Reset(attempt())
+		}
+	}
+}
+
 // probeTimeout bounds one post-update health check. Every check it now makes
 // is local state or a single round trip, so this is generous rather than tight.
 const probeTimeout = 15 * time.Second
@@ -105,6 +232,26 @@ type Supervisor struct {
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
 
+	// EnsureNetCert obtains or renews the device's 802.1X certificate and
+	// reports whatever the device holds afterwards.
+	//
+	// The material comes back even on failure, and that is the point: how
+	// urgent a failure is depends entirely on what is still on disk, and the
+	// same error means "retry tomorrow" with three weeks left and "act now"
+	// with hours left.
+	//
+	// Optional; when nil the agent never requests one, which is correct for
+	// every deployment that does not use 802.1X.
+	EnsureNetCert func(context.Context) (*netcert.Material, error)
+
+	// WarnUserAboutCertificate interrupts whoever is at the machine when its
+	// certificate is close to expiry and cannot be renewed. Optional.
+	WarnUserAboutCertificate func(context.Context, netcert.Phase, time.Time)
+
+	// Certificate carries what the device actually holds from the netcert
+	// loop to the heartbeat. Created by Start when nil.
+	Certificate *CertReport
+
 	wg sync.WaitGroup
 }
 
@@ -116,6 +263,9 @@ type task struct {
 // Start builds the modules and launches every task. It returns immediately;
 // cancel ctx to stop, then Wait for the goroutines to drain.
 func (s *Supervisor) Start(ctx context.Context) {
+	if s.Certificate == nil {
+		s.Certificate = &CertReport{}
+	}
 	aud := audit.New(s.NC, s.AgentID, s.Log)
 	shells := shell.New(s.NC, s.AgentID, aud, s.Log)
 	runner := scripts.NewRunner(s.NC, s.AgentID, s.StateDir, aud, s.Log)
@@ -155,7 +305,8 @@ func (s *Supervisor) Start(ctx context.Context) {
 
 	tasks := []task{
 		{"heartbeat", func(ctx context.Context, log *slog.Logger) error {
-			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version, scheduler.Version, log)
+			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version,
+				scheduler.Version, s.Certificate.Get, log)
 		}},
 		{"telemetry", func(ctx context.Context, log *slog.Logger) error {
 			return telemetry.Run(ctx, s.NC, s.AgentID, log)
@@ -189,6 +340,24 @@ func (s *Supervisor) Start(ctx context.Context) {
 				return nil
 			}
 			return renewLoop(ctx, s.RenewCredential, log)
+		}},
+		// The 802.1X certificate, kept on its own timer for the same reason
+		// credential renewal is pulled rather than pushed: the device that
+		// most needs a fresh certificate is the one that has been switched
+		// off, and it has to ask on its own once it is back.
+		{"netcert", func(ctx context.Context, log *slog.Logger) error {
+			if s.EnsureNetCert == nil {
+				return nil
+			}
+			return netcertLoop(ctx, netcertConfig{
+				ensure:   s.EnsureNetCert,
+				agentID:  s.AgentID,
+				every:    netcertCheckEvery,
+				urgent:   netcertUrgentEvery,
+				warnUser: s.WarnUserAboutCertificate,
+				observe:  s.Certificate.Set,
+				log:      log,
+			})
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
 		// one stops being the fallback. Getting this wrong is expensive in one

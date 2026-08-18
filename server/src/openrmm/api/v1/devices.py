@@ -6,6 +6,7 @@ from typing import Literal
 import nats.errors
 import structlog
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from openrmm.api.deps import CurrentUser, DbSession, require_role
@@ -28,6 +29,7 @@ from openrmm.schemas.device import (
     TelemetryPoint,
 )
 from openrmm.security.tenancy import caller_org, scope_to_org
+from openrmm.services.certificates import certificate_drift
 from openrmm.services.devices import DeviceNotRetiredError, delete_device
 from openrmm.services.enrollment import (
     ROTATION_GRACE,
@@ -79,6 +81,52 @@ async def list_devices(
     return [DeviceOut.model_validate(d) for d in rows.scalars()]
 
 
+class CertificateDriftOut(BaseModel):
+    device_id: uuid.UUID
+    hostname: str
+    #: unknown | stale | missing
+    kind: str
+    reported_serial: str | None
+    issued_serial: str | None
+    reported_at: datetime | None
+
+
+@router.get("/certificate-drift")
+async def list_certificate_drift(db: DbSession, _user: CurrentUser) -> list[CertificateDriftOut]:
+    """Devices holding a different certificate from the one we last issued.
+
+    Knowing what we issued and knowing what the machine has are different
+    facts, and the gap between them is invisible until it surfaces as an
+    authentication failure nobody can account for. Three things show up here:
+    a renewal that was issued and never saved, a machine restored from a backup
+    image or cloned from a template, and material deleted by hand.
+
+    Retired devices are excluded. They are meant to stop reporting, so drift on
+    a machine deliberately taken out of service is not a finding.
+    """
+    query = scope_to_org(
+        select(Device).where(Device.status != DeviceStatus.retired),
+        Device.org_id,
+        caller_org(_user),
+    )
+    return [
+        CertificateDriftOut(
+            device_id=d.device_id,
+            hostname=d.hostname,
+            kind=str(d.kind),
+            reported_serial=d.reported_serial,
+            issued_serial=d.issued_serial,
+            reported_at=d.reported_at,
+        )
+        for d in await certificate_drift(db, query)
+    ]
+
+
+# Registered BEFORE /{device_id}. FastAPI matches routes in registration order,
+# so a literal path declared after a path parameter that accepts it is
+# unreachable: "certificate-drift" would be parsed as a device id and rejected
+# as a malformed UUID, and the endpoint would 422 forever while looking
+# perfectly correct in the source.
 @router.get("/{device_id}")
 async def get_device(device_id: uuid.UUID, db: DbSession, _user: CurrentUser) -> DeviceDetailOut:
     device = await _device_or_404(db, device_id, _user)

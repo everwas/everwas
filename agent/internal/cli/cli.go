@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -17,12 +18,25 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/config"
 	"github.com/rsp2k/openrmm/agent/internal/conn"
 	"github.com/rsp2k/openrmm/agent/internal/enroll"
+	"github.com/rsp2k/openrmm/agent/internal/netcert"
+	"github.com/rsp2k/openrmm/agent/internal/secure"
 	"github.com/rsp2k/openrmm/agent/internal/svc"
 	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // Version is injected at build time via -ldflags.
 var Version = "dev"
+
+// netcertDir is where the 802.1X key, certificate and chain live.
+//
+// A subdirectory of the state dir rather than the state dir itself, because a
+// supplicant needs to read the certificate and chain while the private key
+// stays owner-only, and keeping them together makes the eventual per-platform
+// install step (wpa_supplicant, NetworkManager, the Windows certificate store)
+// one directory to point at instead of three paths to keep in step.
+func netcertDir(stateDir string) string {
+	return filepath.Join(stateDir, "netcert")
+}
 
 func Run(args []string) int {
 	if len(args) < 1 {
@@ -102,6 +116,20 @@ func runAgent(parent context.Context) int {
 	if err != nil {
 		log.Error("resolve state dir", "err", err)
 		return 1
+	}
+	// Repair the state directory's permissions on every start, before anything
+	// reads or writes a secret through it.
+	//
+	// Agents installed before this existed have a directory that inherited
+	// C:\ProgramData's default ACL, so agent.json (the credential that
+	// authenticates this device) and the 802.1X private key are readable by
+	// every local user on the machine. Waiting for the next config write to
+	// fix it would leave a laptop exposed until its credential happened to
+	// rotate; a warning rather than a fatal because an agent that cannot fix
+	// permissions is still better online than gone.
+	if err := secure.MkdirAll(stateDir); err != nil {
+		log.Warn("could not restrict the state directory; it may be readable by local users",
+			"dir", stateDir, "err", err)
 	}
 	if rolledBack, rbErr := update.CheckAndRollback(stateDir); rbErr != nil {
 		log.Warn("update rollback check", "err", rbErr)
@@ -199,6 +227,31 @@ func runAgent(parent context.Context) int {
 			cfg.AgentSecret = secret
 			return cfg.Save()
 		},
+		EnsureNetCert: func(ctx context.Context) (*netcert.Material, error) {
+			// Read the secret at call time, not at wiring time. A rotation
+			// replaces it while the process runs, and a closure that captured
+			// the value at startup would keep presenting the old one and be
+			// refused from the first rotation onwards, on a path that only
+			// runs every twelve hours: nobody would connect the two.
+			m, err := netcert.Ensure(
+				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, time.Now(),
+			)
+			// Only when one was actually obtained. This is the record that
+			// this machine can authenticate to the network and until when,
+			// which is the first thing anyone asks after a device stops
+			// getting a DHCP lease.
+			if err == nil && m.Issued {
+				log.Info("network certificate issued",
+					"serial", m.Serial,
+					"not_after", m.NotAfter.Format(time.RFC3339),
+					"path", m.CertPath)
+			}
+			// m is returned even on failure: it is whatever the device still
+			// holds, and both the urgency of the failure and what we report to
+			// the server are read from it.
+			return m, err
+		},
+		WarnUserAboutCertificate: warnUserAboutCertificate(stateDir, log),
 	}
 	sup.Start(ctx)
 

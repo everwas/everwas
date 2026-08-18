@@ -14,6 +14,11 @@ dependencies = [
     "apscheduler>=3.11.3",
     "asyncpg>=0.31.0",
     "croniter>=6.2.4",
+    # Direct, not transitive. The device CA (services/ca.py) uses x509
+    # directly, and relying on another package to pull it in meant the dev venv
+    # had it and the container did not: the tests passed and the running server
+    # raised ModuleNotFoundError on the first certificate request.
+    "cryptography>=45.0",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "nats-py>=2.15.0",

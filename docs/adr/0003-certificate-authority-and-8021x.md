@@ -1,6 +1,10 @@
 # ADR-0003: A device CA in OpenRMM, EAP-TLS in l2trace, and posture-gated network access
 
-Status: proposed (2026-08-17)
+Status: accepted (2026-08-18; proposed 2026-08-17). Amended by
+[ADR-0004](0004-short-lived-certificates-and-the-remediation-vlan.md):
+the quarantine VLAN this record assumes is now a stated requirement, and
+the CRL open question is settled as expiry-not-revocation for routine
+supersession.
 
 Companion project: [l2trace](https://l2trace.warehack.ing) (`~/claude/l2trace`),
 which is the RADIUS server in these deployments, not a bystander alongside NPS

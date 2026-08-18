@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/rsp2k/openrmm/agent/internal/secure"
 )
 
 // FileName is the state file inside Dir().
@@ -97,10 +99,16 @@ func (c *Config) Save() error {
 	return c.SaveTo(path)
 }
 
-// SaveTo writes the config to path: dir 0700, file 0600, rename-into-place so
-// a crash mid-write never leaves a truncated state file.
+// SaveTo writes the config to path, rename-into-place so a crash mid-write
+// never leaves a truncated state file.
+//
+// The directory is created through secure rather than os.MkdirAll, because
+// this file holds the agent secret. The 0700 that used to be here was honoured
+// on Linux and ignored on Windows, where the directory inherited
+// C:\ProgramData's default and left the credential readable by every local
+// user on the machine.
 func (c *Config) SaveTo(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := secure.MkdirAll(filepath.Dir(path)); err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(c, "", "  ")

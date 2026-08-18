@@ -54,12 +54,28 @@ class FactLogins(BitemporalFactMixin, Base):
     device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
 
 
+class FactPosture(BitemporalFactMixin, Base):
+    """One row per security check, not one per machine.
+
+    The set of checks grows over time, so a machine assessed last month was
+    assessed against last month's checks. Per-check facts give a check added
+    since then no history before it existed, which is the honest answer; a
+    whole-machine rollup would restate the entire verdict every time any single
+    check moved, and would have to invent a belief about checks that had never
+    run on that machine.
+    """
+
+    __tablename__ = "fact_posture"
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+
+
 FACT_TABLES = {
     "hardware": FactHardware,
     "software": FactSoftware,
     "patchstate": FactPatchState,
     "network": FactNetwork,
     "logins": FactLogins,
+    "posture": FactPosture,
 }
 
 # The API validates its ?kind= against this. A Literal cannot be built from a
@@ -70,7 +86,7 @@ FACT_TABLES = {
 # the endpoint's own hardcoded Literal behind, and the only symptom was a 422 in
 # the browser for a kind the server stores perfectly well. Failing at import is
 # a better place to find that out.
-FactKind = Literal["hardware", "software", "patchstate", "network", "logins"]
+FactKind = Literal["hardware", "software", "patchstate", "network", "logins", "posture"]
 
 assert set(get_args(FactKind)) == set(FACT_TABLES), (
     f"FactKind and FACT_TABLES have drifted: {set(get_args(FactKind)) ^ set(FACT_TABLES)}"

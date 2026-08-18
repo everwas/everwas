@@ -118,3 +118,37 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  docsite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The mirror check diffs against the PR base (or the pre-push tip),
+          # which a shallow clone does not have.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docsite/package-lock.json
+      - run: npm ci
+        working-directory: docsite
+      - run: npm run build
+        working-directory: docsite
+
+      # The docsite mirrors docs/nats-subjects.md, docs/mcp.md and docs/adr/;
+      # the repo files are canonical. Nothing else forces the mirrors to move
+      # when the contracts do, and a stale mirror looks exactly like a fresh
+      # one, so the sync is asserted here instead of remembered.
+      - name: Contract mirrors moved with their contracts
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            range="origin/${{ github.base_ref }}...HEAD"
+          elif [ -n "${{ github.event.before }}" ] && \
+               [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            range="${{ github.event.before }}..HEAD"
+          else
+            range="HEAD~1..HEAD"
+          fi
+          ./scripts/check-docs-mirrors.sh "$range"

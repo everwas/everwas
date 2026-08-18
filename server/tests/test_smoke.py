@@ -156,6 +156,8 @@ def test_every_route_requires_auth_except_the_documented_few():
         # these publicly is also what makes bootstrapping work from a
         # provisioning VLAN, where the management server is often the only host
         # a device may reach.
+        # The agent authenticates with the credential it holds, like renew.
+        "/api/v1/agents/certificate",
         "/api/v1/packages",
         "/api/v1/packages/{filename}",
     }

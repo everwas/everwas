@@ -19,12 +19,13 @@ a TPM, and only the CSR crosses the wire.
 from __future__ import annotations
 
 import datetime as dt
+import enum
 import uuid
 from dataclasses import dataclass
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.certificate import DeviceCertificate
@@ -62,6 +63,8 @@ async def issue_for_device(
     ca: DeviceCa,
     device_id: uuid.UUID,
     csr: x509.CertificateSigningRequest,
+    *,
+    lifetime: dt.timedelta | None = None,
 ) -> IssuedCertificate:
     """Sign a device's CSR and record the result.
 
@@ -79,7 +82,12 @@ async def issue_for_device(
         # the network through a different door.
         raise CertificateRefusedError("device is retired")
 
-    pem = issue_from_csr(ca, csr, common_name=str(device_id))
+    # The caller supplies the lifetime because it is deployment policy, not a
+    # property of the CA: it depends on whether an expired certificate strands
+    # the machine or merely drops it into remediation (ADR-0004).
+    pem = issue_from_csr(
+        ca, csr, common_name=str(device_id), lifetime=lifetime or CERT_LIFETIME
+    )
     cert = x509.load_pem_x509_certificate(pem)
 
     db.add(
@@ -211,3 +219,91 @@ async def build_crl(db: AsyncSession, ca: DeviceCa) -> bytes:
         )
     crl = builder.sign(private_key=ca.intermediate_key, algorithm=hashes.SHA256())
     return crl.public_bytes(serialization.Encoding.PEM)
+
+
+class DriftKind(enum.StrEnum):
+    """Why a device's reported certificate does not match our records."""
+
+    #: The device reports a serial we have no record of issuing. Most often a
+    #: machine cloned from an image that carried somebody else's certificate,
+    #: or one enrolled against a different server.
+    unknown = "unknown"
+    #: The device reports a certificate we issued, but not its newest one.
+    #: Either a renewal was issued and never saved, or the machine was restored
+    #: from a backup taken before the renewal.
+    stale = "stale"
+    #: The device says it holds nothing, though we have issued it something.
+    #: Material deleted by hand, or a failed write that left nothing behind.
+    missing = "missing"
+
+
+@dataclass
+class CertificateDrift:
+    device_id: uuid.UUID
+    hostname: str
+    kind: DriftKind
+    reported_serial: str | None
+    issued_serial: str | None
+    reported_at: dt.datetime | None
+
+
+async def certificate_drift(
+    db: AsyncSession, query: Select | None = None
+) -> list[CertificateDrift]:
+    """Devices holding something other than what we last issued them.
+
+    This is the whole reason the heartbeat carries a serial. Knowing what we
+    issued answers a different question from knowing what the machine has, and
+    the gap between them is invisible until it surfaces as an authentication
+    failure nobody can account for.
+
+    Devices that have never reported are skipped rather than flagged. An agent
+    too old to say so is not evidence of drift, and a fleet mid-upgrade would
+    otherwise light up entirely with a finding that means "your agents are
+    old", which is true, unrelated, and would bury the real ones.
+
+    `query` is the caller's already-scoped device selection, so the tenant
+    boundary is applied by the caller in the one way this codebase enforces it
+    rather than re-derived here.
+    """
+    if query is None:
+        query = select(Device)
+    devices = list((await db.execute(query)).scalars().all())
+
+    out: list[CertificateDrift] = []
+    for device in devices:
+        if device.reported_cert_at is None:
+            continue  # never told us; not the same as telling us it has nothing
+
+        issued = await current_certificate(db, device.id)
+        issued_serial = issued.serial if issued else None
+        reported = device.reported_cert_serial
+
+        if not reported:
+            if issued_serial is None:
+                continue  # holds nothing, was issued nothing: consistent
+            kind = DriftKind.missing
+        elif reported == issued_serial:
+            continue  # the ordinary, healthy case
+        else:
+            known = (
+                await db.execute(
+                    select(DeviceCertificate.serial).where(
+                        DeviceCertificate.serial == reported,
+                        DeviceCertificate.device_id == device.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            kind = DriftKind.stale if known else DriftKind.unknown
+
+        out.append(
+            CertificateDrift(
+                device_id=device.id,
+                hostname=device.hostname,
+                kind=kind,
+                reported_serial=reported or None,
+                issued_serial=issued_serial,
+                reported_at=device.reported_cert_at,
+            )
+        )
+    return out

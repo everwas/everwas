@@ -38,6 +38,31 @@ class Settings(BaseSettings):
     #: the one host a device is allowed to reach.
     packages_dir: str = "/data/packages"
 
+    #: Where the device-issuing CA lives. The intermediate signing key is
+    #: encrypted with ca_passphrase; the root private key is never stored here
+    #: (see services/ca.py).
+    ca_dir: str = "/data/ca"
+    #: Unlocks the intermediate signing key. Empty means certificate issuance
+    #: is switched off, which is the correct default: a CA that springs into
+    #: existence with a passphrase nobody chose is a CA nobody is guarding.
+    ca_passphrase: str = ""
+    #: How long an issued device certificate is valid. The agent renews at half
+    #: of whatever it was issued, reading the window from the certificate
+    #: itself, so changing this needs no agent change.
+    #:
+    #: 90 days is the value for a deployment WITHOUT a remediation VLAN, where
+    #: an expired certificate means the machine cannot reach the network to be
+    #: fixed and recovery is a physical visit. Once 802.1X failure lands a
+    #: device somewhere it can still reach this server (ADR-0004), expiry stops
+    #: being a truck roll and this should drop to 30: a superseded certificate
+    #: then retires itself within a month, with no CRL and none of the
+    #: fleet-wide failure modes CRL publication carries.
+    #:
+    #: Do NOT shorten it before that recovery path exists. The floor is not the
+    #: holiday laptop, which remediation recovers; it is how long THIS server
+    #: may be unavailable, since renewal at half life is the entire margin.
+    ca_cert_lifetime_days: int = 90
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""

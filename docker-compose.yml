@@ -71,7 +71,17 @@ services:
       OPENRMM_SMTP_PASSWORD: ${OPENRMM_SMTP_PASSWORD:-}
       OPENRMM_SMTP_FROM: ${OPENRMM_SMTP_FROM:-openrmm@localhost}
       OPENRMM_MCP_ENABLED: ${OPENRMM_MCP_ENABLED:-false}
+      OPENRMM_CA_PASSPHRASE: ${OPENRMM_CA_PASSPHRASE:-}
     networks: [openrmm-internal, caddy]
+    volumes:
+      # /data holds the device CA and the agent packages, and neither can live
+      # in the container layer. A rebuild wipes that layer: for packages it
+      # silently empties the download page mid-rollout, and for the CA it
+      # orphans every certificate already issued, which for 802.1X means the
+      # fleet stops authenticating and cannot be fixed remotely. Both were in
+      # the container layer until this was added, and the packages had already
+      # been lost once to an unrelated rebuild.
+      - openrmm-data:/data
     labels:
       # Same origin as the SPA on purpose: the session cookie is HttpOnly and
       # SameSite=Lax, so splitting the API onto its own hostname would mean
@@ -146,6 +156,9 @@ services:
 volumes:
   openrmm-pgdata:
   openrmm-natsdata:
+  # Device CA material and agent packages. Deliberately a named volume rather
+  # than the container layer, which a rebuild discards.
+  openrmm-data:
 
 networks:
   # Everything talks over this. Postgres and the dispatcher live ONLY here:
