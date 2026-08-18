@@ -22,14 +22,21 @@ hold about the past); see the long comment in api/v1/devices.py:get_network.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Select, func, select, tuple_
+from sqlalchemy import Select, func, literal, select, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.device import Device
-from openrmm.models.facts import FactHardware, FactNetwork, FactPatchState, FactSoftware
+from openrmm.models.facts import (
+    FACT_TABLES,
+    FactHardware,
+    FactNetwork,
+    FactPatchState,
+    FactSoftware,
+)
 from openrmm.models.org import Organization
 from openrmm.models.patch import PatchApproval, PatchCatalog
 from openrmm.schemas.sync import (
+    SyncChangeOut,
     SyncDeviceOut,
     SyncInterfaceOut,
     SyncOrgOut,
@@ -204,6 +211,92 @@ def _assemble_device(
         mac_addresses=sorted(macs),
         ip_addresses=sorted(addrs),
     )
+
+
+# --- the incremental change feed ------------------------------------------------
+
+
+async def change_page(
+    db: AsyncSession,
+    principal: ApiKeyPrincipal,
+    *,
+    kind: str,
+    since: datetime,
+    device_id: uuid.UUID | None,
+    site_id: uuid.UUID | None,
+    cursor: tuple[datetime, int, str] | None,
+    limit: int,
+) -> tuple[list[SyncChangeOut], bool, tuple | None]:
+    """Everything the server learned or unlearned since a moment in record
+    time. Two event types off the same rows:
+
+    - recorded: lower(recorded_during) >= since — a belief began (new fact,
+      or the new value of an amended one).
+    - superseded: upper(recorded_during) >= since — a belief ended (the
+      value changed, or the fact disappeared from the machine).
+
+    An incremental consumer replays both in order and lands on current
+    state. This is the fleet-wide substitute for calling a per-device diff
+    N times, and it is keyed on RECORD time deliberately: late-arriving
+    agent reports about the past still show up in the feed, exactly the
+    case where a valid-time filter would silently skip them.
+    """
+    model = FACT_TABLES[kind]
+
+    def _branch(at_expr, change: str, *conditions):
+        query = (
+            select(
+                model.device_id.label("device_id"),
+                model.fact_key.label("fact_key"),
+                model.payload.label("payload"),
+                model.valid_during.label("valid_during"),
+                at_expr.label("at"),
+                literal(change).label("change"),
+                model.id.label("row_id"),
+            )
+            .join(Device, Device.id == model.device_id)
+            .where(*conditions)
+        )
+        query = scope_to_org(query, Device.org_id, principal.org_id)
+        if device_id is not None:
+            query = query.where(model.device_id == device_id)
+        if site_id is not None:
+            query = query.where(Device.site_id == site_id)
+        return query
+
+    recorded = _branch(
+        func.lower(model.recorded_during), "recorded", func.lower(model.recorded_during) >= since
+    )
+    superseded = _branch(
+        func.upper(model.recorded_during),
+        "superseded",
+        ~func.upper_inf(model.recorded_during),
+        func.upper(model.recorded_during) >= since,
+    )
+
+    events = union_all(recorded, superseded).subquery()
+    query = select(events).order_by(events.c.at, events.c.row_id, events.c.change).limit(limit + 1)
+    if cursor is not None:
+        query = query.where(tuple_(events.c.at, events.c.row_id, events.c.change) > cursor)
+
+    rows = (await db.execute(query)).all()
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    items = [
+        SyncChangeOut(
+            device_id=r.device_id,
+            kind=kind,
+            fact_key=r.fact_key,
+            payload=r.payload or {},
+            change=r.change,
+            at=r.at,
+            valid_from=r.valid_during.lower,
+            valid_to=r.valid_during.upper,
+        )
+        for r in rows
+    ]
+    last = (rows[-1].at, rows[-1].row_id, rows[-1].change) if rows and has_more else None
+    return items, has_more, last
 
 
 # --- fleet-wide fact sweeps ---------------------------------------------------

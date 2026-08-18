@@ -29,7 +29,9 @@ from openrmm.api.pagination import (
     require_aware,
 )
 from openrmm.api.sync_deps import SyncPrincipal, require_sync_scope
+from openrmm.models.facts import FactKind
 from openrmm.schemas.sync import (
+    SyncChangePage,
     SyncDevicePage,
     SyncInterfacePage,
     SyncOrgPage,
@@ -170,6 +172,49 @@ async def software(
         db, principal, **_sweep_params(device_id, site_id, cursor, limit, as_of, knew_at)
     )
     return SyncSoftwarePage(items=items, has_more=has_more, next_cursor=_fact_next_cursor(last))
+
+
+def _change_cursor(cursor: str | None) -> tuple[datetime, int, str] | None:
+    if cursor is None:
+        return None
+    at_raw, row_raw, change = decode_cursor(cursor, parts=3)
+    try:
+        return datetime.fromisoformat(at_raw), int(row_raw), change
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "cursor does not fit this endpoint"
+        ) from exc
+
+
+@router.get("/changes", dependencies=[require_sync_scope("devices:read")])
+async def changes(
+    db: DbSession,
+    principal: SyncPrincipal,
+    kind: FactKind,
+    since: datetime,
+    device_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    cursor: str | None = None,
+    limit: Limit = DEFAULT_LIMIT,
+) -> SyncChangePage:
+    """What the server learned (recorded) or unlearned (superseded) since a
+    moment in record time — the incremental alternative to re-sweeping a
+    fact kind. Keyed on record time so a late-arriving agent report still
+    appears in the feed; replaying both event types in order reproduces
+    current state."""
+    require_aware("since", since)
+    items, has_more, last = await sync_export.change_page(
+        db,
+        principal,
+        kind=kind,
+        since=since,
+        device_id=device_id,
+        site_id=site_id,
+        cursor=_change_cursor(cursor),
+        limit=limit,
+    )
+    next_cursor = encode_cursor([last[0].isoformat(), str(last[1]), last[2]]) if last else None
+    return SyncChangePage(items=items, has_more=has_more, next_cursor=next_cursor)
 
 
 @router.get("/patches", dependencies=[require_sync_scope("patches:read")])

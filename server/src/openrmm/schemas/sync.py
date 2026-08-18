@@ -140,3 +140,26 @@ class SyncPatchOut(BaseModel):
 
 class SyncPatchPage(SyncPageBase):
     items: list[SyncPatchOut]
+
+
+class SyncChangeOut(BaseModel):
+    device_id: uuid.UUID
+    kind: str
+    fact_key: str
+    payload: dict
+    #: recorded — the server started believing this; superseded — it stopped
+    #: (an amend closed it: the value changed, or the fact disappeared).
+    #: A disappearance produces BOTH: the open belief is superseded and a
+    #: tombstone is recorded with valid_to set ("it WAS there until T").
+    #: A fact is current only while its latest recorded event has
+    #: valid_to == null.
+    change: str
+    #: When the belief window opened (recorded) or closed (superseded), i.e.
+    #: record time. This is what `since` filters on and what orders the feed.
+    at: datetime
+    valid_from: datetime | None
+    valid_to: datetime | None
+
+
+class SyncChangePage(SyncPageBase):
+    items: list[SyncChangeOut]

@@ -414,3 +414,114 @@ async def test_patches_requires_its_own_scope():
     async with client() as c:
         resp = await c.get("/api/v1/sync/patches", headers=headers)
     assert resp.status_code == 403
+
+
+# --- the change feed -------------------------------------------------------------
+
+
+async def test_change_feed_reports_amend_as_superseded_plus_recorded():
+    (device_id,) = await mk_devices(1)
+    async with session_scope() as db:
+        await record_facts(
+            db,
+            "software",
+            device_id,
+            {"pkg:openssl": {"version": "1.1"}},
+            observed_at=datetime.now(UTC) - timedelta(days=2),
+        )
+    watermark = datetime.now(UTC)
+    async with session_scope() as db:
+        await record_facts(
+            db,
+            "software",
+            device_id,
+            {"pkg:openssl": {"version": "3.0"}},
+            observed_at=datetime.now(UTC) - timedelta(days=1),
+        )
+
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        body = (
+            await c.get(
+                "/api/v1/sync/changes",
+                params={"kind": "software", "since": watermark.isoformat()},
+                headers=headers,
+            )
+        ).json()
+    events = [(i["change"], i["payload"].get("version")) for i in body["items"]]
+    # The old belief ended, the new one began — both visible, in order.
+    assert ("superseded", "1.1") in events
+    assert ("recorded", "3.0") in events
+
+
+async def test_change_feed_disappearance_is_superseded_only():
+    # Partial removal: curl disappears while openssl stays. (A fully empty
+    # snapshot is refused outright by the store's wholesale-retirement guard,
+    # so a "remove everything" case cannot reach this feed.)
+    (device_id,) = await mk_devices(1)
+    async with session_scope() as db:
+        await record_facts(
+            db,
+            "software",
+            device_id,
+            {"pkg:curl": {"version": "8.0"}, "pkg:openssl": {"version": "3.0"}},
+            observed_at=datetime.now(UTC) - timedelta(days=2),
+        )
+    watermark = datetime.now(UTC)
+    async with session_scope() as db:
+        await record_facts(
+            db,
+            "software",
+            device_id,
+            {"pkg:openssl": {"version": "3.0"}},
+            observed_at=datetime.now(UTC),
+        )
+
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        body = (
+            await c.get(
+                "/api/v1/sync/changes",
+                params={"kind": "software", "since": watermark.isoformat()},
+                headers=headers,
+            )
+        ).json()
+    # A removal is two events: the open-ended belief is superseded, and a
+    # tombstone is recorded whose valid_to is set — the server's new belief
+    # that curl WAS there until now. A consumer keeps a fact as current only
+    # while its latest recorded event has valid_to == null.
+    events = {(i["change"], i["fact_key"]): i for i in body["items"]}
+    assert set(events) == {("superseded", "pkg:curl"), ("recorded", "pkg:curl")}
+    assert events[("superseded", "pkg:curl")]["valid_to"] is None
+    assert events[("recorded", "pkg:curl")]["valid_to"] is not None
+
+
+async def test_change_feed_refuses_naive_since_and_pages():
+    ids = await mk_devices(2)
+    watermark = datetime.now(UTC)
+    for device_id in ids:
+        await ingest(device_id, "network", INTERFACES)
+
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        naive = await c.get(
+            "/api/v1/sync/changes",
+            params={"kind": "network", "since": "2026-08-01T00:00:00"},
+            headers=headers,
+        )
+        assert naive.status_code == 422
+
+        seen, cursor = [], None
+        while True:
+            params = {"kind": "network", "since": watermark.isoformat(), "limit": 3} | (
+                {"cursor": cursor} if cursor else {}
+            )
+            body = (await c.get("/api/v1/sync/changes", params=params, headers=headers)).json()
+            seen.extend(body["items"])
+            if not body["has_more"]:
+                assert body["next_cursor"] is None
+                break
+            cursor = body["next_cursor"]
+    # 2 devices x 2 interfaces, all freshly recorded
+    assert len(seen) == 4
+    assert {i["change"] for i in seen} == {"recorded"}
