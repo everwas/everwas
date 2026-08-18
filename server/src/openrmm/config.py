@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     #: the one host a device is allowed to reach.
     packages_dir: str = "/data/packages"
 
+    #: Where the device-issuing CA lives. The intermediate signing key is
+    #: encrypted with ca_passphrase; the root private key is never stored here
+    #: (see services/ca.py).
+    ca_dir: str = "/data/ca"
+    #: Unlocks the intermediate signing key. Empty means certificate issuance
+    #: is switched off, which is the correct default: a CA that springs into
+    #: existence with a passphrase nobody chose is a CA nobody is guarding.
+    ca_passphrase: str = ""
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
