@@ -35,6 +35,7 @@ export default defineConfig({
             'guides/run-scripts',
             'guides/schedules',
             'guides/patch-management',
+            'guides/certificates',
             'guides/alerts',
             'guides/device-history',
             'guides/enable-mcp',

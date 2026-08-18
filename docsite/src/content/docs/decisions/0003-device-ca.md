@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-**Status: proposed** (2026-08-17), amended by
+**Status: accepted** (2026-08-18; proposed 2026-08-17), amended by
 [ADR-0004](/decisions/0004-short-lived-certificates/), which turns the
 quarantine-VLAN assumption into a requirement and settles the CRL
 question.
