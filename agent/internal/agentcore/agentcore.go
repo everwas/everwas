@@ -82,6 +82,13 @@ func renewLoop(ctx context.Context, renew func(context.Context) error, log *slog
 // catching up within hours of coming back rather than at its next restart.
 const netcertCheckEvery = 12 * time.Hour
 
+// netcertUrgentEvery is the cadence once the certificate is past its urgent
+// point. Borrowed from DHCP, where passing the rebinding timer changes the
+// client's strategy rather than merely repeating it: at this point renewal has
+// been failing for most of the margin and the deadline is close enough that
+// twelve hours between attempts throws away most of the remaining chances.
+const netcertUrgentEvery = time.Hour
+
 // netcertLoop keeps the device's 802.1X certificate current.
 //
 // Unlike renewLoop this DOES attempt immediately, because there is no earlier
@@ -96,8 +103,9 @@ const netcertCheckEvery = 12 * time.Hour
 // behaviour it claims to check exists.
 func netcertLoop(
 	ctx context.Context,
-	ensure func(context.Context) error,
-	every time.Duration,
+	ensure func(context.Context) (netcert.Phase, time.Time, error),
+	every, urgentEvery time.Duration,
+	warnUser func(context.Context, netcert.Phase, time.Time),
 	log *slog.Logger,
 ) error {
 	// Whether we have already said the server is not issuing certificates.
@@ -106,33 +114,56 @@ func netcertLoop(
 	// warnings are noise, which is expensive the day one of them matters.
 	var reportedUnconfigured bool
 
-	attempt := func() {
-		switch err := ensure(ctx); {
+	// attempt reports how long to wait before the next one.
+	attempt := func() time.Duration {
+		phase, expires, err := ensure(ctx)
+		switch {
 		case err == nil:
 		case errors.Is(err, netcert.ErrNotConfigured):
 			if !reportedUnconfigured {
 				log.Info("server is not issuing device certificates; 802.1X material will not be requested")
 				reportedUnconfigured = true
 			}
+			// No CA on the server means there is no deadline to escalate
+			// towards, so stay on the relaxed cadence and say nothing further.
+			return every
 		case errors.Is(err, context.Canceled):
+			return every
+		case phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired:
+			// Past the point where this is a routine retry. Renewal has been
+			// failing for most of the margin and the machine is heading for,
+			// or already in, an outage.
+			log.Error("the network certificate is about to expire and cannot be renewed",
+				"phase", phase.String(), "expires", expires.Format(time.RFC3339), "err", err)
+			// The server cannot be told, because the broken thing IS the path
+			// to the server: that is why renewal is failing. The person at the
+			// machine is the only party still reachable, and the only one who
+			// can plug in a cable or join the VPN.
+			if warnUser != nil {
+				warnUser(ctx, phase, expires)
+			}
 		default:
-			// Deliberately not fatal. A failure here leaves whatever the
-			// device already held untouched, so the machine keeps its network
-			// access; the emergency is only if this keeps failing until the
-			// certificate expires, which is weeks away by construction.
+			// Ordinary. A failure here leaves whatever the device already held
+			// untouched, so the machine keeps its network access, and there is
+			// most of the margin still ahead.
 			log.Warn("could not obtain a network certificate, will retry", "err", err)
 		}
-	}
-	attempt()
 
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
+		if phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired {
+			return min(every, urgentEvery)
+		}
+		return every
+	}
+
+	wait := attempt()
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
-			attempt()
+		case <-timer.C:
+			timer.Reset(attempt())
 		}
 	}
 }
@@ -171,10 +202,21 @@ type Supervisor struct {
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
 
-	// EnsureNetCert obtains or renews the device's 802.1X certificate.
+	// EnsureNetCert obtains or renews the device's 802.1X certificate, and
+	// reports the phase and expiry of whatever the device holds afterwards.
+	//
+	// The phase comes back even on failure, and that is the point: it is the
+	// difference between a device one day past half life and one an hour from
+	// expiry, which is what decides how hard to retry and whether to interrupt
+	// the person using the machine.
+	//
 	// Optional; when nil the agent never requests one, which is correct for
 	// every deployment that does not use 802.1X.
-	EnsureNetCert func(context.Context) error
+	EnsureNetCert func(context.Context) (netcert.Phase, time.Time, error)
+
+	// WarnUserAboutCertificate interrupts whoever is at the machine when its
+	// certificate is close to expiry and cannot be renewed. Optional.
+	WarnUserAboutCertificate func(context.Context, netcert.Phase, time.Time)
 
 	wg sync.WaitGroup
 }
@@ -269,7 +311,8 @@ func (s *Supervisor) Start(ctx context.Context) {
 			if s.EnsureNetCert == nil {
 				return nil
 			}
-			return netcertLoop(ctx, s.EnsureNetCert, netcertCheckEvery, log)
+			return netcertLoop(ctx, s.EnsureNetCert, netcertCheckEvery, netcertUrgentEvery,
+				s.WarnUserAboutCertificate, log)
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
 		// one stops being the fallback. Getting this wrong is expensive in one

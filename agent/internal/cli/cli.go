@@ -227,17 +227,25 @@ func runAgent(parent context.Context) int {
 			cfg.AgentSecret = secret
 			return cfg.Save()
 		},
-		EnsureNetCert: func(ctx context.Context) error {
+		EnsureNetCert: func(ctx context.Context) (netcert.Phase, time.Time, error) {
 			// Read the secret at call time, not at wiring time. A rotation
 			// replaces it while the process runs, and a closure that captured
 			// the value at startup would keep presenting the old one and be
 			// refused from the first rotation onwards, on a path that only
 			// runs every twelve hours: nobody would connect the two.
+			now := time.Now()
 			m, err := netcert.Ensure(
-				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, time.Now(),
+				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, now,
 			)
+			// m is whatever the device holds, which on a failed renewal is the
+			// certificate it had before. Its phase is what makes the failure
+			// routine or urgent.
+			var expires time.Time
+			if m != nil {
+				expires = m.NotAfter
+			}
 			if err != nil {
-				return err
+				return m.PhaseAt(now, cfg.AgentID), expires, err
 			}
 			// Only when one was actually obtained. This is the record that
 			// this machine can authenticate to the network and until when,
@@ -248,8 +256,9 @@ func runAgent(parent context.Context) int {
 					"not_after", m.NotAfter.Format(time.RFC3339),
 					"path", m.CertPath)
 			}
-			return nil
+			return m.PhaseAt(now, cfg.AgentID), expires, nil
 		},
+		WarnUserAboutCertificate: warnUserAboutCertificate(stateDir, log),
 	}
 	sup.Start(ctx)
 
