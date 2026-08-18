@@ -70,6 +70,30 @@ const features = [
     status: 'append-only',
     kind: 'cyan',
   },
+  {
+    icon: 'lucide:badge-check',
+    unit: 'cert.authority',
+    title: 'Device certificates',
+    body: 'A built-in CA issues and renews each device’s 802.1X certificate over the channel the agent already holds. Renewal pulls, so a laptop that slept through a rotation wakes up and fixes itself.',
+    status: 'renewing',
+    kind: 'ok',
+  },
+  {
+    icon: 'lucide:shield-half',
+    unit: 'posture.checks',
+    title: 'Security posture',
+    body: 'Firewall, disk encryption, antivirus, and friends. Each check lands as its own bitemporal fact, so “was the firewall on during the incident” is a query, not a guess.',
+    status: 'bitemporal',
+    kind: 'cyan',
+  },
+  {
+    icon: 'lucide:arrow-left-right',
+    unit: 'sync.feed',
+    title: 'Sync API',
+    body: 'A read-only surface for external systems of record: sweep the whole fleet in pages, or ask the change feed what the server learned, and unlearned, since any point in time.',
+    status: 'read-only',
+    kind: 'cyan',
+  },
 ];
 ---
 
