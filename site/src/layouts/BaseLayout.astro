@@ -81,20 +81,28 @@ const jsonLd = {
 
         // section_view: fired once per anchored section per page view, so
         // "did the bitemporal pitch survive the fold" is measured, not inferred.
+        // Observes a sentinel at the top of each section rather than the
+        // section itself: a fractional threshold on a taller-than-viewport
+        // section may never be met, which under-reports exactly the
+        // longest-read sections. The sentinel stays correct as sections grow.
         const seen = new Set<string>();
-        const io = new IntersectionObserver(
-          (entries) => {
-            for (const entry of entries) {
-              const id = (entry.target as HTMLElement).id;
-              if (entry.isIntersecting && id && !seen.has(id)) {
-                seen.add(id);
-                tracker.event('section_view', { id });
-              }
+        const io = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            const id = (entry.target as HTMLElement).dataset.section;
+            if (entry.isIntersecting && id && !seen.has(id)) {
+              seen.add(id);
+              tracker.event('section_view', { id });
             }
-          },
-          { threshold: 0.15 },
-        );
-        document.querySelectorAll('section[id]').forEach((s) => io.observe(s));
+          }
+        });
+        document.querySelectorAll<HTMLElement>('section[id]').forEach((s) => {
+          const sentinel = document.createElement('span');
+          sentinel.dataset.section = s.id;
+          sentinel.setAttribute('aria-hidden', 'true');
+          sentinel.style.cssText = 'display:block;height:1px;margin-bottom:-1px;visibility:hidden;';
+          s.prepend(sentinel);
+          io.observe(sentinel);
+        });
       }
     </script>
   </body>
