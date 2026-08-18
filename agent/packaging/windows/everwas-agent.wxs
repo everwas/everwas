@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MSI source for the OpenRMM agent.
+  MSI source for the Everwas agent.
 
   Written against the WiX v3 schema because the MSI is built on Linux with
   msitools' wixl, not with WiX. WiX v4/v5/v6 install fine as a dotnet tool on
@@ -38,14 +38,14 @@
                     comparison keeps working. See that script for why the day
                     is folded into the third field.
     DisplayVersion  the real CalVer string, for humans and for inventory.
-    AgentExe        path to the already-Authenticode-signed openrmm-agent.exe.
+    AgentExe        path to the already-Authenticode-signed everwas-agent.exe.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*"
-           Name="OpenRMM Agent"
+           Name="Everwas Agent"
            Language="1033"
            Version="$(var.Version)"
-           Manufacturer="OpenRMM"
+           Manufacturer="Everwas"
            UpgradeCode="C715EB57-9DA9-4A77-AD9E-FA4A78DE65F0">
 
     <!--
@@ -53,13 +53,13 @@
       packages on purpose. Both install to the same directory and register the
       same service name, so they must never coexist; one UpgradeCode makes
       installing either one remove the other instead of producing two
-      Add/Remove entries fighting over C:\Program Files\OpenRMM\Agent.
+      Add/Remove entries fighting over C:\Program Files\Everwas\Agent.
     -->
     <Package InstallerVersion="500"
              Compressed="yes"
              InstallScope="perMachine"
-             Manufacturer="OpenRMM"
-             Description="OpenRMM remote monitoring and management agent"
+             Manufacturer="Everwas"
+             Description="Everwas remote monitoring and management agent"
              Comments="Agent version $(var.DisplayVersion)" />
 
     <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
@@ -69,7 +69,7 @@
       has no MajorUpgrade element. RemoveExistingProducts runs immediately
       after InstallInitialize so the old product is gone (service stopped and
       deleted by its own uninstall custom action) before the new files land.
-      Scheduling it late instead would try to overwrite openrmm-agent.exe
+      Scheduling it late instead would try to overwrite everwas-agent.exe
       while the service still has it open, and Windows answers that with a
       reboot prompt or an in-use failure.
     -->
@@ -84,10 +84,10 @@
                       OnlyDetect="yes"
                       Property="NEWERVERSIONDETECTED" />
     </Upgrade>
-    <Condition Message="A newer version of the OpenRMM Agent is already installed. Remove it first if you really mean to downgrade.">
+    <Condition Message="A newer version of the Everwas Agent is already installed. Remove it first if you really mean to downgrade.">
       NOT NEWERVERSIONDETECTED
     </Condition>
-    <Condition Message="The OpenRMM Agent requires 64-bit Windows.">
+    <Condition Message="The Everwas Agent requires 64-bit Windows.">
       VersionNT64
     </Condition>
 
@@ -113,11 +113,11 @@
     <Property Id="MsiHiddenProperties" Value="TOKEN" />
 
     <Property Id="ARPNOREPAIR" Value="1" />
-    <Property Id="ARPHELPLINK" Value="https://github.com/rsp2k/openrmm" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/rsp2k/everwas" />
 
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="VendorFolder" Name="OpenRMM">
+        <Directory Id="VendorFolder" Name="Everwas">
           <Directory Id="INSTALLFOLDER" Name="Agent" />
         </Directory>
       </Directory>
@@ -128,7 +128,7 @@
                  Guid="E26E21E1-8FC2-46C6-83C9-23F5B7245901"
                  Win64="yes">
         <File Id="AgentExeFile"
-              Name="openrmm-agent.exe"
+              Name="everwas-agent.exe"
               Source="$(var.AgentExe)"
               KeyPath="yes" />
       </Component>
@@ -143,20 +143,20 @@
                  Guid="DCF20F57-BC0D-46AD-BE8A-5F33FADC1E85"
                  Win64="yes">
         <RegistryValue Root="HKLM"
-                       Key="SOFTWARE\OpenRMM\Agent"
+                       Key="SOFTWARE\Everwas\Agent"
                        Name="Version"
                        Type="string"
                        Value="$(var.DisplayVersion)"
                        KeyPath="yes" />
         <RegistryValue Root="HKLM"
-                       Key="SOFTWARE\OpenRMM\Agent"
+                       Key="SOFTWARE\Everwas\Agent"
                        Name="InstallPath"
                        Type="string"
                        Value="[INSTALLFOLDER]" />
       </Component>
     </DirectoryRef>
 
-    <Feature Id="Agent" Title="OpenRMM Agent" Level="1" Absent="disallow">
+    <Feature Id="Agent" Title="Everwas Agent" Level="1" Absent="disallow">
       <ComponentRef Id="AgentExe" />
       <ComponentRef Id="AgentRegistry" />
     </Feature>
@@ -225,7 +225,7 @@
                   Return="check" />
 
     <!--
-      PURGE=1 additionally deletes C:\ProgramData\OpenRMM\Agent, which holds
+      PURGE=1 additionally deletes C:\ProgramData\Everwas\Agent, which holds
       agent.json: the agent id and the NATS secret. Default is to keep it.
 
       Keeping it means an uninstall does NOT revoke anything. The server still

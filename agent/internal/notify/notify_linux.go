@@ -80,7 +80,7 @@ func notifySend(ctx context.Context, uid int, title, body string) error {
 		// Critical notifications on most desktops stay on screen until
 		// dismissed, which is right here: this is not a status update, it is a
 		// deadline the person needs to act on.
-		"--app-name=OpenRMM",
+		"--app-name=Everwas",
 		title, body,
 	)
 	cmd.Env = append(os.Environ(),

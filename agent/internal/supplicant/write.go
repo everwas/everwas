@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rsp2k/openrmm/agent/internal/secure"
+	"github.com/everwas/everwas/agent/internal/secure"
 )
 
 // FileName is the generated profile inside the directory given to Write.
-const FileName = "wpa_supplicant-openrmm.conf"
+const FileName = "wpa_supplicant-everwas.conf"
 
 // Write renders the profile and writes it, replacing any previous one.
 //

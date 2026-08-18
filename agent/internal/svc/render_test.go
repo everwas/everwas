@@ -13,8 +13,8 @@ import (
 
 func TestRenderSystemdUnit(t *testing.T) {
 	unit := RenderSystemdUnit(InstallConfig{
-		BinaryPath: "/usr/local/bin/openrmm-agent",
-		StateDir:   "/etc/openrmm",
+		BinaryPath: "/usr/local/bin/everwas-agent",
+		StateDir:   "/etc/everwas",
 	})
 
 	want := []string{
@@ -23,14 +23,14 @@ func TestRenderSystemdUnit(t *testing.T) {
 		"After=network-online.target",
 		"[Service]",
 		"Type=simple",
-		"ExecStartPre=-/bin/sh /usr/local/lib/openrmm/agent-guard.sh check /usr/local/bin/openrmm-agent",
-		"ExecStart=/usr/local/bin/openrmm-agent run",
+		"ExecStartPre=-/bin/sh /usr/local/lib/everwas/agent-guard.sh check /usr/local/bin/everwas-agent",
+		"ExecStart=/usr/local/bin/everwas-agent run",
 		"Restart=always",
 		"RestartSec=5",
 		"NoNewPrivileges=false",
 		"ProtectHome=read-only",
 		"PrivateTmp=true",
-		"Environment=OPENRMM_STATE_DIR=/etc/openrmm",
+		"Environment=EVERWAS_STATE_DIR=/etc/everwas",
 		"[Install]",
 		"WantedBy=multi-user.target",
 	}
@@ -50,16 +50,16 @@ func TestRenderSystemdUnit(t *testing.T) {
 }
 
 func TestRenderSystemdUnitDefaultsAndQuoting(t *testing.T) {
-	unit := RenderSystemdUnit(InstallConfig{BinaryPath: "/opt/open rmm/openrmm-agent"})
-	if !strings.Contains(unit, `ExecStart="/opt/open rmm/openrmm-agent" run`) {
+	unit := RenderSystemdUnit(InstallConfig{BinaryPath: "/opt/open rmm/everwas-agent"})
+	if !strings.Contains(unit, `ExecStart="/opt/open rmm/everwas-agent" run`) {
 		t.Errorf("a path with a space must be quoted\n---\n%s", unit)
 	}
-	if strings.Contains(unit, "Environment=OPENRMM_STATE_DIR") {
+	if strings.Contains(unit, "Environment=EVERWAS_STATE_DIR") {
 		t.Error("no state dir override means no Environment line")
 	}
 
-	custom := RenderSystemdUnit(InstallConfig{BinaryPath: "/usr/local/bin/openrmm-agent", Args: []string{"run", "--verbose"}})
-	if !strings.Contains(custom, "ExecStart=/usr/local/bin/openrmm-agent run --verbose") {
+	custom := RenderSystemdUnit(InstallConfig{BinaryPath: "/usr/local/bin/everwas-agent", Args: []string{"run", "--verbose"}})
+	if !strings.Contains(custom, "ExecStart=/usr/local/bin/everwas-agent run --verbose") {
 		t.Errorf("custom args not rendered\n---\n%s", custom)
 	}
 }
@@ -67,9 +67,9 @@ func TestRenderSystemdUnitDefaultsAndQuoting(t *testing.T) {
 func TestRenderedUnitMatchesPackagedUnit(t *testing.T) {
 	// The packaged unit and the one the installer writes have to agree, or a
 	// host installed from the deb behaves differently from one installed with
-	// `openrmm-agent install`.
-	rendered := RenderSystemdUnit(InstallConfig{BinaryPath: "/usr/local/bin/openrmm-agent"})
-	packaged, err := readIfExists(filepath.Join("..", "..", "packaging", "linux", "openrmm-agent.service"))
+	// `everwas-agent install`.
+	rendered := RenderSystemdUnit(InstallConfig{BinaryPath: "/usr/local/bin/everwas-agent"})
+	packaged, err := readIfExists(filepath.Join("..", "..", "packaging", "linux", "everwas-agent.service"))
 	if err != nil {
 		t.Fatalf("read packaged unit: %v", err)
 	}
@@ -83,8 +83,8 @@ func TestRenderedUnitMatchesPackagedUnit(t *testing.T) {
 
 func TestRenderLaunchdPlistIsValidXML(t *testing.T) {
 	plist := RenderLaunchdPlist(InstallConfig{
-		BinaryPath: "/Library/OpenRMM/Agent/openrmm-agent",
-		StateDir:   "/Library/Application Support/OpenRMM",
+		BinaryPath: "/Library/Everwas/Agent/everwas-agent",
+		StateDir:   "/Library/Application Support/Everwas",
 	})
 
 	var doc struct {
@@ -96,16 +96,16 @@ func TestRenderLaunchdPlistIsValidXML(t *testing.T) {
 
 	want := []string{
 		"<key>Label</key>",
-		"<string>com.openrmm.agent</string>",
-		"/Library/OpenRMM/Agent/openrmm-agent",
+		"<string>systems.supported.everwas.agent</string>",
+		"/Library/Everwas/Agent/everwas-agent",
 		"agent-guard.sh",
 		"exec ",
 		"<key>RunAtLoad</key>",
 		"<key>KeepAlive</key>",
 		"<key>ThrottleInterval</key>",
-		"<string>/Library/Logs/OpenRMM/agent.log</string>",
-		"<string>/Library/Logs/OpenRMM/agent.err.log</string>",
-		"<key>OPENRMM_STATE_DIR</key>",
+		"<string>/Library/Logs/Everwas/agent.log</string>",
+		"<string>/Library/Logs/Everwas/agent.err.log</string>",
+		"<key>EVERWAS_STATE_DIR</key>",
 	}
 	for _, w := range want {
 		if !strings.Contains(plist, w) {
@@ -131,8 +131,8 @@ func TestRenderLaunchdPlistEscapesXML(t *testing.T) {
 }
 
 func TestRenderedPlistMatchesPackagedPlist(t *testing.T) {
-	rendered := RenderLaunchdPlist(InstallConfig{BinaryPath: "/Library/OpenRMM/Agent/openrmm-agent"})
-	packaged, err := readIfExists(filepath.Join("..", "..", "packaging", "darwin", "com.openrmm.agent.plist"))
+	rendered := RenderLaunchdPlist(InstallConfig{BinaryPath: "/Library/Everwas/Agent/everwas-agent"})
+	packaged, err := readIfExists(filepath.Join("..", "..", "packaging", "darwin", "systems.supported.everwas.agent.plist"))
 	if err != nil {
 		t.Fatalf("read packaged plist: %v", err)
 	}
@@ -145,17 +145,17 @@ func TestRenderedPlistMatchesPackagedPlist(t *testing.T) {
 }
 
 func TestInstallConfigDefaults(t *testing.T) {
-	t.Setenv(StateDirEnv, "/tmp/openrmm-test-state")
-	t.Setenv(PrefixEnv, "/tmp/openrmm-test-prefix")
+	t.Setenv(StateDirEnv, "/tmp/everwas-test-state")
+	t.Setenv(PrefixEnv, "/tmp/everwas-test-prefix")
 
-	got := InstallConfig{BinaryPath: "/usr/local/bin/openrmm-agent"}.normalized()
+	got := InstallConfig{BinaryPath: "/usr/local/bin/everwas-agent"}.normalized()
 	if len(got.Args) != 1 || got.Args[0] != "run" {
 		t.Errorf("Args = %v, want [run]", got.Args)
 	}
-	if got.StateDir != "/tmp/openrmm-test-state" {
+	if got.StateDir != "/tmp/everwas-test-state" {
 		t.Errorf("StateDir = %s, want the env override", got.StateDir)
 	}
-	if got.Prefix != "/tmp/openrmm-test-prefix" {
+	if got.Prefix != "/tmp/everwas-test-prefix" {
 		t.Errorf("Prefix = %s, want the env override", got.Prefix)
 	}
 
@@ -182,10 +182,10 @@ func TestServicePathsHonourPrefix(t *testing.T) {
 	if got := PlistPath(root); !strings.HasPrefix(got, root) {
 		t.Errorf("PlistPath = %s, want it under %s", got, root)
 	}
-	if got := UnitPath(""); got != filepath.FromSlash("/etc/systemd/system/openrmm-agent.service") {
+	if got := UnitPath(""); got != filepath.FromSlash("/etc/systemd/system/everwas-agent.service") {
 		t.Errorf("UnitPath = %s, want the real system location", got)
 	}
-	if got := PlistPath(""); got != filepath.FromSlash("/Library/LaunchDaemons/com.openrmm.agent.plist") {
+	if got := PlistPath(""); got != filepath.FromSlash("/Library/LaunchDaemons/systems.supported.everwas.agent.plist") {
 		t.Errorf("PlistPath = %s, want the real system location", got)
 	}
 }

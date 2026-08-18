@@ -1,5 +1,5 @@
-// Package wire is the single source of truth for the OpenRMM protocol on the
-// agent side. It mirrors server/src/openrmm/natsio/subjects.py; both are
+// Package wire is the single source of truth for the Everwas protocol on the
+// agent side. It mirrors server/src/everwas/natsio/subjects.py; both are
 // written against docs/nats-subjects.md — change that file first.
 package wire
 
@@ -64,5 +64,5 @@ func ShellResize(agentID, sessionID string) string {
 // _INBOX_{agent_id}.>, so the client MUST be configured with a matching
 // prefix or it cannot receive replies to its own requests.
 //
-// Mirrors server/src/openrmm/natsio/subjects.py:agent_inbox_prefix.
+// Mirrors server/src/everwas/natsio/subjects.py:agent_inbox_prefix.
 func InboxPrefix(agentID string) string { return "_INBOX_" + agentID }

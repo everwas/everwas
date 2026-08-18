@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/rsp2k/openrmm/agent/internal/posture"
+	"github.com/everwas/everwas/agent/internal/posture"
 )
 
 // postureSnapshot is the wire shape for the security posture kind.

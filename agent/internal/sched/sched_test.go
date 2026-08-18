@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 func testScheduler(t *testing.T, run RunFunc) *Scheduler {
@@ -398,8 +398,8 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 
 // TestJobIDMatchesTheServersDerivation pins the exact bytes both sides must
 // agree on. The vector below is Python's
-// uuid5(uuid5(NAMESPACE_DNS, "schedule.openrmm.invalid"), "nightly-scan:1755225600"),
-// which is what openrmm.services.schedules.scheduled_job_id computes. If this
+// uuid5(uuid5(NAMESPACE_DNS, "schedule.everwas.invalid"), "nightly-scan:1755225600"),
+// which is what everwas.services.schedules.scheduled_job_id computes. If this
 // test and its Python twin ever disagree, scheduled results arrive for a run
 // id the server never created and are dropped as "unknown run".
 func TestJobIDMatchesTheServersDerivation(t *testing.T) {

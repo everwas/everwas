@@ -16,18 +16,18 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/sched"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/shell"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/sched"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/shell"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 // Integration coverage against a real NATS server with JetStream. It is
-// skipped unless OPENRMM_TEST_NATS_URL points at a scratch server:
+// skipped unless EVERWAS_TEST_NATS_URL points at a scratch server:
 //
 //	docker run -d --rm -p 34222:4222 nats:2.12-alpine -js
-//	OPENRMM_TEST_NATS_URL=nats://127.0.0.1:34222 go test ./internal/jobs/ -run Integration -v
+//	EVERWAS_TEST_NATS_URL=nats://127.0.0.1:34222 go test ./internal/jobs/ -run Integration -v
 const agentID = "01991111-2222-7333-8444-555566667777"
 
 type harness struct {
@@ -39,9 +39,9 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	url := os.Getenv("OPENRMM_TEST_NATS_URL")
+	url := os.Getenv("EVERWAS_TEST_NATS_URL")
 	if url == "" {
-		t.Skip("set OPENRMM_TEST_NATS_URL to run integration tests")
+		t.Skip("set EVERWAS_TEST_NATS_URL to run integration tests")
 	}
 	nc, err := nats.Connect(url, nats.Timeout(3*time.Second))
 	if err != nil {

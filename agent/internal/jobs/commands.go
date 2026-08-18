@@ -8,11 +8,11 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/sched"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/shell"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/sched"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/shell"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 // reply is the shape every command answers with. Replies are bare JSON, not

@@ -53,7 +53,7 @@ func TestPTYRoundTrip(t *testing.T) {
 	}
 	defer func() { _ = p.Close() }()
 
-	if _, err := p.Write([]byte("echo openrmm-pty-ok\nexit 7\n")); err != nil {
+	if _, err := p.Write([]byte("echo everwas-pty-ok\nexit 7\n")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	if err := p.Resize(120, 40); err != nil {
@@ -67,7 +67,7 @@ func TestPTYRoundTrip(t *testing.T) {
 		for {
 			n, err := p.Read(buf)
 			sb.Write(buf[:n])
-			if strings.Contains(sb.String(), "openrmm-pty-ok") || err != nil {
+			if strings.Contains(sb.String(), "everwas-pty-ok") || err != nil {
 				seen <- sb.String()
 				return
 			}
@@ -76,7 +76,7 @@ func TestPTYRoundTrip(t *testing.T) {
 
 	select {
 	case out := <-seen:
-		if !strings.Contains(out, "openrmm-pty-ok") {
+		if !strings.Contains(out, "everwas-pty-ok") {
 			t.Errorf("pty output %q missing the echoed marker", out)
 		}
 	case <-time.After(10 * time.Second):

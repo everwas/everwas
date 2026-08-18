@@ -98,7 +98,7 @@ func TestScrubEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"HOME=/root",
 		"AWS_SECRET_ACCESS_KEY=leakme",
-		"OPENRMM_AGENT_SECRET=leakmetoo",
+		"EVERWAS_AGENT_SECRET=leakmetoo",
 		"https_proxy=http://proxy.example:3128",
 		"malformed",
 	}
@@ -151,8 +151,8 @@ func TestRunCmdScrubsEnvironment(t *testing.T) {
 	if !have("sh") {
 		t.Skip("no sh on this host")
 	}
-	t.Setenv("OPENRMM_TEST_SECRET", "leakme")
-	res := runCmd(context.Background(), execOptions{}, "sh", "-c", "echo \"${OPENRMM_TEST_SECRET:-absent}\"")
+	t.Setenv("EVERWAS_TEST_SECRET", "leakme")
+	res := runCmd(context.Background(), execOptions{}, "sh", "-c", "echo \"${EVERWAS_TEST_SECRET:-absent}\"")
 	if strings.TrimSpace(res.Stdout) != "absent" {
 		t.Errorf("a non-allowlisted variable reached the command: %q", res.Stdout)
 	}
@@ -197,7 +197,7 @@ func TestRunCmdCancellation(t *testing.T) {
 }
 
 func TestRunCmdMissingBinary(t *testing.T) {
-	res := runCmd(context.Background(), execOptions{}, "openrmm-no-such-binary-xyz")
+	res := runCmd(context.Background(), execOptions{}, "everwas-no-such-binary-xyz")
 	if res.Err == nil {
 		t.Fatal("a missing binary must be an error, not an exit code")
 	}

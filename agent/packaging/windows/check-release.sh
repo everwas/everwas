@@ -29,9 +29,9 @@ while IFS= read -r zip; do
   d="$tmp/$(basename "$zip" .zip)"
   mkdir -p "$d"
   unzip -q -o "$zip" -d "$d"
-  exe="$(find "$d" -name 'openrmm-agent.exe' -print -quit)"
+  exe="$(find "$d" -name 'everwas-agent.exe' -print -quit)"
   if [ -z "$exe" ]; then
-    echo "check-release.sh: $zip contains no openrmm-agent.exe" >&2
+    echo "check-release.sh: $zip contains no everwas-agent.exe" >&2
     fail=1
     continue
   fi

@@ -16,7 +16,7 @@ import (
 )
 
 // EmbeddedPublicKey is the release signing key, injected at build time with
-// -ldflags "-X github.com/rsp2k/openrmm/agent/internal/update.EmbeddedPublicKey=..."
+// -ldflags "-X github.com/everwas/everwas/agent/internal/update.EmbeddedPublicKey=..."
 // It holds the base64 body of a minisign public key (the second line of a
 // .pub file), not the whole file.
 //
@@ -26,7 +26,7 @@ var EmbeddedPublicKey = ""
 
 // DevBuild opts a build out of the embedded-key requirement, for local
 // development only. Set it with
-// -ldflags "-X github.com/rsp2k/openrmm/agent/internal/update.DevBuild=true".
+// -ldflags "-X github.com/everwas/everwas/agent/internal/update.DevBuild=true".
 //
 // It exists so the escape hatch is EXPLICIT and greppable in a build
 // command, rather than being the accidental consequence of leaving a key

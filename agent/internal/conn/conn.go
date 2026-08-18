@@ -8,8 +8,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/config"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 // Connect dials cfg.NATSURL as user=agent_id pass=agent_secret. It retries
@@ -43,7 +43,7 @@ func Connect(
 	}
 	nc, err := nats.Connect(cfg.NATSURL,
 		nats.UserInfo(cfg.AgentID, cfg.AgentSecret),
-		nats.Name("openrmm-agent-"+shortID),
+		nats.Name("everwas-agent-"+shortID),
 		// The server grants only this agent's own inbox; the shared
 		// default would be refused, leaving every request unanswered.
 		nats.CustomInboxPrefix(wire.InboxPrefix(cfg.AgentID)),

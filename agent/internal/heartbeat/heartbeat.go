@@ -11,7 +11,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 const (

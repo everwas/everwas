@@ -10,7 +10,7 @@ import (
 )
 
 func TestBackupPathKeepsWindowsExtension(t *testing.T) {
-	got := BackupPath(filepath.Join("dir", "openrmm-agent"))
+	got := BackupPath(filepath.Join("dir", "everwas-agent"))
 	if runtime.GOOS == "windows" {
 		if !strings.HasSuffix(got, ".old.exe") {
 			t.Errorf("BackupPath = %s, want a .old.exe suffix", got)
@@ -25,8 +25,8 @@ func TestBackupPathKeepsWindowsExtension(t *testing.T) {
 func TestSwapReplacesAndKeepsBackup(t *testing.T) {
 	binDir := t.TempDir()
 	stageDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
-	staged := fakeBinary(t, stageDir, "openrmm-agent-2.0.0", "new build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
+	staged := fakeBinary(t, stageDir, "everwas-agent-2.0.0", "new build")
 
 	res, err := Swap(target, staged)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestSwapReplacesAndKeepsBackup(t *testing.T) {
 
 func TestSwapRefusesSelfSwap(t *testing.T) {
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "build")
+	target := fakeBinary(t, binDir, "everwas-agent", "build")
 	if _, err := Swap(target, target); !errors.Is(err, ErrSameFilenames) {
 		t.Errorf("err = %v, want ErrSameFilenames", err)
 	}
@@ -69,7 +69,7 @@ func TestSwapRefusesSelfSwap(t *testing.T) {
 
 func TestSwapMissingStagedLeavesTargetAlone(t *testing.T) {
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 	_, err := Swap(target, filepath.Join(t.TempDir(), "does-not-exist"))
 	if !errors.Is(err, ErrSwap) {
 		t.Fatalf("err = %v, want ErrSwap", err)
@@ -84,7 +84,7 @@ func TestSwapMissingStagedLeavesTargetAlone(t *testing.T) {
 
 func TestRemoveBackupIsIdempotent(t *testing.T) {
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	if err := RemoveBackup(target); err != nil {
 		t.Fatalf("RemoveBackup with no backup: %v", err)
 	}

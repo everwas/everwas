@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Assert that every file given carries a timestamped Authenticode signature.
 #
-#   verify-signature.sh dist/openrmm-agent_windows_amd64_v1/openrmm-agent.exe
+#   verify-signature.sh dist/everwas-agent_windows_amd64_v1/everwas-agent.exe
 #
 # This is the gate, not the signing step's own opinion of itself. A signing
 # tool that exits 0 without embedding anything, a config pointed at the wrong
@@ -22,13 +22,13 @@
 #              across the fleet. That is a silent time bomb, so an
 #              untimestamped artifact is treated as unsigned.
 #
-# Set OPENRMM_SIGN_CAFILE to additionally require the chain to validate
+# Set EVERWAS_SIGN_CAFILE to additionally require the chain to validate
 # against a specific root, once it is known which root that is.
 set -euo pipefail
 
 [ $# -gt 0 ] || { echo "verify-signature.sh: nothing to verify" >&2; exit 2; }
 
-osslsigncode="${OPENRMM_OSSLSIGNCODE:-osslsigncode}"
+osslsigncode="${EVERWAS_OSSLSIGNCODE:-osslsigncode}"
 command -v "$osslsigncode" >/dev/null || {
   echo "verify-signature.sh: osslsigncode not found (apt-get install -y osslsigncode)" >&2
   exit 1
@@ -70,8 +70,8 @@ for f in "$@"; do
     continue
   fi
 
-  if [ -n "${OPENRMM_SIGN_CAFILE:-}" ]; then
-    if ! "$osslsigncode" verify -CAfile "$OPENRMM_SIGN_CAFILE" -in "$f" >"$tmp/log" 2>&1; then
+  if [ -n "${EVERWAS_SIGN_CAFILE:-}" ]; then
+    if ! "$osslsigncode" verify -CAfile "$EVERWAS_SIGN_CAFILE" -in "$f" >"$tmp/log" 2>&1; then
       echo "CHAIN DOES NOT VALIDATE: $f" >&2
       sed 's/^/    /' "$tmp/log" >&2
       status=1

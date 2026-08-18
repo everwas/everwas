@@ -206,12 +206,12 @@ func TestRunnerEnvironmentIsScrubbed(t *testing.T) {
 	if _, err := Resolve("bash"); err != nil {
 		t.Skipf("no shell: %v", err)
 	}
-	t.Setenv("OPENRMM_TEST_SECRET", "leaked")
+	t.Setenv("EVERWAS_TEST_SECRET", "leaked")
 	r, output := newTestRunner(t)
 	res := r.Run(context.Background(), JobSpec{
 		JobID: "j-env",
 		Shell: "bash",
-		Body:  `echo "secret=[${OPENRMM_TEST_SECRET}] given=[${GIVEN}] path=[${PATH:+set}]"`,
+		Body:  `echo "secret=[${EVERWAS_TEST_SECRET}] given=[${GIVEN}] path=[${PATH:+set}]"`,
 		Env:   map[string]string{"GIVEN": "yes"},
 	}, nil)
 	if res.Status != StatusSucceeded {

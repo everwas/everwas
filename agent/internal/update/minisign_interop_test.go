@@ -34,7 +34,7 @@ func TestInteropWithRealMinisign(t *testing.T) {
 	// -W generates an unencrypted key so signing needs no passphrase prompt.
 	run(t, bin, "-G", "-W", "-p", pubKey, "-s", secKey)
 	// No -H: the agent verifies the raw artifact, not a BLAKE2b prehash.
-	run(t, bin, "-S", "-s", secKey, "-m", artifact, "-x", sigFile, "-t", "openrmm interop test")
+	run(t, bin, "-S", "-s", secKey, "-m", artifact, "-x", sigFile, "-t", "everwas interop test")
 
 	pubBytes, err := os.ReadFile(pubKey)
 	if err != nil {

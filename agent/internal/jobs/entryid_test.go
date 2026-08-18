@@ -3,7 +3,7 @@ package jobs
 import (
 	"testing"
 
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 // entry_id is the ONLY thing that lets the server attribute a scheduled run.

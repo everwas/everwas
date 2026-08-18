@@ -8,7 +8,7 @@
 #
 # Observed on a real Windows 11 VM, in the installer's own log:
 #
-#   File: C:\Program Files\OpenRMM\Agent\openrmm-agent.exe;
+#   File: C:\Program Files\Everwas\Agent\everwas-agent.exe;
 #   Won't Overwrite; Won't patch; Existing file is unversioned but modified
 #
 # The install reported success, the service restarted, and the binary on disk
@@ -22,7 +22,7 @@
 set -euo pipefail
 
 version="${1:?usage: gen-versioninfo.sh <CalVer> [outdir]}"
-outdir="${2:-cmd/openrmm-agent}"
+outdir="${2:-cmd/everwas-agent}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # CalVer maps to the four 16-bit fields Windows allows. Same mapping as the MSI
@@ -36,7 +36,7 @@ build=$(( 10#${d} * 100 + 10#${patch} ))
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 sed -e "s/\"Major\": 0, \"Minor\": 0, \"Patch\": 0, \"Build\": 0/\"Major\": ${major}, \"Minor\": ${minor}, \"Patch\": ${build}, \"Build\": 0/g" \
-    "${here}/../../cmd/openrmm-agent/versioninfo.json" > "$tmp"
+    "${here}/../../cmd/everwas-agent/versioninfo.json" > "$tmp"
 
 go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0 \
   -o "${outdir}/resource_windows_amd64.syso" -arm=false -64 \

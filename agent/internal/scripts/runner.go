@@ -19,7 +19,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/audit"
 )
 
 const (
@@ -369,7 +369,7 @@ func result(waitErr error, reason string) Result {
 // abort reports a failure that happened before (or instead of) execution.
 // The reason goes out on stderr so an operator sees it in the console.
 func (r *Runner) abort(sink *chunkSink, job JobSpec, err error) Result {
-	if werr := sink.write(StreamStderr, []byte("openrmm-agent: "+err.Error()+"\n")); werr != nil {
+	if werr := sink.write(StreamStderr, []byte("everwas-agent: "+err.Error()+"\n")); werr != nil {
 		r.warn("job stderr write", "job_id", job.JobID, "err", werr)
 	}
 	r.warn("job aborted", "job_id", job.JobID, "err", err)

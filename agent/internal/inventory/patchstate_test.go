@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/patch"
+	"github.com/everwas/everwas/agent/internal/patch"
 )
 
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

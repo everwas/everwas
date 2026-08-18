@@ -19,20 +19,20 @@ const (
 	// GuardName is the file name of the guard on disk.
 	GuardName = "agent-guard.sh"
 
-	// LinuxGuardPath is where the deb, the rpm and `openrmm-agent install`
+	// LinuxGuardPath is where the deb, the rpm and `everwas-agent install`
 	// put the guard on Linux. The systemd unit references it from
 	// ExecStartPre.
-	LinuxGuardPath = "/usr/local/lib/openrmm/" + GuardName
+	LinuxGuardPath = "/usr/local/lib/everwas/" + GuardName
 
 	// DarwinGuardPath is the macOS location. launchd has no ExecStartPre, so
 	// there the guard is the daemon's ProgramArguments[0] and execs the agent
 	// when it is done.
-	DarwinGuardPath = "/Library/OpenRMM/Agent/" + GuardName
+	DarwinGuardPath = "/Library/Everwas/Agent/" + GuardName
 )
 
 // GuardScript is the guard itself.
 const GuardScript = `#!/bin/sh
-# External rollback guard for the OpenRMM agent.
+# External rollback guard for the Everwas agent.
 #
 # The service manager runs this BEFORE the agent, which is the whole point:
 # it covers the failures the agent's own crash counter cannot, because they
@@ -60,11 +60,11 @@ shift 2 2>/dev/null || true
 
 # This has to match config.Dir() exactly, or the guard looks for the probation
 # in a directory the agent never writes to and silently stops counting.
-STATE_DIR="${OPENRMM_STATE_DIR:-}"
+STATE_DIR="${EVERWAS_STATE_DIR:-}"
 if [ -z "$STATE_DIR" ]; then
     case "$(uname -s 2>/dev/null || echo Linux)" in
-        Darwin) STATE_DIR="/Library/Application Support/OpenRMM" ;;
-        *) STATE_DIR="/etc/openrmm" ;;
+        Darwin) STATE_DIR="/Library/Application Support/Everwas" ;;
+        *) STATE_DIR="/etc/everwas" ;;
     esac
 fi
 PROBATION="$STATE_DIR/update-probation"
@@ -76,7 +76,7 @@ WINDOW=120
 LIMIT=2
 KEEP=16
 
-log() { printf 'openrmm-agent-guard: %s\n' "$*" >&2; }
+log() { printf 'everwas-agent-guard: %s\n' "$*" >&2; }
 
 probation_field() {
     [ -f "$PROBATION" ] || return 0

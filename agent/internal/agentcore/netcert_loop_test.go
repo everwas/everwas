@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/netcert"
 )
 
 // testAgentID is a UUIDv7, the shape of a real agent id, so the per-device

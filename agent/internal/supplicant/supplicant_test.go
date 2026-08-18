@@ -11,7 +11,7 @@ import (
 const testIdentity = "01a00b45-0e50-78c8-b572-8b8fbc272ad1"
 
 func wired() Profile {
-	return Profile{Identity: testIdentity, CertDir: "/etc/openrmm/netcert"}
+	return Profile{Identity: testIdentity, CertDir: "/etc/everwas/netcert"}
 }
 
 func TestWiredProfileSetsApScanZero(t *testing.T) {
@@ -65,9 +65,9 @@ func TestTheProfilePointsAtTheCertificateTheAgentWrote(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`ca_cert="/etc/openrmm/netcert/network-chain.pem"`,
-		`client_cert="/etc/openrmm/netcert/network.crt"`,
-		`private_key="/etc/openrmm/netcert/network.key"`,
+		`ca_cert="/etc/everwas/netcert/network-chain.pem"`,
+		`client_cert="/etc/everwas/netcert/network.crt"`,
+		`private_key="/etc/everwas/netcert/network.key"`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("profile is missing %s", want)
@@ -76,7 +76,7 @@ func TestTheProfilePointsAtTheCertificateTheAgentWrote(t *testing.T) {
 	// The chain, not the leaf, as the trust anchor. Pointing ca_cert at the
 	// device's own certificate is a plausible-looking mistake that fails the
 	// handshake with an unhelpful error.
-	if strings.Contains(out, `ca_cert="/etc/openrmm/netcert/network.crt"`) {
+	if strings.Contains(out, `ca_cert="/etc/everwas/netcert/network.crt"`) {
 		t.Error("ca_cert points at the device certificate rather than the chain")
 	}
 }
@@ -104,14 +104,14 @@ func TestAQuoteInAValueIsRefusedRatherThanEscaped(t *testing.T) {
 		profile Profile
 	}{
 		{"ssid closes the string and opens a network block", Profile{
-			Identity: testIdentity, CertDir: "/etc/openrmm/netcert",
+			Identity: testIdentity, CertDir: "/etc/everwas/netcert",
 			SSID: "corp\"\nnetwork={ key_mgmt=NONE",
 		}},
 		{"identity carries a newline", Profile{
-			Identity: "device\nap_scan=1", CertDir: "/etc/openrmm/netcert",
+			Identity: "device\nap_scan=1", CertDir: "/etc/everwas/netcert",
 		}},
 		{"cert dir carries a quote", Profile{
-			Identity: testIdentity, CertDir: "/etc/\"openrmm",
+			Identity: testIdentity, CertDir: "/etc/\"everwas",
 		}},
 	} {
 		out, err := Render(tc.profile)
@@ -127,7 +127,7 @@ func TestAQuoteInAValueIsRefusedRatherThanEscaped(t *testing.T) {
 func TestAnEmptyIdentityIsRefused(t *testing.T) {
 	// An empty identity produces a config that authenticates but appears in
 	// the RADIUS log as nothing, so a session cannot be tied to a device.
-	if _, err := Render(Profile{CertDir: "/etc/openrmm/netcert"}); !errors.Is(err, ErrInvalidProfile) {
+	if _, err := Render(Profile{CertDir: "/etc/everwas/netcert"}); !errors.Is(err, ErrInvalidProfile) {
 		t.Errorf("err = %v, want ErrInvalidProfile", err)
 	}
 }
@@ -165,7 +165,7 @@ func TestARefusedProfileWritesNothing(t *testing.T) {
 	// A validation failure must not leave a partial or previous-generation
 	// config on disk that something might later apply.
 	dir := t.TempDir()
-	_, err := Write(dir, Profile{Identity: "bad\"identity", CertDir: "/etc/openrmm/netcert"})
+	_, err := Write(dir, Profile{Identity: "bad\"identity", CertDir: "/etc/everwas/netcert"})
 	if !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("err = %v, want ErrInvalidProfile", err)
 	}

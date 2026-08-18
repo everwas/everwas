@@ -150,7 +150,7 @@ func runCmd(ctx context.Context, opts execOptions, name string, args ...string) 
 		// lose the exit status.
 		if err := scan.Err(); err != nil &&
 			!errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, os.ErrClosed) {
-			stderr.WriteString("openrmm-agent: output read: " + err.Error() + "\n")
+			stderr.WriteString("everwas-agent: output read: " + err.Error() + "\n")
 		}
 	}()
 
@@ -178,7 +178,7 @@ func runCmd(ctx context.Context, opts execOptions, name string, args ...string) 
 		// manager keeps its lock until it is done.
 		go func() { <-done }()
 		stderr.WriteString(fmt.Sprintf(
-			"openrmm-agent: deadline reached, %s was left running so the transaction is not interrupted\n", name))
+			"everwas-agent: deadline reached, %s was left running so the transaction is not interrupted\n", name))
 		return cmdResult{
 			Stdout:   stdout.String(),
 			Stderr:   stderr.String(),

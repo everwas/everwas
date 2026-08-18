@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/netcert"
 )
 
 func TestTheWarningIsWrittenForAPersonNotAnOperator(t *testing.T) {

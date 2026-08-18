@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rsp2k/openrmm/agent/internal/patch"
+	"github.com/everwas/everwas/agent/internal/patch"
 )
 
 // The rule these tests pin, stated once here and applied to every collector:
@@ -38,7 +38,7 @@ func fixed(out string) runner {
 func TestRunReportsFailureRatherThanEmptyOutput(t *testing.T) {
 	// The root of the whole class: run() used to swallow every error and
 	// return "", which every caller then parsed into an empty list.
-	out, err := run(context.Background(), "openrmm-no-such-binary-anywhere")
+	out, err := run(context.Background(), "everwas-no-such-binary-anywhere")
 	if err == nil {
 		t.Fatalf("running a nonexistent binary reported success, output %q", out)
 	}

@@ -90,8 +90,8 @@ func TestParsePublicKeyRejectsGarbage(t *testing.T) {
 
 func TestVerifyValidSignature(t *testing.T) {
 	k := newTestKey(t, 0x20)
-	msg := []byte("openrmm-agent binary contents")
-	if err := Verify(k.parsed, msg, k.sign(msg, "timestamp:1700000000 file:openrmm-agent", algEdDSA)); err != nil {
+	msg := []byte("everwas-agent binary contents")
+	if err := Verify(k.parsed, msg, k.sign(msg, "timestamp:1700000000 file:everwas-agent", algEdDSA)); err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
 }
@@ -106,7 +106,7 @@ func TestVerifyWithoutTrustedComment(t *testing.T) {
 
 func TestVerifyTamperedMessage(t *testing.T) {
 	k := newTestKey(t, 0x30)
-	msg := []byte("openrmm-agent binary contents")
+	msg := []byte("everwas-agent binary contents")
 	sig := k.sign(msg, "timestamp:1700000000", algEdDSA)
 
 	tampered := append([]byte(nil), msg...)

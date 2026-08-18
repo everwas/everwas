@@ -30,7 +30,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/secure"
+	"github.com/everwas/everwas/agent/internal/secure"
 )
 
 // RenewAt is the fraction of a certificate's life after which renewal starts.
@@ -152,7 +152,7 @@ func newKeyPair() (*ecdsa.PrivateKey, []byte, error) {
 
 func buildCSRFor(key *ecdsa.PrivateKey) ([]byte, error) {
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: "openrmm-device"},
+		Subject: pkix.Name{CommonName: "everwas-device"},
 	}, key)
 	if err != nil {
 		return nil, fmt.Errorf("netcert: build csr: %w", err)
@@ -215,7 +215,7 @@ func BuildCSR(keyPath string) ([]byte, error) {
 	}
 
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		Subject: pkix.Name{CommonName: "openrmm-device"},
+		Subject: pkix.Name{CommonName: "everwas-device"},
 	}, key)
 	if err != nil {
 		return nil, fmt.Errorf("netcert: build csr: %w", err)

@@ -30,8 +30,8 @@ var ErrSelfPackage = errors.New("patch: the agent does not install its own packa
 // selfPackageNames are the names the agent ships under. Lower case; ids are
 // folded before the lookup.
 var selfPackageNames = map[string]bool{
-	"openrmm-agent": true,
-	"openrmm":       true,
+	"everwas-agent": true,
+	"everwas":       true,
 }
 
 // packageNameOf pulls the package name out of an update id in any of the

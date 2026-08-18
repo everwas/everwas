@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Authenticode-sign Windows artifacts (.exe, .msi) with jsign.
 #
-#   sign.sh openrmm-agent.exe openrmm-agent.msi
+#   sign.sh everwas-agent.exe everwas-agent.msi
 #
 # Fails when it has no key rather than passing the files through untouched.
 # An unsigned agent trips SmartScreen and a good share of EDR products, and
@@ -20,37 +20,37 @@ set -euo pipefail
 
 [ $# -gt 0 ] || { echo "sign.sh: nothing to sign" >&2; exit 2; }
 
-backend="${OPENRMM_SIGN_BACKEND:-}"
-keystore="${OPENRMM_SIGN_KEYSTORE:-}"
-alias="${OPENRMM_SIGN_ALIAS:-}"
-secret="${OPENRMM_SIGN_SECRET:-}"
+backend="${EVERWAS_SIGN_BACKEND:-}"
+keystore="${EVERWAS_SIGN_KEYSTORE:-}"
+alias="${EVERWAS_SIGN_ALIAS:-}"
+secret="${EVERWAS_SIGN_SECRET:-}"
 # RFC 3161 timestamping. Without it every signature made with this
 # certificate stops validating the day the certificate expires, including on
 # binaries already installed on the fleet.
-tsa="${OPENRMM_SIGN_TSA:-http://timestamp.digicert.com}"
+tsa="${EVERWAS_SIGN_TSA:-http://timestamp.digicert.com}"
 
 missing=()
-[ -n "$backend" ] || missing+=(OPENRMM_SIGN_BACKEND)
-[ -n "$keystore" ] || missing+=(OPENRMM_SIGN_KEYSTORE)
-[ -n "$alias" ] || missing+=(OPENRMM_SIGN_ALIAS)
-[ -n "$secret" ] || missing+=(OPENRMM_SIGN_SECRET)
+[ -n "$backend" ] || missing+=(EVERWAS_SIGN_BACKEND)
+[ -n "$keystore" ] || missing+=(EVERWAS_SIGN_KEYSTORE)
+[ -n "$alias" ] || missing+=(EVERWAS_SIGN_ALIAS)
+[ -n "$secret" ] || missing+=(EVERWAS_SIGN_SECRET)
 if [ ${#missing[@]} -gt 0 ]; then
   cat >&2 <<EOF
 sign.sh: refusing to produce unsigned Windows artifacts.
 
 Missing: ${missing[*]}
 
-  OPENRMM_SIGN_BACKEND   jsign store type: TRUSTEDSIGNING, DIGICERTONE,
+  EVERWAS_SIGN_BACKEND   jsign store type: TRUSTEDSIGNING, DIGICERTONE,
                          ESIGNER, AZUREKEYVAULT, AWS, GOOGLECLOUD, PKCS11,
                          YUBIKEY, PKCS12
-  OPENRMM_SIGN_KEYSTORE  keystore: the service endpoint, the PKCS#11 config
+  EVERWAS_SIGN_KEYSTORE  keystore: the service endpoint, the PKCS#11 config
                          file, or the .p12 path
-  OPENRMM_SIGN_ALIAS     certificate alias within the keystore
-  OPENRMM_SIGN_SECRET    keystore password or API token
-  OPENRMM_SIGN_TSA       timestamp authority (default $tsa)
+  EVERWAS_SIGN_ALIAS     certificate alias within the keystore
+  EVERWAS_SIGN_SECRET    keystore password or API token
+  EVERWAS_SIGN_TSA       timestamp authority (default $tsa)
 
 There is no unsigned fallback on purpose. To build a knowingly unsigned
-artifact on a workstation, opt out on purpose with OPENRMM_ALLOW_UNSIGNED=1,
+artifact on a workstation, opt out on purpose with EVERWAS_ALLOW_UNSIGNED=1,
 the same way an unsigned self-update build opts out with -X ...DevBuild=true.
 That artifact must not leave the workstation.
 EOF
@@ -58,12 +58,12 @@ EOF
 fi
 
 # The jar is pinned by the workflow; on a workstation any jsign on PATH does.
-if [ -n "${OPENRMM_SIGN_JSIGN_JAR:-}" ]; then
-  jsign=(java -jar "$OPENRMM_SIGN_JSIGN_JAR")
+if [ -n "${EVERWAS_SIGN_JSIGN_JAR:-}" ]; then
+  jsign=(java -jar "$EVERWAS_SIGN_JSIGN_JAR")
 elif command -v jsign >/dev/null; then
   jsign=(jsign)
 else
-  echo "sign.sh: jsign not found. Set OPENRMM_SIGN_JSIGN_JAR or install jsign." >&2
+  echo "sign.sh: jsign not found. Set EVERWAS_SIGN_JSIGN_JAR or install jsign." >&2
   exit 1
 fi
 
@@ -83,8 +83,8 @@ for f in "$@"; do
     --tsmode RFC3161 \
     --tsretries 5 \
     --tsretrywait 10 \
-    --name "OpenRMM Agent" \
-    --url "https://github.com/rsp2k/openrmm" \
+    --name "Everwas Agent" \
+    --url "https://github.com/rsp2k/everwas" \
     "$f"
 done
 

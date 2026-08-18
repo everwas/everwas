@@ -1,9 +1,9 @@
 #!/bin/sh
-# Pre-remove for the openrmm-agent deb and rpm.
+# Pre-remove for the everwas-agent deb and rpm.
 #
 # On an upgrade the package manager reinstalls immediately afterwards, so the
 # service is left alone and postinstall restarts it. On a real removal it is
-# stopped and disabled. The identity in /etc/openrmm is deliberately kept:
+# stopped and disabled. The identity in /etc/everwas is deliberately kept:
 # deleting it would orphan the agent record on the server, and a purge is the
 # operator's call, not the package's.
 set -eu
@@ -23,8 +23,8 @@ if is_upgrade "$@"; then
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
-    systemctl stop openrmm-agent || true
-    systemctl disable openrmm-agent || true
+    systemctl stop everwas-agent || true
+    systemctl disable everwas-agent || true
 fi
 
 exit 0

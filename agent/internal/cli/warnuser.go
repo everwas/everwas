@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
-	"github.com/rsp2k/openrmm/agent/internal/notify"
+	"github.com/everwas/everwas/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/notify"
 )
 
 // tellUserEvery bounds how often the person at the machine is interrupted.

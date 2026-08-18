@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/update"
 )
 
 // EventAgentUpdated is emitted for every update attempt, applied or refused.
@@ -160,7 +160,7 @@ func (d UpdateDeps) finish(
 	if d.Runner != nil {
 		// One PublishStderr call per job: it emits both EOF markers, so a
 		// second call would reopen a stream the server has already closed.
-		d.Runner.PublishStderr(spec, "openrmm-agent: "+summary+"\n")
+		d.Runner.PublishStderr(spec, "everwas-agent: "+summary+"\n")
 	}
 	progress(100, scripts.PhaseFinished, res.Status)
 	if d.Runner != nil {

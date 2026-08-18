@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// RenderSystemdUnit produces the openrmm-agent.service file. It is pure so it
-// can be tested on any OS and diffed against packaging/linux/openrmm-agent.service.
+// RenderSystemdUnit produces the everwas-agent.service file. It is pure so it
+// can be tested on any OS and diffed against packaging/linux/everwas-agent.service.
 //
 // Two hardening choices are deliberate and load bearing:
 //
@@ -23,7 +23,7 @@ func RenderSystemdUnit(cfg InstallConfig) string {
 	var b strings.Builder
 	b.WriteString("[Unit]\n")
 	b.WriteString("Description=" + Description + "\n")
-	b.WriteString("Documentation=https://github.com/rsp2k/openrmm/agent\n")
+	b.WriteString("Documentation=https://github.com/everwas/everwas/agent\n")
 	b.WriteString("After=network-online.target\n")
 	b.WriteString("Wants=network-online.target\n")
 	b.WriteString("\n[Service]\n")
@@ -92,7 +92,7 @@ func systemdQuote(s string) string {
 	return `"` + r.Replace(s) + `"`
 }
 
-// RenderLaunchdPlist produces the com.openrmm.agent.plist file. KeepAlive
+// RenderLaunchdPlist produces the systems.supported.everwas.agent.plist file. KeepAlive
 // plus RunAtLoad is launchd's equivalent of Restart=always, and
 // ThrottleInterval stops a crash looping agent from spinning the CPU.
 func RenderLaunchdPlist(cfg InstallConfig) string {

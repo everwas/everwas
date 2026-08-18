@@ -14,17 +14,17 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/enroll"
-	"github.com/rsp2k/openrmm/agent/internal/heartbeat"
-	"github.com/rsp2k/openrmm/agent/internal/inventory"
-	"github.com/rsp2k/openrmm/agent/internal/jobs"
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
-	"github.com/rsp2k/openrmm/agent/internal/sched"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/shell"
-	"github.com/rsp2k/openrmm/agent/internal/telemetry"
-	"github.com/rsp2k/openrmm/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/enroll"
+	"github.com/everwas/everwas/agent/internal/heartbeat"
+	"github.com/everwas/everwas/agent/internal/inventory"
+	"github.com/everwas/everwas/agent/internal/jobs"
+	"github.com/everwas/everwas/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/sched"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/shell"
+	"github.com/everwas/everwas/agent/internal/telemetry"
+	"github.com/everwas/everwas/agent/internal/update"
 )
 
 const (

@@ -15,11 +15,11 @@ import (
 
 	"github.com/nats-io/nats.go"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/sched"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/shell"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/sched"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/shell"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 // consumerRetry is how long we wait before rebinding the durable consumer
@@ -168,7 +168,7 @@ func (m *Module) jobPanicked(spec scripts.JobSpec, cause any, stack []byte) {
 		"kind", spec.Kind, "panic", cause, "stack", string(stack))
 	if m.Scripts != nil {
 		m.Scripts.PublishStderr(spec,
-			fmt.Sprintf("openrmm-agent: job failed with an internal error: %v\n", cause))
+			fmt.Sprintf("everwas-agent: job failed with an internal error: %v\n", cause))
 		m.Scripts.PublishResult(spec, scripts.Result{
 			Status:   scripts.StatusFailed,
 			ExitCode: -1,
@@ -247,7 +247,7 @@ func (m *Module) unsupportedJob(spec scripts.JobSpec, progress scripts.ProgressF
 	note := "job kind " + spec.Kind + " is not supported by agent " + m.Version
 	m.Log.Warn("unsupported job kind", "job_id", spec.JobID, "kind", spec.Kind)
 	progress(0, scripts.PhaseStarted, spec.Kind)
-	m.Scripts.PublishStderr(spec, "openrmm-agent: "+note+"\n")
+	m.Scripts.PublishStderr(spec, "everwas-agent: "+note+"\n")
 	progress(100, scripts.PhaseFinished, scripts.StatusFailed)
 	m.Scripts.PublishResult(spec, scripts.Result{
 		Status:   scripts.StatusFailed,

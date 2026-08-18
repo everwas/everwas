@@ -9,8 +9,8 @@ import (
 
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 const (
@@ -97,7 +97,7 @@ func (m *Module) bindConsumer(ctx context.Context, js jetstream.JetStream) (jets
 	return js.CreateConsumer(ctx, StreamJobs, jetstream.ConsumerConfig{
 		Name:          name,
 		Durable:       name,
-		Description:   "openrmm agent " + m.AgentID,
+		Description:   "everwas agent " + m.AgentID,
 		FilterSubject: wire.JobsQueue(m.AgentID),
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		AckWait:       ackWait,

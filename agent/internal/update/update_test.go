@@ -49,7 +49,7 @@ func TestApplyHappyPath(t *testing.T) {
 
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 
 	res, err := Apply(context.Background(), Request{
 		Version:      "2.0.0",
@@ -100,7 +100,7 @@ func TestApplyRejectsChecksumMismatch(t *testing.T) {
 
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 
 	_, err := Apply(context.Background(), Request{
 		Version:      "2.0.0",
@@ -129,7 +129,7 @@ func TestApplyRejectsBadSignature(t *testing.T) {
 
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 
 	_, err := Apply(context.Background(), Request{
 		Version:      "2.0.0",
@@ -158,7 +158,7 @@ func TestApplyAcceptsRotatedKeyFromEnrollment(t *testing.T) {
 
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 
 	if _, err := Apply(context.Background(), Request{
 		Version:      "2.0.0",
@@ -260,7 +260,7 @@ func TestApplyRefusesADeniedVersion(t *testing.T) {
 
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 	if err := NewTracker(stateDir).Deny("2.0.0"); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}

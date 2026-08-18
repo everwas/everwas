@@ -1,38 +1,38 @@
 # nfpm config for building the deb and rpm by hand:
 #
 #   GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
-#     -ldflags "-s -w -X github.com/rsp2k/openrmm/agent/internal/cli.Version=$VERSION" \
-#     -o dist/openrmm-agent ./cmd/openrmm-agent
+#     -ldflags "-s -w -X github.com/everwas/everwas/agent/internal/cli.Version=$VERSION" \
+#     -o dist/everwas-agent ./cmd/everwas-agent
 #   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p deb -t dist/
 #   VERSION=$VERSION ARCH=amd64 nfpm pkg -f packaging/linux/nfpm.yaml -p rpm -t dist/
 #
 # Releases go through goreleaser, whose nfpms block mirrors this file. If you
 # change one, change the other: the packaged unit, the scripts and the
 # directory modes are asserted by internal/svc tests and by the installer.
-name: openrmm-agent
+name: everwas-agent
 arch: ${ARCH}
 platform: linux
 version: ${VERSION}
 version_schema: none
 section: admin
 priority: optional
-maintainer: OpenRMM <agents@openrmm.invalid>
-vendor: OpenRMM
-homepage: https://github.com/rsp2k/openrmm/agent
+maintainer: Everwas <agents@everwas.invalid>
+vendor: Everwas
+homepage: https://github.com/everwas/everwas/agent
 license: Apache-2.0
 description: |
-  OpenRMM remote monitoring and management agent.
+  Everwas remote monitoring and management agent.
   Collects inventory and telemetry, runs scripts and patch jobs, and provides
   remote shell access over an authenticated NATS connection.
 
 contents:
-  - src: ./dist/openrmm-agent
-    dst: /usr/local/bin/openrmm-agent
+  - src: ./dist/everwas-agent
+    dst: /usr/local/bin/everwas-agent
     file_info:
       mode: 0755
 
-  - src: ./packaging/linux/openrmm-agent.service
-    dst: /etc/systemd/system/openrmm-agent.service
+  - src: ./packaging/linux/everwas-agent.service
+    dst: /etc/systemd/system/everwas-agent.service
     type: config
     file_info:
       mode: 0644
@@ -40,12 +40,12 @@ contents:
   # The external rollback guard, referenced from the unit's ExecStartPre. It
   # is what recovers a build that cannot execute at all.
   - src: ./packaging/agent-guard.sh
-    dst: /usr/local/lib/openrmm/agent-guard.sh
+    dst: /usr/local/lib/everwas/agent-guard.sh
     file_info:
       mode: 0755
 
   # Identity lives here (agent.json holds the NATS secret), so 0700 root.
-  - dst: /etc/openrmm
+  - dst: /etc/everwas
     type: dir
     file_info:
       mode: 0700
@@ -53,7 +53,7 @@ contents:
       group: root
 
   # Working state: script staging, scheduler state, update staging.
-  - dst: /var/lib/openrmm
+  - dst: /var/lib/everwas
     type: dir
     file_info:
       mode: 0700

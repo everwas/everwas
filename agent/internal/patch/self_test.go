@@ -11,9 +11,9 @@ import (
 func TestPackageNameOf(t *testing.T) {
 	cases := map[string]string{
 		"curl=8.5.0-2":                       "curl",
-		"openrmm-agent=1.2.3":                "openrmm-agent",
+		"everwas-agent=1.2.3":                "everwas-agent",
 		"NetworkManager.x86_64=1:1.44.2-1":   "NetworkManager",
-		"openrmm-agent.x86_64=1:1.2.3-1.el9": "openrmm-agent",
+		"everwas-agent.x86_64=1:1.2.3-1.el9": "everwas-agent",
 		"macOS Sequoia 15.5-24F74":           "macOS Sequoia 15.5-24F74",
 		"":                                   "",
 	}
@@ -32,9 +32,9 @@ func TestRefuseSelfPackages(t *testing.T) {
 	res := newInstallResult()
 	got := refuseSelfPackages([]string{
 		"curl=8.5.0-2",
-		"openrmm-agent=1.2.3",
-		"OpenRMM-Agent=1.2.3",
-		"openrmm-agent.x86_64=1:1.2.3-1.el9",
+		"everwas-agent=1.2.3",
+		"Everwas-Agent=1.2.3",
+		"everwas-agent.x86_64=1:1.2.3-1.el9",
 		"tzdata=2024a-1",
 	}, &res)
 
@@ -42,7 +42,7 @@ func TestRefuseSelfPackages(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ids = %v, want %v", got, want)
 	}
-	for _, id := range []string{"openrmm-agent=1.2.3", "OpenRMM-Agent=1.2.3", "openrmm-agent.x86_64=1:1.2.3-1.el9"} {
+	for _, id := range []string{"everwas-agent=1.2.3", "Everwas-Agent=1.2.3", "everwas-agent.x86_64=1:1.2.3-1.el9"} {
 		if res.Failed[id] == "" {
 			t.Errorf("%s was dropped without a reason; the operator has to be told why", id)
 		}

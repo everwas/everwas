@@ -1,12 +1,12 @@
 #!/bin/sh
-# Post-install for the openrmm-agent deb and rpm.
+# Post-install for the everwas-agent deb and rpm.
 #
 # The service is only enabled when the host already has an identity. Starting
 # an unenrolled agent just produces a log line and an exit, and on a fleet
 # rollout that noise hides the hosts that really are broken.
 set -eu
 
-STATE_FILE=/etc/openrmm/agent.json
+STATE_FILE=/etc/everwas/agent.json
 
 is_upgrade() {
     # deb passes "configure <old-version>", rpm passes "2" on upgrade.
@@ -18,7 +18,7 @@ is_upgrade() {
 }
 
 if ! command -v systemctl >/dev/null 2>&1; then
-    echo "openrmm-agent: systemctl not found, skipping service setup" >&2
+    echo "everwas-agent: systemctl not found, skipping service setup" >&2
     exit 0
 fi
 
@@ -32,29 +32,29 @@ systemctl daemon-reload || true
 restart_agent() {
     if command -v systemd-run >/dev/null 2>&1; then
         if systemd-run --collect --quiet --on-active=5 \
-            --unit=openrmm-agent-restart \
-            systemctl try-restart openrmm-agent >/dev/null 2>&1; then
+            --unit=everwas-agent-restart \
+            systemctl try-restart everwas-agent >/dev/null 2>&1; then
             return 0
         fi
     fi
-    systemctl try-restart openrmm-agent || true
+    systemctl try-restart everwas-agent || true
 }
 
 if [ -s "$STATE_FILE" ]; then
     if is_upgrade "$@"; then
         restart_agent
     else
-        systemctl enable --now openrmm-agent || true
+        systemctl enable --now everwas-agent || true
     fi
     exit 0
 fi
 
 cat <<'EOF'
-openrmm-agent is installed but not enrolled, so the service was not started.
+everwas-agent is installed but not enrolled, so the service was not started.
 
 Enroll, then start it:
 
-  sudo openrmm-agent enroll --server https://rmm.example.com --token YOUR_TOKEN
-  sudo systemctl enable --now openrmm-agent
+  sudo everwas-agent enroll --server https://rmm.example.com --token YOUR_TOKEN
+  sudo systemctl enable --now everwas-agent
 EOF
 exit 0

@@ -9,7 +9,7 @@ import (
 
 func TestRoundtrip(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("OPENRMM_STATE_DIR", dir)
+	t.Setenv("EVERWAS_STATE_DIR", dir)
 
 	want := &Config{
 		ServerURL:   "https://rmm.example.com",
@@ -37,7 +37,7 @@ func TestPermissions(t *testing.T) {
 		t.Skip("unix permission bits")
 	}
 	dir := filepath.Join(t.TempDir(), "state")
-	t.Setenv("OPENRMM_STATE_DIR", dir)
+	t.Setenv("EVERWAS_STATE_DIR", dir)
 
 	cfg := &Config{AgentID: "a", AgentSecret: "b"}
 	if err := cfg.Save(); err != nil {
@@ -61,7 +61,7 @@ func TestPermissions(t *testing.T) {
 }
 
 func TestLoadMissingIsNotEnrolled(t *testing.T) {
-	t.Setenv("OPENRMM_STATE_DIR", t.TempDir())
+	t.Setenv("EVERWAS_STATE_DIR", t.TempDir())
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load missing file: %v", err)

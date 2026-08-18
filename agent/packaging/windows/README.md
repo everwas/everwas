@@ -2,10 +2,10 @@
 
 Two artifacts per release:
 
-- `openrmm-agent_<version>_windows_amd64.msi` — for anything unattended: GPO,
+- `everwas-agent_<version>_windows_amd64.msi` — for anything unattended: GPO,
   SCCM/Intune, another RMM's software push, a scripted rebuild.
-- `openrmm-agent_<version>_windows_<arch>.zip` — the bare exe, for arm64 and
-  for anyone who would rather drive `openrmm-agent.exe install` themselves.
+- `everwas-agent_<version>_windows_<arch>.zip` — the bare exe, for arm64 and
+  for anyone who would rather drive `everwas-agent.exe install` themselves.
 
 Both carry an Authenticode signature. A release that reaches the release page
 unsigned is a bug in the pipeline, not a variant to work around: see
@@ -16,15 +16,15 @@ unsigned is a bug in the pipeline, not a variant to work around: see
 Unattended, enrolling as it installs:
 
 ```
-msiexec /i openrmm-agent_2026.08.17_windows_amd64.msi /qn ^
+msiexec /i everwas-agent_2026.08.17_windows_amd64.msi /qn ^
   SERVER=https://rmm.example.com TOKEN=your-enrollment-token
 ```
 
 Install now, enroll later (the service starts and idles):
 
 ```
-msiexec /i openrmm-agent_2026.08.17_windows_amd64.msi /qn
-"C:\Program Files\OpenRMM\Agent\openrmm-agent.exe" enroll --server URL --token TOKEN
+msiexec /i everwas-agent_2026.08.17_windows_amd64.msi /qn
+"C:\Program Files\Everwas\Agent\everwas-agent.exe" enroll --server URL --token TOKEN
 ```
 
 Properties:
@@ -33,7 +33,7 @@ Properties:
 | --- | --- |
 | `SERVER` | server base URL. Must be given together with `TOKEN`. |
 | `TOKEN` | one-time enrollment token. |
-| `PURGE=1` | on **uninstall** only: also delete `C:\ProgramData\OpenRMM\Agent`. |
+| `PURGE=1` | on **uninstall** only: also delete `C:\ProgramData\Everwas\Agent`. |
 
 A bad or expired token fails the install and rolls it back. That is
 deliberate. An MSI that returns success while leaving an agent that never
@@ -59,8 +59,8 @@ token, and a transform pins one token for every host the policy touches.
 
 ## What the installer actually does
 
-Files go to `C:\Program Files\OpenRMM\Agent\`, and
-`HKLM\SOFTWARE\OpenRMM\Agent` gets `Version` (the CalVer string) and
+Files go to `C:\Program Files\Everwas\Agent\`, and
+`HKLM\SOFTWARE\Everwas\Agent` gets `Version` (the CalVer string) and
 `InstallPath`.
 
 The service is registered by running the agent's own `install` subcommand,
@@ -76,11 +76,11 @@ cleanly-but-non-zero on purpose in order to be restarted.
 ## Uninstalling, and what happens to the identity
 
 ```
-msiexec /x openrmm-agent_2026.08.17_windows_amd64.msi /qn
+msiexec /x everwas-agent_2026.08.17_windows_amd64.msi /qn
 ```
 
 stops the service, deregisters it, and removes the binary. It does **not**
-touch `C:\ProgramData\OpenRMM\Agent`, which holds `agent.json`: the agent id
+touch `C:\ProgramData\Everwas\Agent`, which holds `agent.json`: the agent id
 and the NATS secret.
 
 That is the deliberate choice, and it has a cost in each direction.
@@ -102,7 +102,7 @@ record on the server with nothing to correlate the returning host against.
 When you do mean it:
 
 ```
-msiexec /x openrmm-agent_2026.08.17_windows_amd64.msi /qn PURGE=1
+msiexec /x everwas-agent_2026.08.17_windows_amd64.msi /qn PURGE=1
 ```
 
 `PURGE=1` is ignored during a major upgrade (`UPGRADINGPRODUCTCODE` is set),
@@ -113,7 +113,7 @@ so it cannot fire during the removal half of a version bump.
 Installing a newer MSI removes the old product first
 (`RemoveExistingProducts` right after `InstallInitialize`), which stops and
 deregisters the service before any file is touched. Scheduling it later would
-try to overwrite `openrmm-agent.exe` while the SCM still has it open, and
+try to overwrite `everwas-agent.exe` while the SCM still has it open, and
 Windows answers that with a reboot prompt. The service is down for the length
 of the install.
 
@@ -132,22 +132,22 @@ string a human recognises is in the registry and in the package comments.
 ## Installing from the zip
 
 ```
-openrmm-agent.exe install --server https://rmm.example.com --token YOUR_TOKEN
+everwas-agent.exe install --server https://rmm.example.com --token YOUR_TOKEN
 ```
 
 from an **Administrator** prompt. Same install location, same service
 configuration; the MSI is a wrapper around this command, not a second
-implementation. `openrmm-agent.exe uninstall [--purge]` is the reverse.
+implementation. `everwas-agent.exe uninstall [--purge]` is the reverse.
 
 Verify what you downloaded first. From the same directory as the zip and the
 release's `SHA256SUMS`:
 
 ```powershell
 $want = (Select-String -Path SHA256SUMS -Pattern 'windows_amd64.zip').Line.Split(' ')[0]
-$got  = (Get-FileHash .\openrmm-agent_<version>_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
+$got  = (Get-FileHash .\everwas-agent_<version>_windows_amd64.zip -Algorithm SHA256).Hash.ToLower()
 if ($want -ne $got) { throw "checksum mismatch" }
 
-Get-AuthenticodeSignature .\openrmm-agent.exe | Format-List Status, SignerCertificate
+Get-AuthenticodeSignature .\everwas-agent.exe | Format-List Status, SignerCertificate
 ```
 
 `Status` must be `Valid`. `NotSigned` means you have an artifact that never
@@ -156,18 +156,18 @@ should have been published.
 ## Checking on it
 
 ```
-sc.exe query openrmm-agent
-sc.exe qfailure openrmm-agent
+sc.exe query everwas-agent
+sc.exe qfailure everwas-agent
 ```
 
 The agent logs JSON to stderr, which the SCM discards. Until an Event Log
-sink lands, run `openrmm-agent.exe run` from an elevated prompt to watch it
+sink lands, run `everwas-agent.exe run` from an elevated prompt to watch it
 directly.
 
 ## Self-update behaviour
 
 A running `.exe` cannot be overwritten but it can be renamed, which is how the
-in-place swap works: the current binary is renamed to `openrmm-agent.old.exe`,
+in-place swap works: the current binary is renamed to `everwas-agent.old.exe`,
 the verified new binary is moved in, and the process exits so the SCM restarts
 it. `SetRecoveryActionsOnNonCrashFailures` is enabled at install time
 precisely so that clean exit counts as a restart trigger.
@@ -186,7 +186,7 @@ happened shows up as `finalize_failed` rather than as silence.
 
 A self-update swaps the binary underneath the MSI. Add/Remove Programs keeps
 showing the version that was installed, and the registry `Version` value with
-it; `openrmm-agent.exe status` and the server are the truth. Installing a
+it; `everwas-agent.exe status` and the server are the truth. Installing a
 newer MSI over a self-updated agent still works, because the MSI's version
 comparison is against the installed *package*, not against the file on disk.
 
@@ -203,7 +203,7 @@ the current binary with no record anywhere. See the comment in
 
 ```
 ./packaging/windows/build-msi.sh \
-  --exe dist/openrmm-agent_windows_amd64_v1/openrmm-agent.exe \
+  --exe dist/everwas-agent_windows_amd64_v1/everwas-agent.exe \
   --arch amd64 --version 2026.08.17 --out dist
 ```
 
@@ -211,7 +211,7 @@ Needs `msitools` (`wixl`, `msiinfo`, `msibuild`). In a release it is called
 from the GoReleaser Windows post-build hook, so the exe it wraps is the same
 signed file that goes into the zip.
 
-`OPENRMM_ALLOW_UNSIGNED=1` skips the signature requirement for a local build.
+`EVERWAS_ALLOW_UNSIGNED=1` skips the signature requirement for a local build.
 That artifact must not leave the workstation: it will warn about an unknown
 publisher on every host that sees it.
 

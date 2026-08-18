@@ -3,12 +3,12 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.openrmm.agent</string>
+  <string>systems.supported.everwas.agent</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>[ -x &#39;/Library/OpenRMM/Agent/agent-guard.sh&#39; ] &amp;&amp; &#39;/Library/OpenRMM/Agent/agent-guard.sh&#39; check &#39;/Library/OpenRMM/Agent/openrmm-agent&#39;; exec &#39;/Library/OpenRMM/Agent/openrmm-agent&#39; &#39;run&#39;</string>
+    <string>[ -x &#39;/Library/Everwas/Agent/agent-guard.sh&#39; ] &amp;&amp; &#39;/Library/Everwas/Agent/agent-guard.sh&#39; check &#39;/Library/Everwas/Agent/everwas-agent&#39;; exec &#39;/Library/Everwas/Agent/everwas-agent&#39; &#39;run&#39;</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -19,8 +19,8 @@
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>/Library/Logs/OpenRMM/agent.log</string>
+  <string>/Library/Logs/Everwas/agent.log</string>
   <key>StandardErrorPath</key>
-  <string>/Library/Logs/OpenRMM/agent.err.log</string>
+  <string>/Library/Logs/Everwas/agent.err.log</string>
 </dict>
 </plist>

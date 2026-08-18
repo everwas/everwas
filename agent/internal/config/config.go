@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/rsp2k/openrmm/agent/internal/secure"
+	"github.com/everwas/everwas/agent/internal/secure"
 )
 
 // FileName is the state file inside Dir().
@@ -29,27 +29,27 @@ func (c *Config) Enrolled() bool {
 	return c != nil && c.AgentID != "" && c.AgentSecret != ""
 }
 
-// Dir returns the OS state directory. $OPENRMM_STATE_DIR overrides everything
+// Dir returns the OS state directory. $EVERWAS_STATE_DIR overrides everything
 // (dev and test escape hatch); on Linux a non-root agent falls back to
-// ~/.config/openrmm so enrollment works without sudo.
+// ~/.config/everwas so enrollment works without sudo.
 func Dir() (string, error) {
-	if d := os.Getenv("OPENRMM_STATE_DIR"); d != "" {
+	if d := os.Getenv("EVERWAS_STATE_DIR"); d != "" {
 		return d, nil
 	}
 	switch runtime.GOOS {
 	case "linux":
 		if os.Geteuid() == 0 {
-			return "/etc/openrmm", nil
+			return "/etc/everwas", nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve home dir: %w", err)
 		}
-		return filepath.Join(home, ".config", "openrmm"), nil
+		return filepath.Join(home, ".config", "everwas"), nil
 	case "darwin":
-		return "/Library/Application Support/OpenRMM", nil
+		return "/Library/Application Support/Everwas", nil
 	case "windows":
-		return `C:\ProgramData\OpenRMM\Agent`, nil
+		return `C:\ProgramData\Everwas\Agent`, nil
 	default:
 		return "", fmt.Errorf("unsupported OS %q", runtime.GOOS)
 	}

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/inventory"
-	"github.com/rsp2k/openrmm/agent/internal/patch"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/inventory"
+	"github.com/everwas/everwas/agent/internal/patch"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 // fakeManager is a patch.Manager that reports whatever a test tells it to.

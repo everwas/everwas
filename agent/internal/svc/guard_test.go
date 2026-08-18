@@ -22,7 +22,7 @@ func TestRenderedGuardMatchesPackagedGuard(t *testing.T) {
 		t.Fatal("packaging/agent-guard.sh is missing, so a packaged install has no rollback guard")
 	}
 	if packaged != GuardScript {
-		t.Error("packaging/agent-guard.sh differs from svc.GuardScript; a host installed from the deb would guard differently from one installed with `openrmm-agent install`")
+		t.Error("packaging/agent-guard.sh differs from svc.GuardScript; a host installed from the deb would guard differently from one installed with `everwas-agent install`")
 	}
 }
 
@@ -41,7 +41,7 @@ func runGuard(t *testing.T, stateDir string, args ...string) string {
 		t.Fatalf("write guard: %v", err)
 	}
 	cmd := exec.Command(sh, append([]string{script}, args...)...)
-	cmd.Env = append(os.Environ(), "OPENRMM_STATE_DIR="+stateDir)
+	cmd.Env = append(os.Environ(), "EVERWAS_STATE_DIR="+stateDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("guard exited non-zero (%v), which would block startup: %s", err, out)
@@ -63,7 +63,7 @@ func writeProbation(t *testing.T, stateDir, version, target, backup string) {
 func TestGuardRestoresAMissingBinary(t *testing.T) {
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	backup := target + ".old"
 	if err := os.WriteFile(backup, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("write backup: %v", err)
@@ -93,7 +93,7 @@ func TestGuardRestoresAMissingBinary(t *testing.T) {
 func TestGuardRestoresANonExecutableBinary(t *testing.T) {
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	backup := target + ".old"
 	if err := os.WriteFile(target, []byte("half a download"), 0o644); err != nil {
 		t.Fatalf("write target: %v", err)
@@ -120,7 +120,7 @@ func TestGuardRestoresANonExecutableBinary(t *testing.T) {
 func TestGuardRestoresAfterRepeatedStarts(t *testing.T) {
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	backup := target + ".old"
 	if err := os.WriteFile(target, []byte("crashes on start"), 0o755); err != nil {
 		t.Fatalf("write target: %v", err)
@@ -155,7 +155,7 @@ func TestGuardRestoresAfterRepeatedStarts(t *testing.T) {
 func TestGuardLeavesAHealthyAgentAlone(t *testing.T) {
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	backup := target + ".old"
 	if err := os.WriteFile(target, []byte("current build"), 0o755); err != nil {
 		t.Fatalf("write target: %v", err)
@@ -182,7 +182,7 @@ func TestGuardLeavesAHealthyAgentAlone(t *testing.T) {
 func TestGuardDoesNotCountWhileFinalizing(t *testing.T) {
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	backup := target + ".old"
 	if err := os.WriteFile(target, []byte("current build"), 0o755); err != nil {
 		t.Fatalf("write target: %v", err)
@@ -211,7 +211,7 @@ func TestGuardExecModeRunsTheAgent(t *testing.T) {
 	}
 	stateDir := t.TempDir()
 	binDir := t.TempDir()
-	target := filepath.Join(binDir, "openrmm-agent")
+	target := filepath.Join(binDir, "everwas-agent")
 	marker := filepath.Join(binDir, "ran")
 	script := "#!/bin/sh\nprintf '%s' \"$1\" > " + marker + "\n"
 	if err := os.WriteFile(target, []byte(script), 0o755); err != nil {
@@ -241,9 +241,9 @@ func TestGuardExecModeRunsTheAgent(t *testing.T) {
 // fails silently in the one situation it exists for.
 func TestGuardStateDirMatchesConfigDir(t *testing.T) {
 	for _, want := range []string{
-		`STATE_DIR="/etc/openrmm"`,                         // config.Dir() on linux as root
-		`STATE_DIR="/Library/Application Support/OpenRMM"`, // config.Dir() on darwin
-		`${OPENRMM_STATE_DIR:-}`,                           // the override the unit and plist set
+		`STATE_DIR="/etc/everwas"`,                         // config.Dir() on linux as root
+		`STATE_DIR="/Library/Application Support/Everwas"`, // config.Dir() on darwin
+		`${EVERWAS_STATE_DIR:-}`,                           // the override the unit and plist set
 	} {
 		if !strings.Contains(GuardScript, want) {
 			t.Errorf("guard is missing %s, so it would read a different state dir from the agent", want)

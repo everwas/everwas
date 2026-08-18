@@ -1,6 +1,6 @@
 [Unit]
-Description=OpenRMM remote monitoring and management agent
-Documentation=https://github.com/rsp2k/openrmm/agent
+Description=Everwas remote monitoring and management agent
+Documentation=https://github.com/everwas/everwas/agent
 After=network-online.target
 Wants=network-online.target
 
@@ -11,8 +11,8 @@ Type=simple
 # symbol, panic in package init, a config the new binary cannot parse.
 # None of those ever reach the agent's own crash counter. The leading '-'
 # and the /bin/sh wrapper mean a missing guard can never block startup.
-ExecStartPre=-/bin/sh /usr/local/lib/openrmm/agent-guard.sh check /usr/local/bin/openrmm-agent
-ExecStart=/usr/local/bin/openrmm-agent run
+ExecStartPre=-/bin/sh /usr/local/lib/everwas/agent-guard.sh check /usr/local/bin/everwas-agent
+ExecStart=/usr/local/bin/everwas-agent run
 Restart=always
 RestartSec=5
 

@@ -9,7 +9,7 @@ import (
 
 func TestShouldRollbackDecision(t *testing.T) {
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
-	base := State{PendingVersion: "2.0.0", Target: "/usr/local/bin/openrmm-agent", Backup: "/usr/local/bin/openrmm-agent.old"}
+	base := State{PendingVersion: "2.0.0", Target: "/usr/local/bin/everwas-agent", Backup: "/usr/local/bin/everwas-agent.old"}
 	ago := func(d time.Duration) time.Time { return now.Add(-d) }
 
 	withStarts := func(s State, starts ...time.Time) State {
@@ -74,7 +74,7 @@ func readFile(t *testing.T, p string) string {
 func TestCheckAndRollbackRestoresPreviousBinary(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "new build")
+	target := fakeBinary(t, binDir, "everwas-agent", "new build")
 	backup := BackupPath(target)
 	if err := os.WriteFile(backup, []byte("old build"), 0o755); err != nil {
 		t.Fatalf("write backup: %v", err)
@@ -143,7 +143,7 @@ func TestCheckAndRollbackNoopWithoutPendingUpdate(t *testing.T) {
 func TestMarkHealthyKeepsBackup(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "new build")
+	target := fakeBinary(t, binDir, "everwas-agent", "new build")
 	backup := BackupPath(target)
 	if err := os.WriteFile(backup, []byte("old build"), 0o755); err != nil {
 		t.Fatalf("write backup: %v", err)

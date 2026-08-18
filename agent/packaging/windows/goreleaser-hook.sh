@@ -2,7 +2,7 @@
 # GoReleaser post-build hook: Authenticode-sign the Windows binary and wrap it
 # in an MSI, before the archive stage sees it.
 #
-#   goreleaser-hook.sh --os windows --arch amd64 --path dist/.../openrmm-agent.exe \
+#   goreleaser-hook.sh --os windows --arch amd64 --path dist/.../everwas-agent.exe \
 #                      --version 2026.08.17
 #
 # The ordering is the point. GoReleaser's own binary_signs stage runs after
@@ -38,8 +38,8 @@ done
   exit 2
 }
 
-if [ "${OPENRMM_ALLOW_UNSIGNED:-}" = "1" ]; then
-  echo "goreleaser-hook.sh: OPENRMM_ALLOW_UNSIGNED=1, $path stays unsigned; do not ship it" >&2
+if [ "${EVERWAS_ALLOW_UNSIGNED:-}" = "1" ]; then
+  echo "goreleaser-hook.sh: EVERWAS_ALLOW_UNSIGNED=1, $path stays unsigned; do not ship it" >&2
 else
   "$here/sign.sh" "$path"
 fi

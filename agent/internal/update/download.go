@@ -62,7 +62,7 @@ func StagedPath(stateDir, version string) string {
 	if runtime.GOOS == "windows" {
 		ext = ".exe"
 	}
-	return filepath.Join(StagingDir(stateDir), "openrmm-agent-"+sanitizeVersion(version)+ext)
+	return filepath.Join(StagingDir(stateDir), "everwas-agent-"+sanitizeVersion(version)+ext)
 }
 
 // sanitizeVersion keeps a server-supplied version string from escaping the
@@ -115,7 +115,7 @@ func (d *Downloader) Download(ctx context.Context, url, dest string) (int64, err
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrDownload, err)
 	}
-	req.Header.Set("User-Agent", "openrmm-agent-updater")
+	req.Header.Set("User-Agent", "everwas-agent-updater")
 	if have > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
 	}
@@ -193,7 +193,7 @@ func (d *Downloader) Fetch(ctx context.Context, url string, maxBytes int64) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDownload, err)
 	}
-	req.Header.Set("User-Agent", "openrmm-agent-updater")
+	req.Header.Set("User-Agent", "everwas-agent-updater")
 	resp, err := d.client().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDownload, err)

@@ -33,7 +33,7 @@ func writeGuardStarts(t *testing.T, dir string, at ...time.Time) {
 func TestCheckAndRollbackCountsGuardStarts(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "new build")
+	target := fakeBinary(t, binDir, "everwas-agent", "new build")
 	backup := BackupPath(target)
 	if err := os.WriteFile(backup, []byte("old build"), 0o755); err != nil {
 		t.Fatalf("write backup: %v", err)
@@ -70,7 +70,7 @@ func TestCheckAndRollbackCountsGuardStarts(t *testing.T) {
 func TestGuardRollbackIsReconciled(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "old build")
+	target := fakeBinary(t, binDir, "everwas-agent", "old build")
 
 	tr := NewTracker(dir)
 	if err := tr.BeginUpdate("2.0.0", "1.0.0", target, BackupPath(target)); err != nil {
@@ -138,14 +138,14 @@ func TestBeginUpdateKeepsDenylist(t *testing.T) {
 func TestBeginUpdateWritesProbationForTheGuard(t *testing.T) {
 	dir := t.TempDir()
 	tr := NewTracker(dir)
-	if err := tr.BeginUpdate("2.0.0", "1.0.0", "/usr/local/bin/openrmm-agent", "/usr/local/bin/openrmm-agent.old"); err != nil {
+	if err := tr.BeginUpdate("2.0.0", "1.0.0", "/usr/local/bin/everwas-agent", "/usr/local/bin/everwas-agent.old"); err != nil {
 		t.Fatalf("BeginUpdate: %v", err)
 	}
 	body := readFile(t, filepath.Join(dir, ProbationFileName))
 	for _, want := range []string{
 		"version=2.0.0",
-		"target=/usr/local/bin/openrmm-agent",
-		"backup=/usr/local/bin/openrmm-agent.old",
+		"target=/usr/local/bin/everwas-agent",
+		"backup=/usr/local/bin/everwas-agent.old",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("probation file is missing %q\n---\n%s", want, body)
@@ -244,7 +244,7 @@ func TestFinalizeSuccessAllowsHealthy(t *testing.T) {
 func TestWatchNeedsEvidence(t *testing.T) {
 	dir := t.TempDir()
 	binDir := t.TempDir()
-	target := fakeBinary(t, binDir, "openrmm-agent", "new build")
+	target := fakeBinary(t, binDir, "everwas-agent", "new build")
 	backup := BackupPath(target)
 	if err := os.WriteFile(backup, []byte("old build"), 0o755); err != nil {
 		t.Fatalf("write backup: %v", err)

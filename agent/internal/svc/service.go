@@ -16,23 +16,23 @@ import (
 // Identity of the service across platforms.
 const (
 	// Name is the systemd unit name and the Windows service name.
-	Name = "openrmm-agent"
+	Name = "everwas-agent"
 	// DisplayName is what a human sees in a service list.
-	DisplayName = "OpenRMM Agent"
+	DisplayName = "Everwas Agent"
 	// Description is the one line summary shown by systemctl and services.msc.
-	Description = "OpenRMM remote monitoring and management agent"
+	Description = "Everwas remote monitoring and management agent"
 	// LaunchdLabel is the macOS daemon label.
-	LaunchdLabel = "com.openrmm.agent"
+	LaunchdLabel = "systems.supported.everwas.agent"
 	// MacLogDir holds the launchd stdout and stderr files.
-	MacLogDir = "/Library/Logs/OpenRMM"
+	MacLogDir = "/Library/Logs/Everwas"
 
 	// PrefixEnv relocates every path this package writes. It exists so tests
 	// and packaging dry runs can never touch a real /etc or /Library.
-	PrefixEnv = "OPENRMM_SERVICE_PREFIX"
+	PrefixEnv = "EVERWAS_SERVICE_PREFIX"
 	// StateDirEnv is the agent wide state directory override. When it is set
 	// at install time the value is baked into the service definition so the
 	// running service uses the same directory the installer did.
-	StateDirEnv = "OPENRMM_STATE_DIR"
+	StateDirEnv = "EVERWAS_STATE_DIR"
 )
 
 // Errors returned by the platform implementations.
@@ -57,7 +57,7 @@ type InstallConfig struct {
 	BinaryPath string
 	// Args are the arguments passed to the binary. Defaults to ["run"].
 	Args []string
-	// StateDir, when set, is exported to the service as OPENRMM_STATE_DIR.
+	// StateDir, when set, is exported to the service as EVERWAS_STATE_DIR.
 	StateDir string
 	// Prefix relocates the service definition files. Empty means the real
 	// system location. Tests set it; installs do not.
@@ -85,15 +85,15 @@ func (c InstallConfig) validate() error {
 	return nil
 }
 
-// DefaultInstallPath is where `openrmm-agent install` puts the binary.
+// DefaultInstallPath is where `everwas-agent install` puts the binary.
 func DefaultInstallPath() string {
 	switch runtime.GOOS {
 	case "linux":
-		return "/usr/local/bin/openrmm-agent"
+		return "/usr/local/bin/everwas-agent"
 	case "darwin":
-		return "/Library/OpenRMM/Agent/openrmm-agent"
+		return "/Library/Everwas/Agent/everwas-agent"
 	case "windows":
-		return `C:\Program Files\OpenRMM\Agent\openrmm-agent.exe`
+		return `C:\Program Files\Everwas\Agent\everwas-agent.exe`
 	default:
 		return ""
 	}

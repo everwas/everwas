@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/inventory"
-	"github.com/rsp2k/openrmm/agent/internal/patch"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/inventory"
+	"github.com/everwas/everwas/agent/internal/patch"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 // Audit event names for patch work. These belong next to the others in
@@ -124,7 +124,7 @@ func (d PatchDeps) Execute(ctx context.Context, spec scripts.JobSpec, progress s
 	// One PublishStderr call per job: it emits both EOF markers, so a
 	// second call would reopen a stream the server has already closed.
 	if d.Runner != nil {
-		d.Runner.PublishStderr(spec, "openrmm-agent: "+summary+"\n")
+		d.Runner.PublishStderr(spec, "everwas-agent: "+summary+"\n")
 	}
 	progress(100, scripts.PhaseFinished, res.Status)
 	if d.Runner != nil {

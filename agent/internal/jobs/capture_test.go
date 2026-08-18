@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 // captured collects what a Module published, without a NATS server.

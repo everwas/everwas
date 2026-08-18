@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Assert the invariants of a built OpenRMM agent MSI.
+# Assert the invariants of a built Everwas agent MSI.
 #
-#   check-msi.sh openrmm-agent.msi 26.8.1700 2026.08.17
+#   check-msi.sh everwas-agent.msi 26.8.1700 2026.08.17
 #
 # wixl is quiet about the parts of the WiX v3 schema it does not implement:
 # Property/@Secure, CustomAction/@HideTarget and Before/After sequencing are
@@ -15,10 +15,10 @@ msi="${1:?usage: check-msi.sh MSI MSI_VERSION DISPLAY_VERSION}"
 want_version="${2:?}"
 want_display="${3:?}"
 
-# Must match Product/@UpgradeCode in openrmm-agent.wxs. Changing it orphans
+# Must match Product/@UpgradeCode in everwas-agent.wxs. Changing it orphans
 # every installed agent: MSI would no longer see the old package as the same
 # product, so an upgrade turns into a second Add/Remove entry fighting over
-# C:\Program Files\OpenRMM\Agent.
+# C:\Program Files\Everwas\Agent.
 readonly UPGRADE_CODE="{C715EB57-9DA9-4A77-AD9E-FA4A78DE65F0}"
 
 fail=0
@@ -105,7 +105,7 @@ rep="$(seq_of RemoveExistingProducts)"
 [ "$(seq_of RollbackRegisterAgent)" -lt "$(seq_of RegisterAgentEnroll)" ] ||
   bad "RollbackRegisterAgent is not sequenced before RegisterAgentEnroll"
 
-table File | grep -q 'openrmm-agent\.exe' || bad "openrmm-agent.exe is not in the File table"
+table File | grep -q 'everwas-agent\.exe' || bad "everwas-agent.exe is not in the File table"
 # Attribute 256 is msidbComponentAttributes64bit. Without it a 64-bit package
 # still resolves ProgramFiles64Folder but writes the registry to the WOW6432
 # view, and an inventory query would not find the version.
@@ -119,7 +119,7 @@ while IFS=$'\t' read -r comp _ _ attrs _; do
 done < <(table Component)
 
 table Registry | grep -qF "$want_display" ||
-  bad "HKLM\\SOFTWARE\\OpenRMM\\Agent Version does not carry '$want_display'"
+  bad "HKLM\\SOFTWARE\\Everwas\\Agent Version does not carry '$want_display'"
 
 msiinfo streams "$msi" | grep -q '\.cab$' || bad "the cab is not embedded in the MSI"
 

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 const (
@@ -301,7 +301,7 @@ func (m *Module) reportInterruptedSpec(spec scripts.JobSpec) {
 		return
 	}
 	m.Scripts.PublishStderr(spec,
-		"openrmm-agent: the agent stopped before this job finished\n")
+		"everwas-agent: the agent stopped before this job finished\n")
 	m.Scripts.PublishResult(spec, scripts.Result{
 		Status:   scripts.StatusCancelled,
 		ExitCode: -1,

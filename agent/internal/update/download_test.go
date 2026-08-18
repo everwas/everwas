@@ -141,9 +141,9 @@ func TestFetchCapsCompanionFiles(t *testing.T) {
 }
 
 func TestStagedPathSanitizesVersion(t *testing.T) {
-	dir := StagingDir("/var/lib/openrmm")
+	dir := StagingDir("/var/lib/everwas")
 	for _, version := range []string{"../../etc/passwd", `..\..\windows\system32`, "2.0.0"} {
-		got := StagedPath("/var/lib/openrmm", version)
+		got := StagedPath("/var/lib/everwas", version)
 		if filepath.Dir(filepath.Clean(got)) != dir {
 			t.Errorf("StagedPath(%q) = %s, want it directly under %s", version, got, dir)
 		}

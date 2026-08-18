@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/config"
 )
 
 // RenewInterval is how often the agent asks for a fresh credential.

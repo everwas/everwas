@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/inventory"
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/inventory"
+	"github.com/everwas/everwas/agent/internal/scripts"
 )
 
 func jobBody(t *testing.T, jobID, kind string) []byte {

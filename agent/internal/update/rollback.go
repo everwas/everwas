@@ -291,7 +291,7 @@ func (t *Tracker) writeProbation(st State) error {
 		return fmt.Errorf("%w: mkdir: %v", ErrState, err)
 	}
 	var b strings.Builder
-	b.WriteString("# written by openrmm-agent, read by agent-guard.sh\n")
+	b.WriteString("# written by everwas-agent, read by agent-guard.sh\n")
 	fmt.Fprintf(&b, "version=%s\n", st.PendingVersion)
 	fmt.Fprintf(&b, "previous=%s\n", st.PreviousVersion)
 	fmt.Fprintf(&b, "target=%s\n", st.Target)

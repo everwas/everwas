@@ -13,7 +13,7 @@ func TestScrubEnvAllowlist(t *testing.T) {
 		"USER=agent",
 		"LANG=en_US.UTF-8",
 		"AWS_SECRET_ACCESS_KEY=hunter2",
-		"OPENRMM_AGENT_SECRET=s3cr3t",
+		"EVERWAS_AGENT_SECRET=s3cr3t",
 		"SSH_AUTH_SOCK=/run/agent.sock",
 		"NOT_AN_ASSIGNMENT",
 		"=novalue",

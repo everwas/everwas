@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/config"
-	"github.com/rsp2k/openrmm/agent/internal/enroll"
-	"github.com/rsp2k/openrmm/agent/internal/svc"
-	"github.com/rsp2k/openrmm/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/enroll"
+	"github.com/everwas/everwas/agent/internal/svc"
+	"github.com/everwas/everwas/agent/internal/update"
 )
 
 // CmdInstall copies the running binary to the per-OS install location,
@@ -287,8 +287,8 @@ func removeTree(dir string) error {
 	if vol := filepath.VolumeName(clean); vol != "" && clean == vol+string(filepath.Separator) {
 		return fmt.Errorf("refusing to delete a volume root %q", dir)
 	}
-	if !strings.Contains(strings.ToLower(clean), "openrmm") {
-		return fmt.Errorf("refusing to delete %q: it does not look like an openrmm state directory", clean)
+	if !strings.Contains(strings.ToLower(clean), "everwas") {
+		return fmt.Errorf("refusing to delete %q: it does not look like an everwas state directory", clean)
 	}
 	if _, err := os.Stat(clean); os.IsNotExist(err) {
 		return nil
@@ -315,14 +315,14 @@ func printNextSteps(binary string) {
 	fmt.Println("next steps:")
 	switch runtime.GOOS {
 	case "linux":
-		fmt.Println("  systemctl status openrmm-agent")
-		fmt.Println("  journalctl -u openrmm-agent -f")
+		fmt.Println("  systemctl status everwas-agent")
+		fmt.Println("  journalctl -u everwas-agent -f")
 	case "darwin":
-		fmt.Println("  sudo launchctl print system/com.openrmm.agent")
-		fmt.Println("  tail -f /Library/Logs/OpenRMM/agent.err.log")
+		fmt.Println("  sudo launchctl print system/systems.supported.everwas.agent")
+		fmt.Println("  tail -f /Library/Logs/Everwas/agent.err.log")
 	case "windows":
-		fmt.Println("  sc.exe query openrmm-agent")
-		fmt.Println("  Get-EventLog -LogName Application -Source openrmm-agent -Newest 20")
+		fmt.Println("  sc.exe query everwas-agent")
+		fmt.Println("  Get-EventLog -LogName Application -Source everwas-agent -Newest 20")
 	}
 	fmt.Printf("  %s status\n", binary)
 }

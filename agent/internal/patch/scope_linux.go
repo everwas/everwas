@@ -14,7 +14,7 @@ const systemdMarker = "/run/systemd/system"
 // runs in a cgroup of its own instead of the agent's.
 //
 // The agent's unit uses KillMode=mixed with a stop timeout. Without this
-// wrapper, a `systemctl restart openrmm-agent` during a patch window gives
+// wrapper, a `systemctl restart everwas-agent` during a patch window gives
 // dpkg that timeout and then an unsurvivable SIGKILL, leaving the package
 // database for a human to repair. The self-inflicted version is worse: if
 // the agent's own package is ever upgraded by a patch job, its postinst
@@ -41,7 +41,7 @@ func scopeCommand(name string, args []string) (string, []string, bool) {
 		"--scope",
 		"--quiet",
 		"--collect",
-		"--description=OpenRMM patch transaction",
+		"--description=Everwas patch transaction",
 		"--",
 		name,
 	}, args...)

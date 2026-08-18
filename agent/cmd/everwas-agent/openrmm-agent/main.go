@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/rsp2k/openrmm/agent/internal/cli"
+	"github.com/everwas/everwas/agent/internal/cli"
 )
 
 func main() {

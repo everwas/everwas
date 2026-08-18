@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/config"
 )
 
 // TestConnectReportsAClosedConnection proves the agent is told when it has

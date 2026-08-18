@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/agentcore"
-	"github.com/rsp2k/openrmm/agent/internal/config"
-	"github.com/rsp2k/openrmm/agent/internal/conn"
-	"github.com/rsp2k/openrmm/agent/internal/enroll"
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
-	"github.com/rsp2k/openrmm/agent/internal/secure"
-	"github.com/rsp2k/openrmm/agent/internal/svc"
-	"github.com/rsp2k/openrmm/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/agentcore"
+	"github.com/everwas/everwas/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/conn"
+	"github.com/everwas/everwas/agent/internal/enroll"
+	"github.com/everwas/everwas/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/secure"
+	"github.com/everwas/everwas/agent/internal/svc"
+	"github.com/everwas/everwas/agent/internal/update"
 )
 
 // Version is injected at build time via -ldflags.
@@ -146,7 +146,7 @@ func runAgent(parent context.Context) int {
 		return 1
 	}
 	if !cfg.Enrolled() {
-		log.Error("not enrolled; run `openrmm-agent enroll --server URL --token TOKEN` first")
+		log.Error("not enrolled; run `everwas-agent enroll --server URL --token TOKEN` first")
 		return 1
 	}
 
@@ -374,7 +374,7 @@ func newLogger() *slog.Logger {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `usage: openrmm-agent <command>
+	fmt.Fprintln(os.Stderr, `usage: everwas-agent <command>
 
 commands:
   run         run the agent in the foreground

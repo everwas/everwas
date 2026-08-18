@@ -1,5 +1,5 @@
 #!/bin/sh
-# External rollback guard for the OpenRMM agent.
+# External rollback guard for the Everwas agent.
 #
 # The service manager runs this BEFORE the agent, which is the whole point:
 # it covers the failures the agent's own crash counter cannot, because they
@@ -27,11 +27,11 @@ shift 2 2>/dev/null || true
 
 # This has to match config.Dir() exactly, or the guard looks for the probation
 # in a directory the agent never writes to and silently stops counting.
-STATE_DIR="${OPENRMM_STATE_DIR:-}"
+STATE_DIR="${EVERWAS_STATE_DIR:-}"
 if [ -z "$STATE_DIR" ]; then
     case "$(uname -s 2>/dev/null || echo Linux)" in
-        Darwin) STATE_DIR="/Library/Application Support/OpenRMM" ;;
-        *) STATE_DIR="/etc/openrmm" ;;
+        Darwin) STATE_DIR="/Library/Application Support/Everwas" ;;
+        *) STATE_DIR="/etc/everwas" ;;
     esac
 fi
 PROBATION="$STATE_DIR/update-probation"
@@ -43,7 +43,7 @@ WINDOW=120
 LIMIT=2
 KEEP=16
 
-log() { printf 'openrmm-agent-guard: %s\n' "$*" >&2; }
+log() { printf 'everwas-agent-guard: %s\n' "$*" >&2; }
 
 probation_field() {
     [ -f "$PROBATION" ] || return 0

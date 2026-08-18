@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build the OpenRMM agent MSI from an already-signed openrmm-agent.exe.
+# Build the Everwas agent MSI from an already-signed everwas-agent.exe.
 #
-#   build-msi.sh --exe dist/.../openrmm-agent.exe --arch amd64 \
+#   build-msi.sh --exe dist/.../everwas-agent.exe --arch amd64 \
 #                --version 2026.08.17 --out dist
 #
 # Called from .goreleaser.yaml as a post-build hook on the Windows build, so
@@ -39,7 +39,7 @@ done
 # wixl targets x86, x64 and intel, and nothing else: `wixl -a arm64` answers
 # "arch of type 'arm64' is not supported". Windows 11 on ARM runs both the x64
 # MSI and the x64 agent under emulation, so an ARM host is covered by the x64
-# package or by the zip and `openrmm-agent.exe install`; it is a performance
+# package or by the zip and `everwas-agent.exe install`; it is a performance
 # footnote, not a gap. Exiting 0 here rather than failing keeps a Windows
 # arm64 build from taking the release down with it, and the release workflow
 # asserts separately that the x64 MSI did get built and signed, so this cannot
@@ -68,7 +68,7 @@ esac
 # Day times a hundred plus the same-day patch keeps every release of a year
 # strictly increasing, tops out at 3199, and leaves room for 99 fixes a day.
 # The real CalVer string still ships, in the Comments summary field and in
-# HKLM\SOFTWARE\OpenRMM\Agent\Version.
+# HKLM\SOFTWARE\Everwas\Agent\Version.
 # ---------------------------------------------------------------------------
 display_version="${version#v}"
 core="${display_version%%-*}" # drop a goreleaser snapshot suffix
@@ -90,19 +90,19 @@ msi_version="$((y - 2000)).$((10#$m)).$((10#$d * 100 + 10#$p))"
 # the copy that ends up on disk and in front of SmartScreen. Refuse rather
 # than produce that.
 # ---------------------------------------------------------------------------
-if [ "${OPENRMM_ALLOW_UNSIGNED:-}" != "1" ]; then
+if [ "${EVERWAS_ALLOW_UNSIGNED:-}" != "1" ]; then
   "$here/verify-signature.sh" "$exe"
 fi
 
 mkdir -p "$out"
-msi="$out/openrmm-agent_${display_version}_windows_${arch}.msi"
+msi="$out/everwas-agent_${display_version}_windows_${arch}.msi"
 
 wixl -a "$wixl_arch" \
   -D "Version=$msi_version" \
   -D "DisplayVersion=$display_version" \
   -D "AgentExe=$exe" \
   -o "$msi" \
-  "$here/openrmm-agent.wxs"
+  "$here/everwas-agent.wxs"
 
 # ---------------------------------------------------------------------------
 # Two things wixl parses and then throws away without saying so. Both are
@@ -132,8 +132,8 @@ fi
 
 "$here/check-msi.sh" "$msi" "$msi_version" "$display_version"
 
-if [ "${OPENRMM_ALLOW_UNSIGNED:-}" = "1" ]; then
-  echo "build-msi.sh: OPENRMM_ALLOW_UNSIGNED=1, leaving $msi unsigned" >&2
+if [ "${EVERWAS_ALLOW_UNSIGNED:-}" = "1" ]; then
+  echo "build-msi.sh: EVERWAS_ALLOW_UNSIGNED=1, leaving $msi unsigned" >&2
 else
   "$here/sign.sh" "$msi"
 fi

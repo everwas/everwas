@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rsp2k/openrmm/agent/internal/config"
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
-	"github.com/rsp2k/openrmm/agent/internal/supplicant"
+	"github.com/everwas/everwas/agent/internal/config"
+	"github.com/everwas/everwas/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/supplicant"
 )
 
 // CmdSupplicantProfile writes an 802.1X client profile for this device.

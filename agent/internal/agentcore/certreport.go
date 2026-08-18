@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rsp2k/openrmm/agent/internal/netcert"
+	"github.com/everwas/everwas/agent/internal/netcert"
 )
 
 // CertReport is what the device is ACTUALLY holding, published by the netcert

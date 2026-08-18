@@ -1,4 +1,4 @@
-# GoReleaser config for the OpenRMM agent. Requires GoReleaser v2.6 or newer
+# GoReleaser config for the Everwas agent. Requires GoReleaser v2.6 or newer
 # (the `formats` list on archives).
 #
 #   goreleaser build --snapshot --clean     # local matrix build, no publish
@@ -6,7 +6,7 @@
 #
 # Two environment variables shape a real release:
 #
-#   OPENRMM_UPDATE_PUBKEY      base64 body of the minisign public key, baked
+#   EVERWAS_UPDATE_PUBKEY      base64 body of the minisign public key, baked
 #                              into every binary as the self-update trust
 #                              anchor. A build with this empty cannot
 #                              self-update at all: TrustedKeys fails closed
@@ -19,19 +19,19 @@
 #   MINISIGN_PASSWORD          its passphrase, fed to minisign on stdin.
 #
 # The Windows half needs Authenticode as well, which is a different key and a
-# different failure. See packaging/windows/sign.sh for the OPENRMM_SIGN_*
+# different failure. See packaging/windows/sign.sh for the EVERWAS_SIGN_*
 # variables; the post-build hook below fails the whole run without them,
 # because an unsigned agent trains operators to click past SmartScreen.
 #
 # For a local build that is knowingly unsigned, opt out on purpose by adding
-#   -X github.com/rsp2k/openrmm/agent/internal/update.DevBuild=true
-# to the ldflags below, and set OPENRMM_ALLOW_UNSIGNED=1 for the Authenticode
+#   -X github.com/everwas/everwas/agent/internal/update.DevBuild=true
+# to the ldflags below, and set EVERWAS_ALLOW_UNSIGNED=1 for the Authenticode
 # half. Such a build will accept an artifact signed by a key the server
 # supplies and will make Windows warn about an unknown publisher, so it must
 # never leave a workstation.
 version: 2
 
-project_name: openrmm-agent
+project_name: everwas-agent
 
 before:
   hooks:
@@ -48,17 +48,17 @@ before:
     - go mod download
 
 builds:
-  - id: openrmm-agent
-    main: ./cmd/openrmm-agent
-    binary: openrmm-agent
+  - id: everwas-agent
+    main: ./cmd/everwas-agent
+    binary: everwas-agent
     env:
       - CGO_ENABLED=0
     flags:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/rsp2k/openrmm/agent/internal/cli.Version={{ .Version }}
-      - -X github.com/rsp2k/openrmm/agent/internal/update.EmbeddedPublicKey={{ .Env.OPENRMM_UPDATE_PUBKEY }}
+      - -X github.com/everwas/everwas/agent/internal/cli.Version={{ .Version }}
+      - -X github.com/everwas/everwas/agent/internal/update.EmbeddedPublicKey={{ .Env.EVERWAS_UPDATE_PUBKEY }}
     goos:
       - linux
       - darwin
@@ -89,9 +89,9 @@ universal_binaries:
   # drops the per-arch darwin binaries so the release page has one obvious
   # macOS download instead of three.
   - ids:
-      - openrmm-agent
+      - everwas-agent
     replace: true
-    name_template: openrmm-agent
+    name_template: everwas-agent
 
 archives:
   - id: default
@@ -104,8 +104,8 @@ archives:
           - zip
     files:
       - LICENSE
-      - src: packaging/linux/openrmm-agent.service
-        dst: openrmm-agent.service
+      - src: packaging/linux/everwas-agent.service
+        dst: everwas-agent.service
         info:
           mode: 0644
       - src: packaging/agent-guard.sh
@@ -116,13 +116,13 @@ archives:
 nfpms:
   # Mirrors packaging/linux/nfpm.yaml. Change both together.
   - id: packages
-    package_name: openrmm-agent
+    package_name: everwas-agent
     file_name_template: "{{ .ConventionalFileName }}"
-    vendor: OpenRMM
-    homepage: https://github.com/rsp2k/openrmm/agent
-    maintainer: OpenRMM <agents@openrmm.invalid>
+    vendor: Everwas
+    homepage: https://github.com/everwas/everwas/agent
+    maintainer: Everwas <agents@everwas.invalid>
     description: |-
-      OpenRMM remote monitoring and management agent.
+      Everwas remote monitoring and management agent.
       Collects inventory and telemetry, runs scripts and patch jobs, and
       provides remote shell access over an authenticated NATS connection.
     license: Apache-2.0
@@ -133,25 +133,25 @@ nfpms:
       - rpm
     bindir: /usr/local/bin
     contents:
-      - src: packaging/linux/openrmm-agent.service
-        dst: /etc/systemd/system/openrmm-agent.service
+      - src: packaging/linux/everwas-agent.service
+        dst: /etc/systemd/system/everwas-agent.service
         type: config
         file_info:
           mode: 0644
       # The external rollback guard the unit's ExecStartPre calls.
       - src: packaging/agent-guard.sh
-        dst: /usr/local/lib/openrmm/agent-guard.sh
+        dst: /usr/local/lib/everwas/agent-guard.sh
         file_info:
           mode: 0755
       # The agent identity (agent.json) carries the NATS secret.
-      - dst: /etc/openrmm
+      - dst: /etc/everwas
         type: dir
         file_info:
           mode: 0700
           owner: root
           group: root
       # Script staging, scheduler state, update staging.
-      - dst: /var/lib/openrmm
+      - dst: /var/lib/everwas
         type: dir
         file_info:
           mode: 0700
@@ -193,7 +193,7 @@ signs:
       - -m
       - "${artifact}"
       - -t
-      - "openrmm-agent {{ .Version }} {{ .CommitDate }}"
+      - "everwas-agent {{ .Version }} {{ .CommitDate }}"
     stdin: "{{ .Env.MINISIGN_PASSWORD }}"
 
 snapshot:
@@ -222,10 +222,10 @@ release:
     ## Verifying this release
 
     Every GoReleaser artifact has a matching `.minisig`. With the project
-    public key in `openrmm-agent.pub`:
+    public key in `everwas-agent.pub`:
 
     ```
-    minisign -Vm openrmm-agent_{{ .Version }}_linux_amd64.tar.gz -p openrmm-agent.pub
+    minisign -Vm everwas-agent_{{ .Version }}_linux_amd64.tar.gz -p everwas-agent.pub
     sha256sum -c SHA256SUMS --ignore-missing
     ```
 
@@ -235,7 +235,7 @@ release:
     and carries an Authenticode signature. On Windows:
 
     ```powershell
-    Get-AuthenticodeSignature .\openrmm-agent_{{ .Version }}_windows_amd64.msi |
+    Get-AuthenticodeSignature .\everwas-agent_{{ .Version }}_windows_amd64.msi |
       Format-List Status, SignerCertificate
     ```
 

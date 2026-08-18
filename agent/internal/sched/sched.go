@@ -17,8 +17,8 @@ import (
 
 	"github.com/robfig/cron/v3"
 
-	"github.com/rsp2k/openrmm/agent/internal/audit"
-	"github.com/rsp2k/openrmm/agent/internal/wire"
+	"github.com/everwas/everwas/agent/internal/audit"
+	"github.com/everwas/everwas/agent/internal/wire"
 )
 
 // parser accepts standard 5-field cron plus @daily-style descriptors.
@@ -418,8 +418,8 @@ func (s *Scheduler) signal() {
 // id from the same (entry, fire time) to find the run a result belongs to.
 // Changing it orphans every scheduled result in flight.
 //
-// Value: uuid5(NAMESPACE_DNS, "schedule.openrmm.invalid"). Mirrored by
-// openrmm.services.schedules.SCHED_NAMESPACE.
+// Value: uuid5(NAMESPACE_DNS, "schedule.everwas.invalid"). Mirrored by
+// everwas.services.schedules.SCHED_NAMESPACE.
 var schedNamespace = [16]byte{
 	0x06, 0xca, 0xde, 0xed, 0x8a, 0x30, 0x50, 0xab,
 	0x87, 0xf5, 0x7a, 0x27, 0xb0, 0x43, 0xba, 0x2d,

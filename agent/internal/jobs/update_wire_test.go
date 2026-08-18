@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rsp2k/openrmm/agent/internal/scripts"
-	"github.com/rsp2k/openrmm/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/scripts"
+	"github.com/everwas/everwas/agent/internal/update"
 )
 
 func updateSpec(t *testing.T, req update.Request) scripts.JobSpec {

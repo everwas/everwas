@@ -1,4 +1,4 @@
-module github.com/rsp2k/openrmm/agent
+module github.com/everwas/everwas/agent
 
 go 1.26.5
 

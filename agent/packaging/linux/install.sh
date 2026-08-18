@@ -1,27 +1,27 @@
 #!/bin/sh
-# OpenRMM agent installer for Linux.
+# Everwas agent installer for Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/openrmm/agent/main/packaging/linux/install.sh \
-#     | sudo OPENRMM_SERVER=https://rmm.example.com OPENRMM_TOKEN=abc123 sh
+#   curl -fsSL https://raw.githubusercontent.com/everwas/agent/main/packaging/linux/install.sh \
+#     | sudo EVERWAS_SERVER=https://rmm.example.com EVERWAS_TOKEN=abc123 sh
 #
 # Environment:
-#   OPENRMM_SERVER   server base URL, enrollment is skipped when unset
-#   OPENRMM_TOKEN    one-time enrollment token
-#   OPENRMM_VERSION  release tag to install, defaults to the latest release
-#   OPENRMM_REPO     GitHub owner/repo, defaults to openrmm/agent
-#   OPENRMM_PREFIX   install prefix for the binary, defaults to /usr/local/bin
+#   EVERWAS_SERVER   server base URL, enrollment is skipped when unset
+#   EVERWAS_TOKEN    one-time enrollment token
+#   EVERWAS_VERSION  release tag to install, defaults to the latest release
+#   EVERWAS_REPO     GitHub owner/repo, defaults to everwas/agent
+#   EVERWAS_PREFIX   install prefix for the binary, defaults to /usr/local/bin
 set -eu
 
-REPO="${OPENRMM_REPO:-openrmm/agent}"
-PREFIX="${OPENRMM_PREFIX:-/usr/local/bin}"
-VERSION="${OPENRMM_VERSION:-}"
-SERVER="${OPENRMM_SERVER:-}"
-TOKEN="${OPENRMM_TOKEN:-}"
+REPO="${EVERWAS_REPO:-everwas/agent}"
+PREFIX="${EVERWAS_PREFIX:-/usr/local/bin}"
+VERSION="${EVERWAS_VERSION:-}"
+SERVER="${EVERWAS_SERVER:-}"
+TOKEN="${EVERWAS_TOKEN:-}"
 
 WORKDIR=""
 
-log() { printf '%s\n' "openrmm: $*"; }
-die() { printf '%s\n' "openrmm: $*" >&2; exit 1; }
+log() { printf '%s\n' "everwas: $*"; }
+die() { printf '%s\n' "everwas: $*" >&2; exit 1; }
 
 cleanup() {
     # Only ever remove a directory this script created. An unset or empty
@@ -72,7 +72,7 @@ latest_version() {
     # JSON parser and avoids the low rate limit on the API host.
     url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")"
     tag="${url##*/}"
-    [ -n "$tag" ] && [ "$tag" != "latest" ] || die "could not determine the latest release; set OPENRMM_VERSION"
+    [ -n "$tag" ] && [ "$tag" != "latest" ] || die "could not determine the latest release; set EVERWAS_VERSION"
     printf '%s' "$tag"
 }
 
@@ -114,7 +114,7 @@ main() {
     log "arch:    $arch"
     log "version: $VERSION"
 
-    asset="openrmm-agent_${plain_version}_linux_${arch}.tar.gz"
+    asset="everwas-agent_${plain_version}_linux_${arch}.tar.gz"
     base="https://github.com/$REPO/releases/download/$VERSION"
 
     WORKDIR="$(mktemp -d)"
@@ -124,19 +124,19 @@ main() {
 
     verify_sha256 "$WORKDIR/$asset" "$WORKDIR/SHA256SUMS"
 
-    tar -xzf "$WORKDIR/$asset" -C "$WORKDIR" openrmm-agent
-    [ -f "$WORKDIR/openrmm-agent" ] || die "archive did not contain openrmm-agent"
-    chmod 0755 "$WORKDIR/openrmm-agent"
+    tar -xzf "$WORKDIR/$asset" -C "$WORKDIR" everwas-agent
+    [ -f "$WORKDIR/everwas-agent" ] || die "archive did not contain everwas-agent"
+    chmod 0755 "$WORKDIR/everwas-agent"
 
     mkdir -p "$PREFIX"
     if [ -n "$SERVER" ] && [ -n "$TOKEN" ]; then
-        "$WORKDIR/openrmm-agent" install --path "$PREFIX/openrmm-agent" --server "$SERVER" --token "$TOKEN"
+        "$WORKDIR/everwas-agent" install --path "$PREFIX/everwas-agent" --server "$SERVER" --token "$TOKEN"
     else
-        log "OPENRMM_SERVER or OPENRMM_TOKEN not set, installing without enrolling"
-        "$WORKDIR/openrmm-agent" install --path "$PREFIX/openrmm-agent"
+        log "EVERWAS_SERVER or EVERWAS_TOKEN not set, installing without enrolling"
+        "$WORKDIR/everwas-agent" install --path "$PREFIX/everwas-agent"
     fi
 
-    log "done. Check status with: $PREFIX/openrmm-agent status"
+    log "done. Check status with: $PREFIX/everwas-agent status"
 }
 
 main "$@"
