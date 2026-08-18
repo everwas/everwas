@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#10131a"/>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="none" stroke="#272d3b" stroke-width="2"/>
+  <!-- heartbeat pulse: the agent's heartbeat, amber phosphor -->
+  <polyline points="8,36 20,36 26,20 34,48 40,30 44,36 56,36"
+    fill="none" stroke="#ffb454" stroke-width="4.5"
+    stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="56" cy="36" r="3.5" fill="#5fc9e8"/>
+</svg>

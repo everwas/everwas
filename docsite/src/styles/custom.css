@@ -1,0 +1,96 @@
+/* OpenRMM docs: Starlight theme mapped onto the marketing site tokens.
+ *
+ * The two accent hues are load-bearing, same as on the marketing site:
+ * amber marks VALID time (what was true on the machine), cyan marks
+ * RECORD time (what the server believed). Amber is the interface accent;
+ * cyan appears only where record time is being talked about.
+ */
+
+:root {
+  --sl-font: 'Inter Variable', system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', monospace;
+
+  /* semantic hues shared with site/src/styles/tokens.css */
+  --openrmm-amber: #ffb454;
+  --openrmm-amber-bright: #ffcf8a;
+  --openrmm-amber-dim: #b97f3a;
+  --openrmm-cyan: #5fc9e8;
+  --openrmm-cyan-bright: #9addf2;
+}
+
+/* Dark theme (default): graphite base from the marketing site. */
+:root {
+  --sl-color-accent-low: #3a2a12;
+  --sl-color-accent: #b97f3a;
+  --sl-color-accent-high: #ffcf8a;
+
+  --sl-color-white: #e9e7e1;
+  --sl-color-gray-1: #ccd0d9;
+  --sl-color-gray-2: #a3a8b4;
+  --sl-color-gray-3: #6d7280;
+  --sl-color-gray-4: #444a5a;
+  --sl-color-gray-5: #272d3b;
+  --sl-color-gray-6: #161a23;
+  --sl-color-black: #0b0d11;
+
+  --sl-color-bg-nav: #10131a;
+  --sl-color-bg-sidebar: #10131a;
+}
+
+/* Light theme: same amber family, darkened for contrast on paper. */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #f8e7cd;
+  --sl-color-accent: #9a6420;
+  --sl-color-accent-high: #573a10;
+
+  --sl-color-white: #1a1d24;
+  --sl-color-gray-1: #262a33;
+  --sl-color-gray-2: #3d4351;
+  --sl-color-gray-3: #5c6374;
+  --sl-color-gray-4: #8890a0;
+  --sl-color-gray-5: #c9cdd7;
+  --sl-color-gray-6: #eceef2;
+  --sl-color-gray-7: #f5f6f8;
+  --sl-color-black: #ffffff;
+
+  --openrmm-amber: #9a6420;
+  --openrmm-amber-bright: #7a4d15;
+  --openrmm-cyan: #1d7d9c;
+  --openrmm-cyan-bright: #155e76;
+}
+
+/* Display face for headings, matching the marketing site. */
+.site-title,
+.sl-markdown-content :is(h1, h2, h3, h4, h5),
+.hero h1 {
+  font-family: 'Space Grotesk Variable', var(--sl-font);
+  letter-spacing: -0.015em;
+}
+
+/* Inline markers for the two time axes, used by the bitemporal pages. */
+.vt,
+.rt {
+  font-family: var(--sl-font-mono);
+  font-size: 0.9em;
+  padding: 0.05em 0.4em;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.vt {
+  color: var(--openrmm-amber-bright);
+  background: rgba(255, 180, 84, 0.14);
+}
+
+.rt {
+  color: var(--openrmm-cyan-bright);
+  background: rgba(95, 201, 232, 0.12);
+}
+
+:root[data-theme='light'] .vt {
+  background: rgba(154, 100, 32, 0.12);
+}
+
+:root[data-theme='light'] .rt {
+  background: rgba(29, 125, 156, 0.12);
+}

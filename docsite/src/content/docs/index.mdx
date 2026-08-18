@@ -1,0 +1,53 @@
+---
+title: OpenRMM
+description: Open-source remote monitoring and management with bitemporal device history and a first-class MCP server.
+template: splash
+hero:
+  tagline: >-
+    Open-source remote monitoring and management for Windows, macOS, and
+    Linux. Self-hosted, one static agent binary per endpoint, and a device
+    history that can answer what you knew as well as what was true.
+  actions:
+    - text: Get the server running
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: How the time machine works
+      link: /concepts/bitemporal/
+      icon: seti:clock
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Monitor a fleet" icon="laptop">
+    Agents report heartbeats every 30 seconds and telemetry every minute:
+    CPU, memory, disk, network, and service state. Threshold alerts with
+    duration windows and cooldowns reach you by email, webhook, ntfy, or
+    gotify. Start with the [quickstart](/getting-started/quickstart/).
+  </Card>
+  <Card title="Act on any machine" icon="seti:powershell">
+    Open a real terminal in the browser, run scripts across hundreds of
+    endpoints, and schedule jobs that fire on the agent's own clock even
+    while it is offline. See [running scripts](/guides/run-scripts/).
+  </Card>
+  <Card title="Ask about the past" icon="magnifier">
+    Every inventory fact carries two time axes: when it was true on the
+    machine, and when the server learned it. After an incident those are
+    different questions with different answers.
+    [Query device history](/guides/device-history/).
+  </Card>
+  <Card title="Bring your assistant" icon="rocket">
+    An opt-in MCP server lets an AI assistant query the fleet and, with
+    explicit confirmation, act on it. Scoped API keys, dry-run previews,
+    every call audit-logged. [Enable the MCP server](/guides/enable-mcp/).
+  </Card>
+</CardGrid>
+
+## Genuinely open source
+
+The server is AGPL-3.0, the agent is Apache-2.0, and contributions are
+accepted under the Developer Certificate of Origin. There is no
+source-available license waiting to close the door behind you. The
+[licensing page](/concepts/licensing/) explains why the split.

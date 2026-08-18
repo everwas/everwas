@@ -1,0 +1,61 @@
+# OpenRMM docs site — two profiles.
+#
+# Default (no --profile): prod — Caddy serves the built dist/.
+# --profile dev: Astro dev server with HMR, volume mounts for live reload.
+#
+# Both attach to the external `caddy` network for caddy-docker-proxy.
+# Set DOMAIN in .env to pick the public hostname.
+
+services:
+  openrmm-docs:
+    profiles: ["prod", ""]
+    build:
+      context: .
+      target: prod
+      args:
+        SITE_URL: https://${DOMAIN:-docs.openrmm.supported.systems}
+    image: openrmm-docs:prod
+    container_name: openrmm-docs
+    restart: unless-stopped
+    networks:
+      - caddy
+    labels:
+      caddy: ${DOMAIN:-docs.openrmm.supported.systems}
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  openrmm-docs-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    image: openrmm-docs:dev
+    container_name: openrmm-docs-dev
+    restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN:-docs.openrmm.l.supported.systems}
+      - ASTRO_TELEMETRY_DISABLED=1
+    volumes:
+      # node_modules stays in the container so host platform mismatches
+      # don't break native deps (sharp).
+      - ./astro.config.mjs:/app/astro.config.mjs:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./src:/app/src
+      - ./public:/app/public
+    networks:
+      - caddy
+    labels:
+      caddy: ${DOMAIN:-docs.openrmm.l.supported.systems}
+      caddy.reverse_proxy: "{{upstreams 4321}}"
+      # Long-lived WebSocket settings for Vite HMR behind Caddy.
+      caddy.reverse_proxy.flush_interval: "-1"
+      caddy.reverse_proxy.transport: "http"
+      caddy.reverse_proxy.transport.read_timeout: "0"
+      caddy.reverse_proxy.transport.write_timeout: "0"
+      caddy.reverse_proxy.transport.keepalive: "5m"
+      caddy.reverse_proxy.transport.keepalive_idle_conns: "10"
+      caddy.reverse_proxy.stream_timeout: "24h"
+      caddy.reverse_proxy.stream_close_delay: "5s"
+
+networks:
+  caddy:
+    external: true
