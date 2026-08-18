@@ -7,7 +7,7 @@ SPA's own list payload carries no identity at all.
 
 Everything authenticates with a bearer sync token (see api.sync_deps) and a
 scope, never a session or a role. Every endpoint pages identically (see
-api.pagination). The three fact sweeps accept the bitemporal parameters:
+api.pagination). The four fact sweeps accept the bitemporal parameters:
 as_of answers "what was true on the machines at T", knew_at answers "what
 did the server believe at T" — both timezone-required, both defaulting to
 current belief. The contract, including which fields are volatile and
@@ -36,6 +36,7 @@ from openrmm.schemas.sync import (
     SyncInterfacePage,
     SyncOrgPage,
     SyncPatchPage,
+    SyncPosturePage,
     SyncSitePage,
     SyncSoftwarePage,
 )
@@ -172,6 +173,26 @@ async def software(
         db, principal, **_sweep_params(device_id, site_id, cursor, limit, as_of, knew_at)
     )
     return SyncSoftwarePage(items=items, has_more=has_more, next_cursor=_fact_next_cursor(last))
+
+
+@router.get("/posture", dependencies=[require_sync_scope("devices:read")])
+async def posture(
+    db: DbSession,
+    principal: SyncPrincipal,
+    device_id: uuid.UUID | None = None,
+    site_id: uuid.UUID | None = None,
+    cursor: str | None = None,
+    limit: Limit = DEFAULT_LIMIT,
+    as_of: datetime | None = None,
+    knew_at: datetime | None = None,
+) -> SyncPosturePage:
+    """Security posture, one row per (device, check). Status values are
+    agent-defined (pass/fail/not_applicable today); a consumer must treat an
+    unknown value as not-assessed, never as failed."""
+    items, has_more, last = await sync_export.posture_page(
+        db, principal, **_sweep_params(device_id, site_id, cursor, limit, as_of, knew_at)
+    )
+    return SyncPosturePage(items=items, has_more=has_more, next_cursor=_fact_next_cursor(last))
 
 
 def _change_cursor(cursor: str | None) -> tuple[datetime, int, str] | None:

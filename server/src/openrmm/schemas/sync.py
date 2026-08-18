@@ -119,6 +119,31 @@ class SyncSoftwarePage(SyncPageBase):
     items: list[SyncSoftwareOut]
 
 
+class SyncPostureOut(BaseModel):
+    device_id: uuid.UUID
+    #: The check's stable name (fact key minus its prefix) — the per-device
+    #: natural key. Per-check rather than a rollup: the check set grows over
+    #: time, and a check ABSENT from a device's rows never ran there, which
+    #: is not a failure and must not read as one.
+    check: str
+    #: Agent-defined vocabulary: pass | fail | not_applicable today, and new
+    #: values may appear before consumers learn them. Treat an unknown status
+    #: as not-assessed, never as failed — only an explicit "fail" is a
+    #: failure. That is the agreed contract with the l2trace quarantine
+    #: integration, where misreading "not assessed" cuts a machine off the
+    #: network.
+    status: str
+    #: Human-oriented explanation. "" means the agent gave none — the verdict
+    #: stands on its own, and empty is not missing here.
+    detail: str
+    #: lower(valid_during): when the machine last reported this verdict.
+    observed_at: datetime
+
+
+class SyncPosturePage(SyncPageBase):
+    items: list[SyncPostureOut]
+
+
 class SyncPatchOut(BaseModel):
     device_id: uuid.UUID
     external_id: str

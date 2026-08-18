@@ -357,6 +357,146 @@ async def test_software_sweep_and_as_of_time_travel():
         assert "timezone" in naive.json()["detail"]
 
 
+# --- posture ------------------------------------------------------------------------
+
+
+POSTURE = {
+    "checks": [
+        {"check": "antivirus", "status": "not_applicable"},
+        {"check": "disk-encryption", "status": "fail", "detail": "plaintext root"},
+        {"check": "firewall", "status": "pass"},
+    ]
+}
+
+
+async def test_posture_sweep_is_one_row_per_check_with_device_id():
+    (device_id,) = await mk_devices(1)
+    await ingest(device_id, "posture", POSTURE)
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        body = (await c.get("/api/v1/sync/posture", headers=headers)).json()
+    rows = {i["check"]: i for i in body["items"]}
+    assert set(rows) == {"antivirus", "disk-encryption", "firewall"}
+    assert all(i["device_id"] == str(device_id) for i in body["items"])
+    assert rows["disk-encryption"]["status"] == "fail"
+    assert rows["disk-encryption"]["detail"] == "plaintext root"
+    # not_applicable passes through untranslated: the check ran and could not
+    # assess, which is not a failure and must not be collapsed into one.
+    assert rows["antivirus"]["status"] == "not_applicable"
+    # No detail given: "" (the verdict stands on its own), never null.
+    assert rows["firewall"]["detail"] == ""
+
+
+async def test_posture_sweep_pages_across_devices():
+    ids = await mk_devices(3)
+    for device_id in ids:
+        await ingest(device_id, "posture", POSTURE)
+    headers = await bearer(["devices:read"])
+    seen, cursor = [], None
+    async with client() as c:
+        while True:
+            params = {"limit": 2} | ({"cursor": cursor} if cursor else {})
+            body = (await c.get("/api/v1/sync/posture", params=params, headers=headers)).json()
+            seen.extend(body["items"])
+            if not body["has_more"]:
+                assert body["next_cursor"] is None
+                break
+            cursor = body["next_cursor"]
+    # 3 devices x 3 checks, walked in (device_id, fact_key) order
+    assert len(seen) == 9
+    assert {i["device_id"] for i in seen} == {str(d) for d in ids}
+
+
+async def test_posture_amend_and_as_of_time_travel():
+    (device_id,) = await mk_devices(1)
+    t0 = datetime.now(UTC) - timedelta(days=2)
+    t1 = datetime.now(UTC) - timedelta(days=1)
+    await ingest(device_id, "posture", {"checks": [{"check": "firewall", "status": "fail"}]}, at=t0)
+    await ingest(device_id, "posture", {"checks": [{"check": "firewall", "status": "pass"}]}, at=t1)
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        now = (await c.get("/api/v1/sync/posture", headers=headers)).json()
+        assert [(i["check"], i["status"]) for i in now["items"]] == [("firewall", "pass")]
+
+        then = (
+            await c.get(
+                "/api/v1/sync/posture",
+                params={"as_of": (t0 + timedelta(hours=1)).isoformat()},
+                headers=headers,
+            )
+        ).json()
+        assert [(i["check"], i["status"]) for i in then["items"]] == [("firewall", "fail")]
+
+        naive = await c.get(
+            "/api/v1/sync/posture",
+            params={"as_of": "2026-08-01T00:00:00"},
+            headers=headers,
+        )
+        assert naive.status_code == 422
+        assert "timezone" in naive.json()["detail"]
+
+
+async def test_posture_sweep_is_org_scoped():
+    (foreign,) = await mk_devices(1, org_id=OTHER_ORG)
+    await ingest(foreign, "posture", POSTURE)
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        body = (await c.get("/api/v1/sync/posture", headers=headers)).json()
+    assert body["items"] == []
+
+
+async def test_posture_requires_a_token():
+    async with client() as c:
+        resp = await c.get("/api/v1/sync/posture")
+    assert resp.status_code == 401
+
+
+async def test_change_feed_covers_posture():
+    # kind=posture rides the same FACT_TABLES dispatch as every other fact
+    # kind — this proves it end to end: ingest, amend one check, and both
+    # halves of the amend appear in the feed while the untouched check stays
+    # out of it.
+    (device_id,) = await mk_devices(1)
+    await ingest(
+        device_id,
+        "posture",
+        {
+            "checks": [
+                {"check": "firewall", "status": "fail", "detail": "nftables not loaded"},
+                {"check": "disk-encryption", "status": "pass"},
+            ]
+        },
+        at=datetime.now(UTC) - timedelta(days=2),
+    )
+    watermark = datetime.now(UTC)
+    await ingest(
+        device_id,
+        "posture",
+        {
+            "checks": [
+                {"check": "firewall", "status": "pass"},
+                {"check": "disk-encryption", "status": "pass"},
+            ]
+        },
+        at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        body = (
+            await c.get(
+                "/api/v1/sync/changes",
+                params={"kind": "posture", "since": watermark.isoformat()},
+                headers=headers,
+            )
+        ).json()
+    events = {(i["change"], i["fact_key"], i["payload"].get("status")) for i in body["items"]}
+    # The old belief ended, the new one began; disk-encryption did not move.
+    assert ("superseded", "check:firewall", "fail") in events
+    assert ("recorded", "check:firewall", "pass") in events
+    assert not any(key == "check:disk-encryption" for _, key, _ in events)
+
+
 # --- patches ------------------------------------------------------------------------
 
 

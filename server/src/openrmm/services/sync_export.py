@@ -31,6 +31,7 @@ from openrmm.models.facts import (
     FactHardware,
     FactNetwork,
     FactPatchState,
+    FactPosture,
     FactSoftware,
 )
 from openrmm.models.org import Organization
@@ -41,6 +42,7 @@ from openrmm.schemas.sync import (
     SyncInterfaceOut,
     SyncOrgOut,
     SyncPatchOut,
+    SyncPostureOut,
     SyncSiteOut,
     SyncSoftwareOut,
 )
@@ -365,6 +367,30 @@ async def software_page(
             device_id=r.device_id,
             name=r.fact_key.removeprefix("pkg:"),
             version=str((r.payload or {}).get("version", "")),
+            observed_at=r.valid_during.lower,
+        )
+        for r in rows
+    ]
+    last = (rows[-1].device_id, rows[-1].fact_key) if rows and has_more else None
+    return items, has_more, last
+
+
+async def posture_page(
+    db: AsyncSession, principal: ApiKeyPrincipal, **kw
+) -> tuple[list[SyncPostureOut], bool, tuple | None]:
+    """One row per (device, security check) — the same sweep as software,
+    over fact_posture. The status string passes through untranslated: the
+    agent defines the vocabulary, and deciding what an unassessable check
+    means belongs to whoever carries the consequence of being wrong."""
+    rows = (await db.execute(_fact_sweep(FactPosture, principal, **kw))).all()
+    has_more = len(rows) > kw["limit"]
+    rows = rows[: kw["limit"]]
+    items = [
+        SyncPostureOut(
+            device_id=r.device_id,
+            check=r.fact_key.removeprefix("check:"),
+            status=str((r.payload or {}).get("status", "")),
+            detail=str((r.payload or {}).get("detail", "")),
             observed_at=r.valid_during.lower,
         )
         for r in rows

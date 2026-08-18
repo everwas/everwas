@@ -83,6 +83,7 @@ timezone-aware ISO-8601; a naive timestamp is a 422.
 | `GET /sync/devices` | `devices:read` | `site_id` |
 | `GET /sync/interfaces` | `devices:read` | `device_id`, `site_id`, `as_of`, `knew_at` |
 | `GET /sync/software` | `devices:read` | `device_id`, `site_id`, `as_of`, `knew_at` |
+| `GET /sync/posture` | `devices:read` | `device_id`, `site_id`, `as_of`, `knew_at` |
 | `GET /sync/patches` | `patches:read` | `device_id`, `site_id`, `as_of`, `knew_at` |
 | `GET /sync/changes` | `devices:read` | `kind` (required), `since` (required), `device_id`, `site_id` |
 
@@ -139,6 +140,26 @@ state.
 install path, and install date are not collected by the agent today; if
 that changes the fields will be added, not repurposed.
 
+### `GET /sync/posture`
+
+Security posture, one row per (device, security check) — per-check rather
+than a rollup because the check set grows, and a check added since a
+machine's last assessment never ran there, which is different from failing
+there.
+
+| Field | Type | Notes |
+|---|---|---|
+| `device_id` | uuid | |
+| `check` | str | The check's stable name (`disk-encryption`, `firewall`, `antivirus`, ...) — the per-device natural key. A check **absent** from a device's rows never ran on it; absence is not a failure |
+| `status` | str | Agent-defined verdict: `pass`, `fail`, `not_applicable` today, and new values may appear before consumers learn them. **Treat any unknown value as not-assessed, never as failed** — only an explicit `fail` is a failure. `not_applicable` means the check ran and could not assess that platform |
+| `detail` | str | Human-oriented explanation. `""` when the agent gave none — the verdict stands on its own |
+| `observed_at` | ts | When the machine last reported this verdict |
+
+The three-state rule is load-bearing: a consumer gating network access on
+posture (the l2trace remediation/quarantine integration) must read
+"not assessed" as *no verdict*, because misreading it as `fail` cuts a
+healthy machine off the network.
+
 ### `GET /sync/patches`
 
 `{device_id, external_id, title, kind, severity, kb_ids[], cves[],
@@ -152,7 +173,7 @@ this surface.
 
 ### Time travel: `as_of` and `knew_at`
 
-The three fact sweeps accept both bitemporal axes:
+The four fact sweeps accept both bitemporal axes:
 
 - `as_of` — valid time: *what was true on the machines at T?*
 - `knew_at` — record time: *what did the server believe at T?*
@@ -197,6 +218,8 @@ without meaning anything durable:
 - `devices.status` — flaps `active` ↔ `offline` on the heartbeat threshold
   (90 s by default). Sync it as reachability telemetry, not as inventory.
 - `*.observed_at` — moves with every agent report even when values do not.
+  Posture is the sharpest case: every assessment cycle moves it even when
+  every verdict is unchanged, so diff posture on `(check, status, detail)`.
 - `patches.status` — while an approval workflow is mid-flight.
 
 ## Errors
