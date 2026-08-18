@@ -65,6 +65,13 @@ const jsonLd = {
         } as ConstructorParameters<typeof Tracker>[0]);
         tracker.start();
 
+        // Visiting with ?verify anywhere in the query marks the session as
+        // ours, so verification passes can be excluded from reading metrics.
+        // (Requires the 'purpose' metadata key enabled on the project.)
+        if (new URLSearchParams(location.search).has('verify')) {
+          tracker.setMetadata('purpose', 'verification');
+        }
+
         // Components stay tracker-agnostic: they dispatch openrmm:track on
         // the document, and only this file knows a tracker exists.
         document.addEventListener('openrmm:track', (e) => {
