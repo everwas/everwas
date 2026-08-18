@@ -78,6 +78,32 @@ jobs:
       - run: go test ./...
       - run: go build ./cmd/openrmm-agent
 
+  # The MSI is assembled by wixl, which parses parts of the WiX schema it does
+  # not implement and drops them without a word: a Secure property, a
+  # HideTarget flag, a Before/After sequence. Each of those silently produces
+  # a package that installs and is wrong, so the package is built on every
+  # change and its database is inspected. Unsigned on purpose here; signing is
+  # the release workflow's job and needs a key CI has no business holding.
+  windows-package:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+      - run: sudo apt-get update && sudo apt-get install -y msitools
+      - run: GOOS=windows GOARCH=amd64 go build -trimpath -o /tmp/openrmm-agent.exe ./cmd/openrmm-agent
+      - name: Build and inspect the MSI
+        env:
+          OPENRMM_ALLOW_UNSIGNED: "1"
+        run: |
+          ./packaging/windows/build-msi.sh \
+            --exe /tmp/openrmm-agent.exe --arch amd64 \
+            --version 2026.08.17.1 --out /tmp/msi
+
   web:
     runs-on: ubuntu-latest
     defaults:

@@ -18,10 +18,17 @@
 #   MINISIGN_SECRET_KEY_FILE   path to the release signing secret key.
 #   MINISIGN_PASSWORD          its passphrase, fed to minisign on stdin.
 #
+# The Windows half needs Authenticode as well, which is a different key and a
+# different failure. See packaging/windows/sign.sh for the OPENRMM_SIGN_*
+# variables; the post-build hook below fails the whole run without them,
+# because an unsigned agent trains operators to click past SmartScreen.
+#
 # For a local build that is knowingly unsigned, opt out on purpose by adding
 #   -X github.com/rsp2k/openrmm/agent/internal/update.DevBuild=true
-# to the ldflags below. That build will accept an artifact signed by a key the
-# server supplies, so it must never leave a workstation.
+# to the ldflags below, and set OPENRMM_ALLOW_UNSIGNED=1 for the Authenticode
+# half. Such a build will accept an artifact signed by a key the server
+# supplies and will make Windows warn about an unknown publisher, so it must
+# never leave a workstation.
 version: 2
 
 project_name: openrmm-agent
@@ -52,6 +59,22 @@ builds:
       - amd64
       - arm64
     mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      # A build hook is the last point where the binary is still a loose file.
+      # GoReleaser's own binary_signs stage runs after every build has
+      # finished, which is too late to get a signed exe into the cab of an MSI
+      # built from it, and signing after the archive stage would leave the
+      # copy inside the zip unsigned: the copy that ends up on a host.
+      #
+      # The hook returns immediately for linux and darwin. What guarantees the
+      # Windows artifacts are signed is not this line, it is
+      # packaging/windows/check-release.sh, which opens the finished zip and
+      # the MSI and fails the release on what it finds inside.
+      post:
+        - cmd: >-
+            ./packaging/windows/goreleaser-hook.sh
+            --os {{ .Os }} --arch {{ .Arch }}
+            --path "{{ .Path }}" --version "{{ .Version }}"
 
 universal_binaries:
   # One darwin artifact that runs on Intel and Apple silicon. replace: true
@@ -133,6 +156,13 @@ nfpms:
 checksum:
   name_template: SHA256SUMS
   algorithm: sha256
+  extra_files:
+    # The MSI is built by the Windows build hook, not by GoReleaser, so it is
+    # not an artifact GoReleaser knows about. Listing it here puts its hash in
+    # SHA256SUMS, which is the file the minisign signature below covers: that
+    # is the whole verification chain for the MSI, since the agent's own
+    # update path never downloads one.
+    - glob: ./dist/*.msi
 
 signs:
   # Release signing is minisign, and the agent verifies it with the embedded
@@ -174,11 +204,17 @@ release:
   # .minisig files before the fleet can see them.
   draft: true
   prerelease: auto
+  extra_files:
+    # Uploaded alongside the archives. The MSI has no .minisig of its own:
+    # its hash is in SHA256SUMS and that file is signed, and on Windows the
+    # signature that actually gates execution is the Authenticode one the
+    # installer already carries.
+    - glob: ./dist/*.msi
   footer: |
     ## Verifying this release
 
-    Every artifact has a matching `.minisig`. With the project public key in
-    `openrmm-agent.pub`:
+    Every GoReleaser artifact has a matching `.minisig`. With the project
+    public key in `openrmm-agent.pub`:
 
     ```
     minisign -Vm openrmm-agent_{{ .Version }}_linux_amd64.tar.gz -p openrmm-agent.pub
@@ -186,3 +222,14 @@ release:
     ```
 
     Agents verify the same signature themselves before applying an update.
+
+    The `.msi` is covered by `SHA256SUMS` rather than by its own `.minisig`,
+    and carries an Authenticode signature. On Windows:
+
+    ```powershell
+    Get-AuthenticodeSignature .\openrmm-agent_{{ .Version }}_windows_amd64.msi |
+      Format-List Status, SignerCertificate
+    ```
+
+    `Status` must be `Valid`. Anything else, including `NotSigned` or
+    `UnknownError`, means do not deploy it.

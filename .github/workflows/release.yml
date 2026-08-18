@@ -16,6 +16,14 @@ on:
         description: "Build and sign without publishing"
         type: boolean
         default: true
+      allow_unsigned:
+        # The only way to exercise this workflow before a code signing
+        # certificate exists. Deliberately a separate switch from dry_run, so
+        # nobody reaches it by leaving a default alone, and the artifacts it
+        # produces are named for what they are.
+        description: "DANGEROUS: skip Authenticode signing (dry runs only, artifacts are undeployable)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # creating the release and uploading assets
@@ -42,8 +50,27 @@ jobs:
         with:
           go-version-file: agent/go.mod
 
-      - name: Install minisign
-        run: sudo apt-get update && sudo apt-get install -y minisign
+      - name: Install minisign, msitools and osslsigncode
+        # msitools builds the MSI (wixl) and inspects it (msiinfo, msibuild);
+        # osslsigncode is the signature check. WiX itself is not an option
+        # here: it installs as a dotnet tool on Linux and then refuses to
+        # build, warning that only Windows is supported. See
+        # agent/packaging/windows/openrmm-agent.wxs.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign msitools osslsigncode
+
+      - name: Fetch jsign
+        # Pinned by hash, not by tag. jsign is what signs the exe and the MSI,
+        # so a swapped jar signs everything the fleet trusts.
+        env:
+          JSIGN_VERSION: "7.5"
+          JSIGN_SHA256: 602a51c3545a6dc4fb99bd2ea7152b26d1345916d0c93ddfbd5936cb735af91c
+        run: |
+          set -euo pipefail
+          url="https://repo1.maven.org/maven2/net/jsign/jsign/${JSIGN_VERSION}/jsign-${JSIGN_VERSION}.jar"
+          curl -sSLo "$RUNNER_TEMP/jsign.jar" "$url"
+          echo "$JSIGN_SHA256  $RUNNER_TEMP/jsign.jar" | sha256sum -c -
 
       - name: Write the signing key
         # The secret is a file on disk for the length of one job. minisign has
@@ -72,12 +99,52 @@ jobs:
             exit 1
           fi
 
+      - name: Check the Authenticode signing key is present
+        # Same shape as the minisign gate above, for the same reason: the
+        # release either has a signature or it does not happen. An unsigned
+        # Windows agent is worse than a missing one. SmartScreen and a good
+        # share of EDR products stop it, and the way an admin gets past that
+        # is to click "run anyway" and to teach their colleagues to do the
+        # same, which outlives this release by years.
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) }}
+        env:
+          OPENRMM_SIGN_BACKEND: ${{ secrets.OPENRMM_SIGN_BACKEND }}
+          OPENRMM_SIGN_KEYSTORE: ${{ secrets.OPENRMM_SIGN_KEYSTORE }}
+          OPENRMM_SIGN_ALIAS: ${{ secrets.OPENRMM_SIGN_ALIAS }}
+          OPENRMM_SIGN_SECRET: ${{ secrets.OPENRMM_SIGN_SECRET }}
+        run: |
+          missing=""
+          for v in OPENRMM_SIGN_BACKEND OPENRMM_SIGN_KEYSTORE OPENRMM_SIGN_ALIAS OPENRMM_SIGN_SECRET; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing Authenticode signing secrets:$missing."\
+                 "No code signing certificate has been acquired yet, so this"\
+                 "release cannot ship a Windows agent. See"\
+                 "docs/windows-code-signing.md for what buying one involves"\
+                 "(OV vs EV, the SmartScreen reputation cost of a fresh OV"\
+                 "certificate, and the hardware or cloud HSM the CA/Browser"\
+                 "Forum has required for the private key since June 2023)."\
+                 "To build knowingly-undeployable artifacts for testing, run"\
+                 "this workflow manually with allow_unsigned checked."
+            exit 1
+          fi
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
           MINISIGN_SECRET_KEY_FILE: ${{ runner.temp }}/minisign.key
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+          # Consumed by the Windows post-build hook: it signs the exe and
+          # builds the MSI around the signed copy, before the archive stage
+          # can pick up an unsigned one.
+          OPENRMM_SIGN_BACKEND: ${{ secrets.OPENRMM_SIGN_BACKEND }}
+          OPENRMM_SIGN_KEYSTORE: ${{ secrets.OPENRMM_SIGN_KEYSTORE }}
+          OPENRMM_SIGN_ALIAS: ${{ secrets.OPENRMM_SIGN_ALIAS }}
+          OPENRMM_SIGN_SECRET: ${{ secrets.OPENRMM_SIGN_SECRET }}
+          OPENRMM_SIGN_JSIGN_JAR: ${{ runner.temp }}/jsign.jar
+          OPENRMM_ALLOW_UNSIGNED: ${{ (github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) && '1' || '' }}
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
@@ -100,6 +167,14 @@ jobs:
           minisign -V -p "$RUNNER_TEMP/pub" -m "$artifact"
           echo "verified $artifact against the embedded trust anchor"
 
+      # Opens the zip an operator downloads and looks at the exe inside it,
+      # rather than trusting that the file the signing step was handed is the
+      # file that shipped. Also insists an MSI exists at all: "the MSI is
+      # fine" and "no MSI was built" look identical from outside dist/.
+      - name: Verify the Windows artifacts are signed
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) }}
+        run: ./packaging/windows/check-release.sh dist
+
       - name: Shred the key
         if: always()
         run: shred -u "$RUNNER_TEMP/minisign.key" 2>/dev/null || true
@@ -107,7 +182,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: dist
+          # The name carries the warning, because an artifact zip outlives the
+          # run page it was downloaded from.
+          name: ${{ (inputs.allow_unsigned && 'dist-UNSIGNED-DO-NOT-DEPLOY') || 'dist' }}
           path: agent/dist/*
           retention-days: 7
 

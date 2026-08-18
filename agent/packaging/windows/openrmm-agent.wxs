@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSI source for the OpenRMM agent.
+
+  Written against the WiX v3 schema because the MSI is built on Linux with
+  msitools' wixl, not with WiX. WiX v4/v5/v6 install fine as a dotnet tool on
+  Linux and then refuse to do anything useful: every build prints "The WiX
+  Toolset only supports Windows ... all behavior after this point is
+  undefined" and fails on Directory/@Name with WIX0389, because the name
+  validation runs through .NET path APIs that behave differently off Windows
+  (wixtoolset/issues#7154, open since v4 rc1). Building this file with WiX on
+  a Windows runner would work; it is a supported configuration and the schema
+  here is close enough that porting is mostly renaming Product to Package.
+
+  Everything below assumes wixl's subset, and wixl is quiet about the parts it
+  does not implement, so three things are done by hand here and two more are
+  patched into the built MSI by build-msi.sh:
+
+    - No MajorUpgrade element. The Upgrade/UpgradeVersion rows and the
+      RemoveExistingProducts scheduling are written out longhand.
+    - No Guid="*". Component GUIDs are fixed literals, which is what the MSI
+      component rules want anyway.
+    - No Before/After resolution in InstallExecuteSequence. wixl accepts the
+      attributes and then numbers custom actions 1, 2, 3... in document order,
+      which put deferred actions ahead of InstallInitialize and earned a 2762
+      "cannot write script record" at run time. Every Custom element below
+      carries an explicit Sequence instead. The standard anchors they are
+      placed against: InstallInitialize 1500, RemoveFiles 3500, InstallFiles
+      4000, InstallFinalize 6600.
+    - Property/@Secure and CustomAction/@HideTarget are dropped silently.
+      build-msi.sh sets SecureCustomProperties and the HideTarget type bit
+      afterwards and fails if either did not take.
+
+  Variables the build script passes with -D:
+    Version         MSI ProductVersion, numeric. NOT the CalVer string: MSI
+                    caps the first field at 255 and 2026 does not fit, so
+                    build-msi.sh maps 2026.08.17.1 to 26.8.1701 and version
+                    comparison keeps working. See that script for why the day
+                    is folded into the third field.
+    DisplayVersion  the real CalVer string, for humans and for inventory.
+    AgentExe        path to the already-Authenticode-signed openrmm-agent.exe.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="OpenRMM Agent"
+           Language="1033"
+           Version="$(var.Version)"
+           Manufacturer="OpenRMM"
+           UpgradeCode="C715EB57-9DA9-4A77-AD9E-FA4A78DE65F0">
+
+    <!--
+      The UpgradeCode above is permanent and shared by the x64 and arm64
+      packages on purpose. Both install to the same directory and register the
+      same service name, so they must never coexist; one UpgradeCode makes
+      installing either one remove the other instead of producing two
+      Add/Remove entries fighting over C:\Program Files\OpenRMM\Agent.
+    -->
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Manufacturer="OpenRMM"
+             Description="OpenRMM remote monitoring and management agent"
+             Comments="Agent version $(var.DisplayVersion)" />
+
+    <Media Id="1" Cabinet="agent.cab" EmbedCab="yes" />
+
+    <!--
+      Downgrade detection and major-upgrade removal, spelled out because wixl
+      has no MajorUpgrade element. RemoveExistingProducts runs immediately
+      after InstallInitialize so the old product is gone (service stopped and
+      deleted by its own uninstall custom action) before the new files land.
+      Scheduling it late instead would try to overwrite openrmm-agent.exe
+      while the service still has it open, and Windows answers that with a
+      reboot prompt or an in-use failure.
+    -->
+    <Upgrade Id="C715EB57-9DA9-4A77-AD9E-FA4A78DE65F0">
+      <UpgradeVersion Minimum="0.0.0"
+                      IncludeMinimum="yes"
+                      Maximum="$(var.Version)"
+                      IncludeMaximum="no"
+                      Property="OLDERVERSIONBEINGUPGRADED" />
+      <UpgradeVersion Minimum="$(var.Version)"
+                      IncludeMinimum="yes"
+                      OnlyDetect="yes"
+                      Property="NEWERVERSIONDETECTED" />
+    </Upgrade>
+    <Condition Message="A newer version of the OpenRMM Agent is already installed. Remove it first if you really mean to downgrade.">
+      NOT NEWERVERSIONDETECTED
+    </Condition>
+    <Condition Message="The OpenRMM Agent requires 64-bit Windows.">
+      VersionNT64
+    </Condition>
+
+    <!--
+      Unattended-install properties. They have to reach the elevated
+      server-side install, and msiexec only forwards a command-line property
+      across that hand-off if it is listed in SecureCustomProperties;
+      otherwise the agent installs and never enrolls. Secure="yes" here is
+      documentation only, because wixl ignores it: build-msi.sh appends these
+      three to the SecureCustomProperties row and fails if they are not there
+      afterwards.
+
+      MsiHiddenProperties keeps TOKEN's value out of the MSI log.
+      CustomAction/@HideTarget on the enrolling action covers the other half,
+      the resolved command line, and is likewise applied by build-msi.sh.
+      Neither hides the token from the process list for the seconds the
+      enrollment takes, so mint short-lived one-time tokens and treat one that
+      has been through a deployment tool as spent.
+    -->
+    <Property Id="SERVER" Secure="yes" />
+    <Property Id="TOKEN" Secure="yes" />
+    <Property Id="PURGE" Secure="yes" />
+    <Property Id="MsiHiddenProperties" Value="TOKEN" />
+
+    <Property Id="ARPNOREPAIR" Value="1" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/rsp2k/openrmm" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="VendorFolder" Name="OpenRMM">
+          <Directory Id="INSTALLFOLDER" Name="Agent" />
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="AgentExe"
+                 Guid="E26E21E1-8FC2-46C6-83C9-23F5B7245901"
+                 Win64="yes">
+        <File Id="AgentExeFile"
+              Name="openrmm-agent.exe"
+              Source="$(var.AgentExe)"
+              KeyPath="yes" />
+      </Component>
+
+      <!--
+        Written under the 64-bit view so an inventory query and the agent's
+        own self-report agree. DisplayVersion in Add/Remove Programs comes
+        from ProductVersion and is therefore the mapped numeric one; this key
+        is where the CalVer string a human recognises actually lives.
+      -->
+      <Component Id="AgentRegistry"
+                 Guid="DCF20F57-BC0D-46AD-BE8A-5F33FADC1E85"
+                 Win64="yes">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\OpenRMM\Agent"
+                       Name="Version"
+                       Type="string"
+                       Value="$(var.DisplayVersion)"
+                       KeyPath="yes" />
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\OpenRMM\Agent"
+                       Name="InstallPath"
+                       Type="string"
+                       Value="[INSTALLFOLDER]" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Agent" Title="OpenRMM Agent" Level="1" Absent="disallow">
+      <ComponentRef Id="AgentExe" />
+      <ComponentRef Id="AgentRegistry" />
+    </Feature>
+
+    <!--
+      Service lifecycle is handed to the agent's own install/uninstall
+      subcommands rather than to ServiceInstall/ServiceControl rows.
+
+      Not for convenience: svc.Install does three things the MSI service
+      tables cannot express. It sets recovery actions (restart at 5s, 30s,
+      60s), it sets SERVICE_CONFIG_FAILURE_ACTIONS_FLAG so a non-crash
+      non-zero exit still counts as a failure worth restarting, and it
+      updates an existing service in place so its SID and any operator ACL
+      edits survive. Without the second one a self-update leaves the host
+      with no agent process until the next reboot, because the agent exits
+      cleanly-but-non-zero on purpose to get itself restarted. An MSI that
+      registered the service itself would silently drop all three, and the
+      loss would only show up as hosts that stop reporting after an update.
+
+      These are type 18 custom actions: the executable is the File table row
+      above, the command line is the Target column, and MSI resolves both
+      when it writes the execution script, so [SERVER] and [TOKEN] are
+      already substituted by the time the deferred action runs.
+    -->
+    <CustomAction Id="RegisterAgent"
+                  FileKey="AgentExeFile"
+                  ExeCommand="install --path &quot;[#AgentExeFile]&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <CustomAction Id="RegisterAgentEnroll"
+                  FileKey="AgentExeFile"
+                  ExeCommand="install --path &quot;[#AgentExeFile]&quot; --server &quot;[SERVER]&quot; --token &quot;[TOKEN]&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check"
+                  HideTarget="yes" />
+    <!--
+      HideTarget above is what keeps the resolved command line, token
+      included, out of the MSI log. wixl parses the attribute and drops it, so
+      build-msi.sh ORs the 8192 type bit in afterwards and check-msi.sh fails
+      the build if it is not there. The attribute stays because it is the
+      correct authoring and because a build with real WiX would honour it.
+    -->
+
+    <!--
+      Undoes a registration whose install later failed. Without it a rollback
+      removes the binary but leaves the service registered, and the SCM spends
+      the rest of the host's life trying to start a path that is not there.
+      Return="ignore" because a rollback that fails must not stop the rest of
+      the rollback.
+    -->
+    <CustomAction Id="RollbackRegisterAgent"
+                  FileKey="AgentExeFile"
+                  ExeCommand="uninstall"
+                  Execute="rollback"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="UnregisterAgent"
+                  FileKey="AgentExeFile"
+                  ExeCommand="uninstall"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <!--
+      PURGE=1 additionally deletes C:\ProgramData\OpenRMM\Agent, which holds
+      agent.json: the agent id and the NATS secret. Default is to keep it.
+
+      Keeping it means an uninstall does NOT revoke anything. The server still
+      trusts that identity, and a later reinstall re-adopts it silently. That
+      is the right default anyway, because the identity has to survive the
+      uninstall half of every major upgrade, and because a reinstall-to-fix-it
+      is the common case and it should not need a fresh enrollment token that
+      whoever is doing it at 2am does not have. Decommissioning a host is a
+      server-side revoke; say so in the docs rather than pretending an
+      installer can do it.
+
+      NOT UPGRADINGPRODUCTCODE is the guard that keeps a major upgrade from
+      taking the purge path: during RemoveExistingProducts the old product
+      gets uninstalled, and a purge there would destroy the identity on every
+      version bump.
+    -->
+    <CustomAction Id="PurgeAgentIdentity"
+                  FileKey="AgentExeFile"
+                  ExeCommand="uninstall --purge"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <RemoveExistingProducts Sequence="1501" />
+
+      <!--
+        3400 and 3410 are before RemoveFiles at 3500, because the SCM keeps a
+        handle on a running service's image and RemoveFiles would either fail
+        or defer the delete to the next reboot.
+      -->
+      <Custom Action="UnregisterAgent" Sequence="3400">REMOVE~="ALL"</Custom>
+      <Custom Action="PurgeAgentIdentity" Sequence="3410">REMOVE~="ALL" AND PURGE=1 AND NOT UPGRADINGPRODUCTCODE</Custom>
+
+      <!--
+        4100 onwards is after InstallFiles at 4000, so the exe the custom
+        actions run is the one just laid down. The rollback action is
+        sequenced ahead of the two it undoes; MSI runs rollback records in
+        reverse.
+
+        Return="check" on the register actions is deliberate: a bad or expired
+        token fails the whole install. An MSI that reports success while
+        leaving an unenrolled agent behind is invisible to whatever pushed it,
+        and someone finds out weeks later that a GPO rollout enrolled nothing.
+      -->
+      <Custom Action="RollbackRegisterAgent" Sequence="4100">NOT REMOVE~="ALL"</Custom>
+      <Custom Action="RegisterAgentEnroll" Sequence="4110">NOT REMOVE~="ALL" AND SERVER AND TOKEN</Custom>
+      <Custom Action="RegisterAgent" Sequence="4120">NOT REMOVE~="ALL" AND NOT (SERVER AND TOKEN)</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>
