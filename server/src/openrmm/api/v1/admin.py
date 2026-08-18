@@ -24,6 +24,7 @@ from openrmm.schemas.admin import (
     UserOut,
     UserRoleIn,
 )
+from openrmm.security.tenancy import caller_org, scope_to_org
 from openrmm.services.admin import (
     KNOWN_SCOPES,
     AdminError,
@@ -53,7 +54,9 @@ def _refused(exc: AdminError) -> HTTPException:
 
 @router.get("/users")
 async def list_users(db: DbSession, _user: CurrentUser) -> list[UserOut]:
-    rows = await db.execute(select(User).order_by(User.email))
+    rows = await db.execute(
+        scope_to_org(select(User).order_by(User.email), User.org_id, caller_org(_user))
+    )
     return [UserOut.model_validate(u) for u in rows.scalars()]
 
 
@@ -117,7 +120,11 @@ async def enable_user(user_id: uuid.UUID, db: DbSession, user: CurrentUser) -> U
 
 @router.get("/api-keys")
 async def list_api_keys(db: DbSession, _user: CurrentUser) -> list[ApiKeyOut]:
-    rows = await db.execute(select(ApiKey).order_by(ApiKey.created_at.desc()))
+    rows = await db.execute(
+        scope_to_org(
+            select(ApiKey).order_by(ApiKey.created_at.desc()), ApiKey.org_id, caller_org(_user)
+        )
+    )
     return [ApiKeyOut.model_validate(k) for k in rows.scalars()]
 
 
@@ -161,7 +168,9 @@ async def delete_api_key(key_id: uuid.UUID, db: DbSession, user: CurrentUser) ->
 
 @router.get("/sites")
 async def list_sites(db: DbSession, _user: CurrentUser) -> list[SiteOut]:
-    rows = await db.execute(select(Site).order_by(Site.name))
+    rows = await db.execute(
+        scope_to_org(select(Site).order_by(Site.name), Site.org_id, caller_org(_user))
+    )
     return [SiteOut.model_validate(s) for s in rows.scalars()]
 
 

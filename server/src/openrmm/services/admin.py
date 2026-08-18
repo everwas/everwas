@@ -61,7 +61,7 @@ async def create_user(
     if existing is not None:
         raise AdminError(f"{email} already has an account")
 
-    user = User(email=email, password_hash=hash_password(password), role=role)
+    user = User(org_id=actor_org, email=email, password_hash=hash_password(password), role=role)
     db.add(user)
     db.add(
         AuditLog(
@@ -168,6 +168,7 @@ async def mint_api_key(
     key_id = secrets.token_hex(11)
     secret = secrets.token_urlsafe(32)
     key = ApiKey(
+        org_id=actor_org,
         name=name,
         key_id=key_id,
         secret_hash=hashlib.sha256(secret.encode()).hexdigest(),
@@ -220,7 +221,11 @@ async def create_site(db: AsyncSession, *, name: str, actor: str, actor_org: Org
     existing = (await db.execute(select(Site).where(Site.name == name))).scalar_one_or_none()
     if existing is not None:
         raise AdminError(f"a site called {name!r} already exists")
-    site = Site(name=name)
+    # The acting admin's organization, not the default. The boundary was
+    # enforced on reads before writes, which left it half true: a new site
+    # landed in the default org, so the admin who made it could not see it and
+    # anyone in the default org could.
+    site = Site(name=name, org_id=actor_org)
     db.add(site)
     db.add(
         AuditLog(
