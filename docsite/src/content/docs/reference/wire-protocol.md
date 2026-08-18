@@ -88,7 +88,7 @@ All JSON messages share:
 |---|---|---|
 | `agents.{id}.heartbeat` | core NATS | every 30 s with jitter; carries `version`, `uptime_s`, `schedule_version`, `seq`. Offline threshold 90 s. Never spooled |
 | `agents.{id}.telemetry` | JetStream `TELEMETRY` (max-age 48 h) | every 60 s; CPU, memory, swap, load, per-mount disk, network, service-state deltas |
-| `agents.{id}.inventory.{kind}` | JetStream `INVENTORY` (per-subject max-msgs 1) | kind is one of `hardware`, `software`, `network`, `logins`, `processes`, `services`, `patchstate`; full snapshot plus `snapshot_hash` |
+| `agents.{id}.inventory.{kind}` | JetStream `INVENTORY` (per-subject max-msgs 1) | kind is one of `hardware`, `software`, `network`, `logins`, `posture`, `processes`, `services`, `patchstate`; full snapshot plus `snapshot_hash` |
 | `agents.{id}.jobs.{job_id}.progress` | core NATS | `{seq, pct, phase, note}` |
 | `agents.{id}.jobs.{job_id}.output` | JetStream `JOBOUT` (max-age 24 h) | chunks of stdout/stderr, base64, 256 KiB max each; 8 MiB per-job cap, then truncate and flag. Scheduled runs also carry `entry_id` |
 | `agents.{id}.jobs.{job_id}.result` | JetStream `RESULTS` | terminal: `{status, exit_code, duration_ms, truncated}`. Patch jobs add `installed[]`, `failed{}`, `reboot_required` |

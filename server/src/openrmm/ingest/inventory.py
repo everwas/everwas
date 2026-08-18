@@ -1,9 +1,9 @@
 """Inventory ingest: routes snapshot kinds to the right store.
 
-- hardware, software, patchstate, network -> bitemporal fact tables
-                                   (sequenced amend)
-- processes, services            -> device_snapshots (latest-only; too churny
-                                    for belief history)
+- hardware, software, patchstate,
+  network, logins, posture        -> bitemporal fact tables (sequenced amend)
+- processes, services             -> device_snapshots (latest-only; too churny
+                                     for belief history)
 """
 
 import json
@@ -20,7 +20,13 @@ from openrmm.models.telemetry import DeviceSnapshot
 
 log = structlog.get_logger()
 
-FACT_KINDS = {"hardware", "software", "patchstate", "network", "logins"}
+# Membership here is ROUTING, not documentation: parse_inventory refuses
+# subjects for kinds outside this set (plus SNAPSHOT_KINDS), and
+# apply_inventory sends anything not listed here to the latest-only snapshot
+# store. Posture was once handled in _facts_from but absent from this set, and
+# the only symptom was silence: the agent published, the subject was dropped,
+# and no fact ever appeared.
+FACT_KINDS = {"hardware", "software", "patchstate", "network", "logins", "posture"}
 SNAPSHOT_KINDS = {"processes", "services"}
 
 

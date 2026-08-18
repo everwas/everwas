@@ -6,7 +6,6 @@ since is not one that machine failed, it is one that never ran on it. Only
 per-check storage can say that.
 """
 
-
 import pytest
 
 from openrmm.db.engine import session_scope
@@ -92,10 +91,10 @@ async def test_the_posture_table_stores_and_reads_back():
         from sqlalchemy import select
 
         rows = (
-            await db.execute(
-                select(FactPosture).where(FactPosture.device_id == device_id)
-            )
-        ).scalars().all()
+            (await db.execute(select(FactPosture).where(FactPosture.device_id == device_id)))
+            .scalars()
+            .all()
+        )
         stored = {r.fact_key: r.payload for r in rows}
 
     assert stored["check:firewall"]["status"] == "pass"
@@ -122,7 +121,9 @@ async def test_a_check_added_later_has_no_history_before_it_existed():
     # First assessment: only the firewall check existed.
     async with session_scope() as db:
         await record_facts(
-            db, "posture", device_id,
+            db,
+            "posture",
+            device_id,
             _facts_from("posture", _snapshot({"check": "firewall", "status": "pass"})),
         )
 
@@ -145,13 +146,17 @@ async def test_a_check_added_later_has_no_history_before_it_existed():
         from sqlalchemy import select
 
         rows = (
-            await db.execute(
-                select(FactPosture).where(
-                    FactPosture.device_id == device_id,
-                    FactPosture.fact_key == "check:disk-encryption",
+            (
+                await db.execute(
+                    select(FactPosture).where(
+                        FactPosture.device_id == device_id,
+                        FactPosture.fact_key == "check:disk-encryption",
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
     assert len(rows) == 1, (
         "the newly added check acquired more than one belief, so the machine "
@@ -164,3 +169,86 @@ def test_an_unknown_kind_is_still_refused():
     # silently accept anything.
     with pytest.raises(ValueError):
         _facts_from("not-a-kind", {})
+
+
+# --- routing: FACT_KINDS membership is what makes posture real -------------------
+
+
+def test_the_posture_subject_is_accepted_at_the_boundary():
+    # parse_inventory refuses subjects for kinds it does not know. _facts_from
+    # knowing how to flatten posture is worthless if the subject never gets
+    # that far — which is exactly what happened while "posture" was handled in
+    # the flattener but missing from FACT_KINDS: the agent published, the
+    # subject was dropped, and no fact ever appeared.
+    import json
+    from datetime import UTC, datetime
+
+    from openrmm.ingest.inventory import parse_inventory
+
+    agent_id = uuid7()
+    envelope = json.dumps(
+        {
+            "agent_id": str(agent_id),
+            "ts": datetime.now(UTC).isoformat(),
+            "data": _snapshot({"check": "firewall", "status": "pass"}),
+        }
+    ).encode()
+    parsed = parse_inventory(f"agents.{agent_id}.inventory.posture", envelope)
+    assert parsed is not None
+    parsed_agent, kind, _, data = parsed
+    assert parsed_agent == agent_id
+    assert kind == "posture"
+    assert data["checks"][0]["check"] == "firewall"
+
+
+async def test_apply_inventory_routes_posture_to_facts_not_snapshots():
+    # The other half of the same routing: a kind outside FACT_KINDS falls
+    # through to the latest-only snapshot store, which keeps no history and
+    # feeds no sweep. Posture must land in fact_posture.
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from openrmm.ingest.inventory import apply_inventory
+    from openrmm.models.telemetry import DeviceSnapshot
+
+    async with session_scope() as db:
+        device = Device(
+            id=uuid7(),
+            hostname="posture-routing",
+            os_family=OsFamily.linux,
+            tags=[],
+            status=DeviceStatus.active,
+        )
+        db.add(device)
+        await db.flush()
+        device_id = device.id
+
+    async with session_scope() as db:
+        await apply_inventory(
+            db,
+            device_id,
+            "posture",
+            datetime.now(UTC),
+            _snapshot({"check": "firewall", "status": "pass"}),
+        )
+
+    async with session_scope() as db:
+        facts = (
+            (await db.execute(select(FactPosture).where(FactPosture.device_id == device_id)))
+            .scalars()
+            .all()
+        )
+        snapshots = (
+            (
+                await db.execute(
+                    select(DeviceSnapshot).where(
+                        DeviceSnapshot.device_id == device_id, DeviceSnapshot.kind == "posture"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert [f.fact_key for f in facts] == ["check:firewall"]
+    assert snapshots == [], "posture was misrouted to the latest-only snapshot store"
