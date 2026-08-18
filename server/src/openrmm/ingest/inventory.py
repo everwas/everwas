@@ -64,6 +64,16 @@ def _facts_from(kind: str, data: dict) -> dict[str, dict]:
             if login.get("user")
         }
 
+    if kind == "posture":
+        # Keyed on the check's stable name. Per-check rather than a rollup so
+        # that a check added later simply has no history before it existed,
+        # and so a single check changing amends only its own belief window.
+        return {
+            f"check:{c['check']}": {k: v for k, v in c.items() if k != "check"}
+            for c in (data.get("checks") or [])
+            if c.get("check")
+        }
+
     if kind == "network":
         # One fact per interface, keyed by name. Per-interface rather than one
         # blob for the machine so that a single NIC changing address amends

@@ -50,6 +50,7 @@ func RefreshNow(ctx context.Context, nc *nats.Conn, agentID string, log *slog.Lo
 		{"software", collectSoftware},
 		{"network", collectNetwork},
 		{"logins", collectLogins},
+		{"posture", collectPosture},
 		{"processes", collectProcesses},
 		{"services", collectServices},
 	}

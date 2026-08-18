@@ -111,6 +111,11 @@ const checkTimeout = 30 * time.Second
 // Unknown rather than taking down the agent. A posture check is the last thing
 // that should be able to kill the process that would tell anyone about it.
 func Run(ctx context.Context, checks []Check, log *slog.Logger) []Result {
+	if log == nil {
+		// A nil logger here would panic inside the panic handler, which is the
+		// one place that must not fail.
+		log = slog.Default()
+	}
 	results := make([]Result, len(checks))
 	var wg sync.WaitGroup
 
