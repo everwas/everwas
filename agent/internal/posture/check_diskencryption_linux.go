@@ -17,6 +17,8 @@ type diskEncryptionCheck struct{}
 
 func (diskEncryptionCheck) Name() string { return "disk-encryption" }
 
+func (diskEncryptionCheck) Category() Category { return CategoryEncryption }
+
 // lsblkNode is the subset of `lsblk --json` we read.
 type lsblkNode struct {
 	Name       string      `json:"name"`
