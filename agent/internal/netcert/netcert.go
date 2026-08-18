@@ -18,11 +18,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -38,6 +41,37 @@ import (
 // physical visit. Forty-five days of a ninety-day certificate is where failed
 // attempts, alarms and somebody noticing all have to fit.
 const RenewAt = 0.5
+
+// UrgentAt is where renewal stops being routine, borrowed from DHCP's
+// rebinding timer T2 at 87.5% of a lease.
+//
+// The point of T2 in DHCP is not that it is another retry: it is that the
+// client CHANGES STRATEGY, having concluded the normal path is broken. Without
+// it a device one day past half life and a device one hour from expiry get
+// treated identically, retried at the same rate and logged at the same
+// severity, when one is routine and the other is about to fall off the
+// network.
+//
+// Where the analogy stops: DHCP rebinding means ask a DIFFERENT server,
+// because DHCP assumes several interchangeable ones. There is exactly one CA
+// here and nothing to rebind to, so past this point the agent can only try
+// harder and say so louder, over the NATS link, which is a separate channel
+// from the HTTPS one that is failing.
+const UrgentAt = 0.875
+
+// RenewJitter spreads a fleet's renewals so they do not arrive together.
+//
+// A hundred machines imaged on the same afternoon hold certificates whose half
+// lives fall within the same few hours, and without this they stampede the CA
+// in one window. The offset is derived from the device's own id, so it is
+// stable: the same machine picks the same point every time rather than
+// wobbling, which is the same deterministic-jitter approach the scheduler uses
+// to spread a fleet across a patch window.
+//
+// Five percent of a ninety-day certificate is four and a half days of spread,
+// taken out of the forty-five days of margin, which is a rounding error
+// against what it buys.
+const RenewJitter = 0.05
 
 const (
 	keyFileName   = "network.key"
@@ -230,6 +264,97 @@ func Load(dir string) (*Material, error) {
 		NotBefore: cert.NotBefore,
 		NotAfter:  cert.NotAfter,
 	}, nil
+}
+
+// Phase is where a certificate sits in its life, which decides how hard the
+// agent tries and how loudly it complains.
+type Phase int
+
+const (
+	// PhaseFresh: nothing to do.
+	PhaseFresh Phase = iota
+	// PhaseDue: past the renewal point, with most of the margin still ahead.
+	// Failures here are ordinary and worth a warning, no more.
+	PhaseDue
+	// PhaseUrgent: past UrgentAt. Renewal has been failing for most of the
+	// margin and the deadline is real. Retry harder, log louder, and tell
+	// somebody who can act.
+	PhaseUrgent
+	// PhaseExpired: the certificate no longer authenticates. Under ADR-0004
+	// the device drops to a remediation VLAN it can still reach the server
+	// from, so this is recoverable rather than terminal, but it is an outage.
+	PhaseExpired
+)
+
+func (p Phase) String() string {
+	switch p {
+	case PhaseFresh:
+		return "fresh"
+	case PhaseDue:
+		return "due"
+	case PhaseUrgent:
+		return "urgent"
+	case PhaseExpired:
+		return "expired"
+	}
+	return "unknown"
+}
+
+// renewalOffset is the per-device share of RenewJitter, in [0, RenewJitter).
+//
+// Derived from the device id so it is STABLE. A random offset re-rolled each
+// time would let a device drift earlier on one check and later on the next,
+// which is both harder to reason about and pointless: the goal is to separate
+// devices from each other, not to separate a device from itself.
+// SHA-256 rather than FNV, and not for cryptographic reasons: FNV-1a
+// multiplies after each byte, so the bytes consumed LAST move mainly the low
+// bits and barely disturb the high ones. Agent ids are UUIDv7, which are
+// time-ordered, so machines enrolled the same afternoon share a long prefix and
+// differ only in the tail. Under FNV they landed on nearly the same offset,
+// which is no spread at all for precisely the mass-deployment fleet this
+// exists to spread. Measured, not assumed: 200 such ids filled 6 of 10 buckets.
+//
+// hash/maphash would be worse still: it is seeded per process, so a device
+// would pick a different offset every time the agent restarted.
+func renewalOffset(id string) float64 {
+	sum := sha256.Sum256([]byte(id))
+	n := binary.BigEndian.Uint32(sum[:4])
+	return float64(n) / float64(math.MaxUint32) * RenewJitter
+}
+
+// PhaseAt reports the certificate's phase for a given device.
+//
+// nil, or a certificate whose validity window makes no sense, is PhaseExpired:
+// the most urgent answer, because a device holding nothing usable is the case
+// this exists to escalate.
+func (m *Material) PhaseAt(now time.Time, id string) Phase {
+	if m == nil {
+		return PhaseExpired
+	}
+	life := m.NotAfter.Sub(m.NotBefore)
+	if life <= 0 {
+		return PhaseExpired
+	}
+	if !now.Before(m.NotAfter) {
+		return PhaseExpired
+	}
+	if now.Before(m.NotBefore) {
+		// Not valid yet, which almost always means the clock is wrong. Treated
+		// as due rather than fresh so the agent asks for a replacement, which
+		// is both harmless and the fastest way to surface it. Not urgent: a
+		// wrong clock is not a deadline.
+		return PhaseDue
+	}
+
+	elapsed := now.Sub(m.NotBefore).Seconds() / life.Seconds()
+	switch {
+	case elapsed >= UrgentAt:
+		return PhaseUrgent
+	case elapsed >= RenewAt+renewalOffset(id):
+		return PhaseDue
+	default:
+		return PhaseFresh
+	}
 }
 
 // DueForRenewal reports whether the certificate is past RenewAt of its life.

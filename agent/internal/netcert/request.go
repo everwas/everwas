@@ -128,7 +128,13 @@ func Ensure(
 	if err != nil {
 		// Nothing on disk was touched. The device still holds whatever it had,
 		// which for a renewal is a certificate with weeks left on it.
-		return nil, err
+		//
+		// That material is returned ALONGSIDE the error rather than discarded,
+		// because how urgent this failure is depends entirely on what is still
+		// on disk: the same error means "retry tomorrow" for a certificate
+		// with three weeks left and "tell the user now" for one expiring
+		// tonight. Returning only the error throws away the difference.
+		return existing, err
 	}
 	m, err := saveAll(dir, keyPEM, certPEM, chainPEM)
 	if err != nil {
