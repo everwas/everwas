@@ -38,6 +38,8 @@ type winBitLockerCheck struct{}
 
 func (winBitLockerCheck) Name() string { return "disk-encryption" }
 
+func (winBitLockerCheck) Category() Category { return CategoryEncryption }
+
 func (winBitLockerCheck) Run(ctx context.Context) Result {
 	const name = "disk-encryption"
 
@@ -70,6 +72,8 @@ func (winBitLockerCheck) Run(ctx context.Context) Result {
 type winFirewallCheck struct{}
 
 func (winFirewallCheck) Name() string { return "firewall" }
+
+func (winFirewallCheck) Category() Category { return CategoryFirewall }
 
 func (winFirewallCheck) Run(ctx context.Context) Result {
 	const name = "firewall"
@@ -111,6 +115,8 @@ func (winFirewallCheck) Run(ctx context.Context) Result {
 type winAntivirusCheck struct{}
 
 func (winAntivirusCheck) Name() string { return "antivirus" }
+
+func (winAntivirusCheck) Category() Category { return CategoryMalware }
 
 func (winAntivirusCheck) Run(ctx context.Context) Result {
 	const name = "antivirus"

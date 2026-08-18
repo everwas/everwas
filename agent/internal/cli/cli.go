@@ -59,6 +59,8 @@ func Run(args []string) int {
 		return CmdUninstall(args[1:])
 	case "update-finalize":
 		return CmdUpdateFinalize(args[1:])
+	case "supplicant-profile":
+		return CmdSupplicantProfile(args[1:])
 	default:
 		usage()
 		return 2
@@ -380,5 +382,10 @@ commands:
   install     install as a system service
   uninstall   remove the system service
   status      show agent status
-  version     print version`)
+  version     print version
+
+  supplicant-profile   write an 802.1X client profile for this device
+                       (--ssid NAME for wireless; omit for wired). Writes a
+                       file and nothing else: starting a supplicant against
+                       it stays a deliberate decision.`)
 }

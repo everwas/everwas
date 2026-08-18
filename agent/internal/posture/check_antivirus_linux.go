@@ -14,6 +14,8 @@ type antivirusCheck struct{}
 
 func (antivirusCheck) Name() string { return "antivirus" }
 
+func (antivirusCheck) Category() Category { return CategoryMalware }
+
 func (antivirusCheck) Run(context.Context) Result {
 	return notApplicable("antivirus",
 		"resident antivirus is not part of the baseline on Linux")

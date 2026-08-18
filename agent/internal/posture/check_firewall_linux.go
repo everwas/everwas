@@ -16,6 +16,8 @@ type firewallCheck struct{}
 
 func (firewallCheck) Name() string { return "firewall" }
 
+func (firewallCheck) Category() Category { return CategoryFirewall }
+
 func (c firewallCheck) Run(ctx context.Context) Result {
 	const name = "firewall"
 

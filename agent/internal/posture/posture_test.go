@@ -3,6 +3,7 @@ package posture
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 	"time"
@@ -168,5 +169,82 @@ func TestAnUnnamedResultStillGetsAttributed(t *testing.T) {
 		[]Check{stub{name: "named", result: Result{Status: Pass}}}, quiet())
 	if results[0].Check != "named" {
 		t.Errorf("Check = %q, want the check's own name", results[0].Check)
+	}
+}
+
+func (s stub) Category() Category { return CategoryFirewall }
+
+func TestEveryRealCheckDeclaresACategory(t *testing.T) {
+	// A check with no category is one that no category-based policy can ever
+	// cover, and the failure is silent: the policy simply never matches it, so
+	// a site gating on "encryption" quietly stops covering a machine the day a
+	// new encryption check ships without one.
+	for _, c := range Checks() {
+		if c.Category() == "" {
+			t.Errorf("check %q declares no category", c.Name())
+		}
+	}
+}
+
+func TestTheCategoryComesFromTheCheckNotTheResult(t *testing.T) {
+	// A check that reported itself under different categories on different
+	// runs would break any policy written against the category, and would do
+	// it intermittently, which is the worst way to break something.
+	results := Run(context.Background(), []Check{
+		stub{name: "a", result: Result{Status: Pass, Category: "something-else"}},
+	}, quiet())
+	if results[0].Category != CategoryFirewall {
+		t.Errorf("category = %q, want the one the check declares", results[0].Category)
+	}
+}
+
+func TestTheWireShapeHasThreeStatusesNotFour(t *testing.T) {
+	// The agreed schema with the verifier is pass / fail / not_assessed, with
+	// the not-applicable versus undetermined distinction carried as a reason.
+	// The internal Status has four values, and emitting them raw put values on
+	// the wire that the agreed schema does not contain. The natural handling of
+	// an unrecognised status is a default branch, and a default branch that
+	// treats it as a failure is how a machine gets remediated for a check that
+	// never ran.
+	for _, tc := range []struct {
+		in         Status
+		wantStatus string
+		wantReason string
+	}{
+		{Pass, "pass", ""},
+		{Fail, "fail", ""},
+		{NotApplicable, "not_assessed", "not_applicable"},
+		{Unknown, "not_assessed", "undetermined"},
+	} {
+		raw, err := json.Marshal(Result{Check: "c", Status: tc.in})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Status string `json:"status"`
+			Reason string `json:"not_assessed_reason"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != tc.wantStatus || got.Reason != tc.wantReason {
+			t.Errorf("%s marshalled to status=%q reason=%q, want status=%q reason=%q",
+				tc.in, got.Status, got.Reason, tc.wantStatus, tc.wantReason)
+		}
+	}
+}
+
+func TestTheInternalStatusNamesNeverReachTheWire(t *testing.T) {
+	// Belt and braces on the above: no serialised result may carry the
+	// internal four-state spelling, whatever route it took to get there.
+	for _, s := range []Status{Pass, Fail, NotApplicable, Unknown} {
+		raw, err := json.Marshal(Result{Check: "c", Status: s})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(raw, []byte(`"status":"not_applicable"`)) ||
+			bytes.Contains(raw, []byte(`"status":"unknown"`)) {
+			t.Errorf("internal status leaked to the wire: %s", raw)
+		}
 	}
 }

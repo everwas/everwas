@@ -25,15 +25,28 @@ def test_each_check_becomes_its_own_fact():
     facts = _facts_from(
         "posture",
         _snapshot(
-            {"check": "disk-encryption", "status": "fail", "detail": "plaintext root"},
-            {"check": "firewall", "status": "pass"},
-            {"check": "antivirus", "status": "not_applicable"},
+            {
+                "check": "disk-encryption",
+                "category": "encryption",
+                "status": "fail",
+                "detail": "plaintext root",
+            },
+            {"check": "firewall", "category": "firewall", "status": "pass"},
+            {
+                "check": "antivirus",
+                "category": "malware",
+                "status": "not_assessed",
+                "not_assessed_reason": "not_applicable",
+            },
         ),
     )
     assert set(facts) == {"check:disk-encryption", "check:firewall", "check:antivirus"}
     # The key is not repeated inside the payload it identifies.
     assert "check" not in facts["check:firewall"]
     assert facts["check:disk-encryption"]["status"] == "fail"
+    # The category rides along, so a site policy can gate on "encryption"
+    # rather than enumerating every encryption check by name.
+    assert facts["check:disk-encryption"]["category"] == "encryption"
 
 
 def test_a_check_with_no_name_is_dropped_rather_than_keyed_as_nothing():
