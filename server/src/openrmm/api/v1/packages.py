@@ -44,7 +44,7 @@ PACKAGE_RE = re.compile(
     r"^openrmm-agent[-_](?P<version>\d{4}\.\d{2}\.\d{2}(?:\.\d+)?)"
     r"[-_](?P<platform>windows|linux|darwin)"
     r"[-_](?P<arch>amd64|arm64)"
-    r"\.(?P<ext>msi|exe|deb|rpm|pkg|tar\.gz|zip)$"
+    r"\.(?P<ext>msi|exe|deb|rpm|pkg|tar\.gz|zip)(?P<sig>\.minisig)?$"
 )
 
 #: Hashing a file per request would make the listing quadratic in package size
@@ -60,6 +60,8 @@ class PackageOut(BaseModel):
     platform: str
     arch: str
     size: int
+    #: Whether a detached minisign signature is present beside the file.
+    signed: bool = False
     #: Present so a downloader can verify what it received. A download with no
     #: way to check it is a download that installs whatever it was handed,
     #: which for an agent binary is remote code execution by mistake.
@@ -104,9 +106,20 @@ async def list_packages() -> list[PackageOut]:
         match = PACKAGE_RE.match(path.name)
         if match is None:
             continue
+        if match["sig"]:
+            # Signatures are downloadable but not listed as packages. Listing
+            # them would put "openrmm-agent_X.msi.minisig" in a picker next to
+            # the thing it signs, which is an easy click away from dispatching
+            # a signature as if it were an installer.
+            continue
         out.append(
             PackageOut(
                 filename=path.name,
+                # Whether the detached signature is sitting beside it. An
+                # update cannot be dispatched without one, so an operator
+                # needs to see which packages are actually deployable rather
+                # than discovering it when the job is refused.
+                signed=(directory / f"{path.name}.minisig").is_file(),
                 version=match["version"],
                 platform=match["platform"],
                 arch=match["arch"],

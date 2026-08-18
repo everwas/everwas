@@ -113,3 +113,34 @@ async def test_an_unconfigured_directory_is_an_empty_list_not_a_crash(
     get_settings.cache_clear()
     assert r.status_code == 200
     assert r.json() == []
+
+
+# --- dispatching an update from a hosted package -----------------------------
+
+
+async def test_a_signature_is_downloadable_but_not_listed(client, packages):
+    """Both halves of an update come from the one host a device can reach.
+
+    Not listed, though: a signature sitting in a package picker next to the
+    thing it signs is one click away from being dispatched as if it were the
+    installer.
+    """
+    (packages / "openrmm-agent_2026.08.18_linux_amd64.deb.minisig").write_bytes(b"SIG")
+
+    listed = {p["filename"] for p in (await client.get("/api/v1/packages")).json()}
+    assert "openrmm-agent_2026.08.18_linux_amd64.deb.minisig" not in listed
+
+    r = await client.get("/api/v1/packages/openrmm-agent_2026.08.18_linux_amd64.deb.minisig")
+    assert r.status_code == 200
+    assert r.content == b"SIG"
+
+
+async def test_the_listing_says_which_packages_are_deployable(client, packages):
+    """An update cannot be dispatched without a signature, so an operator has
+    to see which packages have one BEFORE choosing, not discover it when the
+    job is refused."""
+    (packages / "openrmm-agent_2026.08.18_linux_amd64.deb.minisig").write_bytes(b"SIG")
+
+    items = {p["filename"]: p for p in (await client.get("/api/v1/packages")).json()}
+    assert items["openrmm-agent_2026.08.18_linux_amd64.deb"]["signed"] is True
+    assert items["openrmm-agent_2026.08.18_windows_amd64.msi"]["signed"] is False
