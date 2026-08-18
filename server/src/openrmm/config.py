@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     nats_jwt_ttl_s: int = 3600
 
     session_ttl_hours: int = 24 * 7
+    # Lifetime of the bearer tokens the sync API mints from an API key
+    # (POST /api/v1/auth/token). Revoking the key invalidates its tokens
+    # immediately regardless of this value; the TTL only bounds how long a
+    # captured token works on its own.
+    sync_token_ttl_s: int = 3600
     # Ceiling on how many machines one script run or patch deploy may touch.
     # A fleet-wide selector is a decision, not a default.
     max_run_targets: int = 500
