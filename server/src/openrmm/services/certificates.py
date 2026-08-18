@@ -62,6 +62,8 @@ async def issue_for_device(
     ca: DeviceCa,
     device_id: uuid.UUID,
     csr: x509.CertificateSigningRequest,
+    *,
+    lifetime: dt.timedelta | None = None,
 ) -> IssuedCertificate:
     """Sign a device's CSR and record the result.
 
@@ -79,7 +81,12 @@ async def issue_for_device(
         # the network through a different door.
         raise CertificateRefusedError("device is retired")
 
-    pem = issue_from_csr(ca, csr, common_name=str(device_id))
+    # The caller supplies the lifetime because it is deployment policy, not a
+    # property of the CA: it depends on whether an expired certificate strands
+    # the machine or merely drops it into remediation (ADR-0004).
+    pem = issue_from_csr(
+        ca, csr, common_name=str(device_id), lifetime=lifetime or CERT_LIFETIME
+    )
     cert = x509.load_pem_x509_certificate(pem)
 
     db.add(

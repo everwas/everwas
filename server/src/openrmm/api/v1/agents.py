@@ -1,3 +1,4 @@
+import datetime as dt
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -135,7 +136,13 @@ async def issue_certificate(body: CertificateRequest, db: DbSession) -> Certific
 
     try:
         ca = load_ca(Path(settings.ca_dir), passphrase=settings.ca_passphrase)
-        issued = await issue_for_device(db, ca, body.agent_id, csr)
+        issued = await issue_for_device(
+            db,
+            ca,
+            body.agent_id,
+            csr,
+            lifetime=dt.timedelta(days=settings.ca_cert_lifetime_days),
+        )
     except CaNotInitialisedError as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "no certificate authority on this server"
