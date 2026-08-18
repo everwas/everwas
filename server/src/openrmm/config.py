@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     telemetry_retention_days: int = 30
     recordings_dir: str = "/data/recordings"
 
+    #: Where agent installers live, to be served to the fleet. Hosting them on
+    #: the server the agent enrols to is what makes bootstrapping work from a
+    #: provisioning or quarantine VLAN, where the management server is often
+    #: the one host a device is allowed to reach.
+    packages_dir: str = "/data/packages"
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""

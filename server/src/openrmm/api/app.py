@@ -12,6 +12,7 @@ from openrmm.api.v1 import (
     auth,
     devices,
     health,
+    packages,
     patches,
     scripts,
     shell,
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(packages.router, prefix="/api/v1/packages", tags=["packages"])
     app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])

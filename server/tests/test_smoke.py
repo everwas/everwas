@@ -150,6 +150,14 @@ def test_every_route_requires_auth_except_the_documented_few():
         # by definition. The secret it currently holds is the authentication,
         # exactly as the one-time token is for enrollment.
         "/api/v1/agents/renew",
+        # An installer is not a secret, and requiring a credential to download
+        # the thing that obtains the credential is a circle. What IS secret is
+        # the enrollment token, supplied separately at install time. Serving
+        # these publicly is also what makes bootstrapping work from a
+        # provisioning VLAN, where the management server is often the only host
+        # a device may reach.
+        "/api/v1/packages",
+        "/api/v1/packages/{filename}",
     }
 
     # Authenticates inside the handler rather than through a dependency,
