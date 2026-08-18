@@ -6,7 +6,10 @@ sidebar:
   order: 3
 ---
 
-**Status: proposed** (2026-08-17)
+**Status: proposed** (2026-08-17), amended by
+[ADR-0004](/decisions/0004-short-lived-certificates/), which turns the
+quarantine-VLAN assumption into a requirement and settles the CRL
+question.
 
 Companion project: [l2trace](https://l2trace.warehack.ing), which is the
 RADIUS server in these deployments, not a bystander alongside NPS or
