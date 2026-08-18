@@ -26,6 +26,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/rsp2k/openrmm/agent/internal/secure"
 )
 
 // RenewAt is the fraction of a certificate's life after which renewal starts.
@@ -76,8 +78,11 @@ type Material struct {
 // yields a usable network identity for the life of the certificate. That is the
 // reason the lifetime is ninety days and not a year.
 func GenerateKey(dir string) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("netcert: create %s: %w", dir, err)
+	// secure, not os.MkdirAll: on Windows the 0700 is ignored and the
+	// directory inherits C:\ProgramData's default, which grants every local
+	// user read. This directory holds the machine's network identity.
+	if err := secure.MkdirAll(dir); err != nil {
+		return "", err
 	}
 	_, pemBytes, err := newKeyPair()
 	if err != nil {
@@ -116,8 +121,8 @@ func buildCSRFor(key *ecdsa.PrivateKey) ([]byte, error) {
 
 // saveAll commits a matched key, certificate and chain together.
 func saveAll(dir string, keyPEM []byte, certPEM, chainPEM string) (*Material, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("netcert: create %s: %w", dir, err)
+	if err := secure.MkdirAll(dir); err != nil {
+		return nil, err
 	}
 	// Key first: a certificate whose key is missing is useless, while a key
 	// whose certificate is missing is merely unused, and the next Ensure

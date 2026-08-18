@@ -19,6 +19,7 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/conn"
 	"github.com/rsp2k/openrmm/agent/internal/enroll"
 	"github.com/rsp2k/openrmm/agent/internal/netcert"
+	"github.com/rsp2k/openrmm/agent/internal/secure"
 	"github.com/rsp2k/openrmm/agent/internal/svc"
 	"github.com/rsp2k/openrmm/agent/internal/update"
 )
@@ -115,6 +116,20 @@ func runAgent(parent context.Context) int {
 	if err != nil {
 		log.Error("resolve state dir", "err", err)
 		return 1
+	}
+	// Repair the state directory's permissions on every start, before anything
+	// reads or writes a secret through it.
+	//
+	// Agents installed before this existed have a directory that inherited
+	// C:\ProgramData's default ACL, so agent.json (the credential that
+	// authenticates this device) and the 802.1X private key are readable by
+	// every local user on the machine. Waiting for the next config write to
+	// fix it would leave a laptop exposed until its credential happened to
+	// rotate; a warning rather than a fatal because an agent that cannot fix
+	// permissions is still better online than gone.
+	if err := secure.MkdirAll(stateDir); err != nil {
+		log.Warn("could not restrict the state directory; it may be readable by local users",
+			"dir", stateDir, "err", err)
 	}
 	if rolledBack, rbErr := update.CheckAndRollback(stateDir); rbErr != nil {
 		log.Warn("update rollback check", "err", rbErr)
