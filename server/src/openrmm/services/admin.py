@@ -217,7 +217,15 @@ async def revoke_api_key(
 # ---------------------------------------------------------------- sites
 
 
-async def create_site(db: AsyncSession, *, name: str, actor: str, actor_org: OrgId) -> Site:
+async def create_site(
+    db: AsyncSession,
+    *,
+    name: str,
+    actor: str,
+    actor_org: OrgId,
+    description: str | None = None,
+    address: str | None = None,
+) -> Site:
     existing = (await db.execute(select(Site).where(Site.name == name))).scalar_one_or_none()
     if existing is not None:
         raise AdminError(f"a site called {name!r} already exists")
@@ -225,7 +233,7 @@ async def create_site(db: AsyncSession, *, name: str, actor: str, actor_org: Org
     # enforced on reads before writes, which left it half true: a new site
     # landed in the default org, so the admin who made it could not see it and
     # anyone in the default org could.
-    site = Site(name=name, org_id=actor_org)
+    site = Site(name=name, org_id=actor_org, description=description, address=address)
     db.add(site)
     db.add(
         AuditLog(
@@ -242,9 +250,20 @@ async def create_site(db: AsyncSession, *, name: str, actor: str, actor_org: Org
 
 
 async def rename_site(
-    db: AsyncSession, site_id: uuid.UUID, *, name: str, actor: str, actor_org: OrgId
+    db: AsyncSession,
+    site_id: uuid.UUID,
+    *,
+    name: str,
+    actor: str,
+    actor_org: OrgId,
+    description: str | None = None,
+    address: str | None = None,
 ) -> Site:
-    """Rename in place. Devices reference the site by id, so nothing moves."""
+    """Rename in place. Devices reference the site by id, so nothing moves.
+
+    description/address follow the schema's convention: None leaves the
+    stored value alone, an explicit empty string clears it.
+    """
     site = await db.get(Site, site_id)
     if site is None:
         raise AdminError("unknown site")
@@ -255,6 +274,10 @@ async def rename_site(
         raise AdminError(f"a site called {name!r} already exists")
 
     was, site.name = site.name, name
+    if description is not None:
+        site.description = description or None
+    if address is not None:
+        site.address = address or None
     db.add(
         AuditLog(
             org_id=actor_org,

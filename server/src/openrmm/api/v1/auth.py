@@ -1,14 +1,18 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Form, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from openrmm.api.deps import CurrentUser, DbSession
 from openrmm.config import get_settings
+from openrmm.models.audit import ActorType, AuditLog
 from openrmm.models.user import User
 from openrmm.schemas.auth import LoginRequest, UserOut
+from openrmm.security.api_keys import KEY_PREFIX, authenticate_key
 from openrmm.security.passwords import verify_password
 from openrmm.security.sessions import SESSION_COOKIE, create_session, destroy_session
+from openrmm.security.sync_tokens import TokenIssueError, issue
 
 router = APIRouter()
 
@@ -53,3 +57,68 @@ async def logout(
 @router.get("/me")
 async def me(user: CurrentUser) -> UserOut:
     return UserOut.model_validate(user)
+
+
+def _oauth_error(code: int, error: str) -> JSONResponse:
+    """RFC 6749 §5.2 error shape. 401s carry WWW-Authenticate as required."""
+    headers = {"WWW-Authenticate": "Basic"} if code == 401 else None
+    return JSONResponse({"error": error}, status_code=code, headers=headers)
+
+
+@router.post("/token")
+async def token(
+    db: DbSession,
+    grant_type: Annotated[str, Form()] = "",
+    client_id: Annotated[str, Form()] = "",
+    client_secret: Annotated[str, Form()] = "",
+):
+    """OAuth2 client-credentials for machine callers (the sync API).
+
+    The credential is an existing scoped API key. Two spellings are accepted:
+    the whole `orpk_<id>_<secret>` as client_secret with client_id blank (the
+    convenient one), or the key id as client_id and the secret alone as
+    client_secret (the one OAuth2 client libraries produce). Either way the
+    key is exchanged for a short-lived orst_ bearer token; scopes ride along
+    frozen. Refusals audit without naming which part failed, matching the
+    indistinguishable-failure rule for the keys themselves.
+    """
+    if grant_type != "client_credentials":
+        return _oauth_error(400, "unsupported_grant_type")
+
+    raw_key = client_secret
+    if client_id and not client_secret.startswith(KEY_PREFIX):
+        raw_key = f"{KEY_PREFIX}{client_id}_{client_secret}"
+
+    principal = await authenticate_key(db, raw_key)
+    if principal is None:
+        db.add(
+            AuditLog(
+                actor_type=ActorType.api_key,
+                actor_id=(client_id[:64] or None),
+                action="sync.token_refused",
+            )
+        )
+        await db.commit()
+        return _oauth_error(401, "invalid_client")
+
+    try:
+        access_token, expires_in = issue(principal)
+    except TokenIssueError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    db.add(
+        AuditLog(
+            org_id=principal.org_id,
+            actor_type=ActorType.api_key,
+            actor_id=principal.name[:64],
+            action="sync.token_issued",
+            detail={"scopes": list(principal.scopes), "expires_in": expires_in},
+        )
+    )
+    await db.commit()
+    return {
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": expires_in,
+        "scope": " ".join(principal.scopes),
+    }

@@ -57,6 +57,10 @@ class ApiKeyCreated(BaseModel):
 
 class SiteIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    # None means "leave as is" on update, so clearing a value takes an
+    # explicit empty string. Both land as text the sync surface hands on.
+    description: str | None = Field(default=None, max_length=2000)
+    address: str | None = Field(default=None, max_length=2000)
 
 
 class SiteOut(BaseModel):
@@ -64,4 +68,6 @@ class SiteOut(BaseModel):
 
     id: uuid.UUID
     name: str
+    description: str | None = None
+    address: str | None = None
     created_at: datetime

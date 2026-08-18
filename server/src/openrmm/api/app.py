@@ -16,6 +16,7 @@ from openrmm.api.v1 import (
     patches,
     scripts,
     shell,
+    sync,
 )
 from openrmm.db.engine import get_engine
 from openrmm.natsio import client as nats_client
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
     app.include_router(patches.router, prefix="/api/v1/patches", tags=["patches"])
     app.include_router(shell.router, prefix="/api/v1/devices", tags=["shell"])
+    app.include_router(sync.router, prefix="/api/v1/sync", tags=["sync"])
     return app
 
 

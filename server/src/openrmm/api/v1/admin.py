@@ -177,7 +177,14 @@ async def list_sites(db: DbSession, _user: CurrentUser) -> list[SiteOut]:
 @router.post("/sites", status_code=status.HTTP_201_CREATED)
 async def add_site(body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
     try:
-        site = await create_site(db, name=body.name, actor=user.email, actor_org=user.org_id)
+        site = await create_site(
+            db,
+            name=body.name,
+            actor=user.email,
+            actor_org=user.org_id,
+            description=body.description,
+            address=body.address,
+        )
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -188,7 +195,13 @@ async def add_site(body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
 async def edit_site(site_id: uuid.UUID, body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
     try:
         site = await rename_site(
-            db, site_id, name=body.name, actor=user.email, actor_org=user.org_id
+            db,
+            site_id,
+            name=body.name,
+            actor=user.email,
+            actor_org=user.org_id,
+            description=body.description,
+            address=body.address,
         )
     except AdminError as exc:
         raise _refused(exc) from exc

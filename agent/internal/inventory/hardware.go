@@ -21,6 +21,14 @@ type hardware struct {
 	Kernel         string `json:"kernel"`
 	Arch           string `json:"arch"`
 	Virtualization string `json:"virtualization"`
+
+	// Machine identity from SMBIOS/DMI. omitempty is the contract: an agent
+	// that cannot read these omits them, and the server records no identity
+	// belief at all — absent means "cannot say", never "has no serial".
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+	SerialNumber string `json:"serial_number,omitempty"`
+	ChassisType  string `json:"chassis_type,omitempty"`
 }
 
 func collectHardware(ctx context.Context) (any, error) {
@@ -48,5 +56,10 @@ func collectHardware(ctx context.Context) (any, error) {
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		hw.MemTotal = vm.Total
 	}
+	dmi := collectDMI(ctx)
+	hw.Manufacturer = dmi.Manufacturer
+	hw.Model = dmi.Model
+	hw.SerialNumber = dmi.Serial
+	hw.ChassisType = dmi.Chassis
 	return hw, nil
 }

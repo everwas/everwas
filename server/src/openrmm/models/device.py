@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
 
 # postgresql.ARRAY, not the generic one: the generic comparator has no
 # overlap()/contains(), so tag targeting silently fails to compile.
@@ -39,6 +39,8 @@ class Site(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    address: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -75,17 +77,13 @@ class Device(Base):
     #: renewal that half-failed, on a machine restored from a backup image, and
     #: on material deleted by hand. None means the agent has not told us, which
     #: is the honest state for an old agent and for any fleet not using 802.1X.
-    reported_cert_serial: Mapped[str | None] = mapped_column(
-        String(64), default=None, index=True
-    )
+    reported_cert_serial: Mapped[str | None] = mapped_column(String(64), default=None, index=True)
     reported_cert_not_after: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
     #: When it last told us. Separates "reported nothing just now", meaning the
     #: material is genuinely gone, from "never reported", meaning we do not know.
-    reported_cert_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None
-    )
+    reported_cert_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     enrolled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

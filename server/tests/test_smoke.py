@@ -160,6 +160,9 @@ def test_every_route_requires_auth_except_the_documented_few():
         "/api/v1/agents/certificate",
         "/api/v1/packages",
         "/api/v1/packages/{filename}",
+        # Authenticates with the API key in its form body — the token
+        # exchange IS the authentication, exactly as enroll's one-time token.
+        "/api/v1/auth/token",
     }
 
     # Authenticates inside the handler rather than through a dependency,
@@ -182,7 +185,9 @@ def test_every_route_requires_auth_except_the_documented_few():
             continue
         names = {d.name for d in route.dependant.dependencies}
         flat = str(route.dependant.dependencies) + str(names)
-        if "current_user" not in flat and "check" not in flat:
+        # sync_principal is the deliberate second authentication root: the
+        # /api/v1/sync surface takes bearer tokens, never the session cookie.
+        if "current_user" not in flat and "check" not in flat and "sync_principal" not in flat:
             unguarded.append(f"{sorted(getattr(route, 'methods', []) or ['WS'])} {route.path}")
 
     assert not unguarded, f"routes without authentication: {unguarded}"

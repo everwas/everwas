@@ -10,8 +10,6 @@ out of the request context with `current_principal()`. No principal in context
 means the call is refused, so an unauthenticated path cannot silently succeed.
 """
 
-import hashlib
-import hmac
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -22,15 +20,22 @@ import structlog
 from fastmcp.exceptions import ToolError
 from fastmcp.server.auth.auth import AccessToken
 from fastmcp.server.dependencies import get_access_token, get_context
-from sqlalchemy import select
 
 from openrmm.db.engine import session_scope
-from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import ActorType, AuditLog
 
-log = structlog.get_logger()
+# Key verification moved to openrmm.security.api_keys when the sync API
+# became the second surface that takes these keys. Re-exported so MCP code
+# and its tests keep their import path.
+from openrmm.security.api_keys import (  # noqa: F401
+    KEY_PREFIX,
+    ApiKeyPrincipal,
+    authenticate,
+    hash_secret,
+    parse_api_key,
+)
 
-KEY_PREFIX = "orpk_"
+log = structlog.get_logger()
 
 # Marker claims: proves an AccessToken came from our verifier and not from some
 # other auth provider that happened to be mounted.
@@ -49,63 +54,6 @@ SCOPES = (
     "patches:read",
     "patches:write",
 )
-
-
-@dataclass(frozen=True)
-class ApiKeyPrincipal:
-    """Who is calling. Never carries the secret."""
-
-    id: str
-    name: str
-    scopes: tuple[str, ...]
-    org_id: uuid.UUID | None = None
-
-    def has(self, scope: str) -> bool:
-        return scope in self.scopes
-
-
-# --- key handling ---
-
-
-def hash_secret(secret: str) -> str:
-    return hashlib.sha256(secret.encode()).hexdigest()
-
-
-def parse_api_key(raw: str) -> tuple[str, str] | None:
-    """Split `orpk_<key_id>_<secret>`. Returns None if the shape is wrong."""
-    if not raw or not raw.startswith(KEY_PREFIX):
-        return None
-    body = raw[len(KEY_PREFIX) :]
-    key_id, sep, secret = body.partition("_")
-    if not sep or not key_id or not secret:
-        return None
-    return key_id, secret
-
-
-async def authenticate(raw_key: str) -> ApiKeyPrincipal | None:
-    """Resolve a bearer token to a principal, or None for any failure.
-
-    Failures are deliberately indistinguishable to the caller: unknown key id,
-    wrong secret, and expired key all return None.
-    """
-    parsed = parse_api_key(raw_key)
-    if parsed is None:
-        return None
-    key_id, secret = parsed
-
-    async with session_scope() as db:
-        row = (await db.execute(select(ApiKey).where(ApiKey.key_id == key_id))).scalar_one_or_none()
-        if row is None:
-            return None
-        if not hmac.compare_digest(row.secret_hash, hash_secret(secret)):
-            return None
-        now = datetime.now(UTC)
-        if row.expires_at is not None and row.expires_at <= now:
-            return None
-        row.last_used_at = now
-        return ApiKeyPrincipal(
-            id=str(row.id), name=row.name, scopes=tuple(row.scopes or ()), org_id=row.org_id
-        )
 
 
 def access_token_for(principal: ApiKeyPrincipal, raw_key: str) -> AccessToken:
