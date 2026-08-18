@@ -397,6 +397,7 @@ async def approve_patches(
                     device_id=device.id,
                     decision=ApprovalDecision.approved,
                     decided_by=decided_by,
+                    org_id=device.org_id,
                 )
 
         return {

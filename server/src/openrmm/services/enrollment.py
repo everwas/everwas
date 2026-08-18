@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openrmm.models.audit import ActorType, AuditLog
 from openrmm.models.device import AgentCredential, Device, DeviceStatus, EnrollmentToken
 from openrmm.schemas.enrollment import EnrollRequest
+from openrmm.services.audit import device_org
 from openrmm.util.ids import uuid7
 
 TOKEN_PREFIX = "ore_"
@@ -91,6 +92,7 @@ async def enroll_device(db: AsyncSession, req: EnrollRequest) -> tuple[Device, s
 
     db.add(
         AuditLog(
+            org_id=device.org_id,
             actor_type=ActorType.agent,
             actor_id=str(device.id),
             action="device.enrolled",
@@ -222,6 +224,7 @@ async def retire_device(db: AsyncSession, device_id: uuid.UUID, actor: str) -> D
     await db.execute(delete(AgentCredential).where(AgentCredential.device_id == device_id))
     db.add(
         AuditLog(
+            org_id=device.org_id,
             actor_type=ActorType.user,
             actor_id=actor,
             action="device.retired",
@@ -294,6 +297,7 @@ async def rotate_agent_secret(
     cred.rotated_at = datetime.now(UTC)
     db.add(
         AuditLog(
+            org_id=await device_org(db, device_id),
             actor_type=ActorType.user,
             actor_id=actor,
             action="device.credentials_rotated",
@@ -333,6 +337,7 @@ async def revoke_agent_secret(
     cred.prev_valid_until = datetime.now(UTC) + grace
     db.add(
         AuditLog(
+            org_id=await device_org(db, device_id),
             actor_type=ActorType.user,
             actor_id=actor,
             action="device.credentials_revoked",
@@ -364,14 +369,14 @@ async def renew_agent_secret(db: AsyncSession, device_id: uuid.UUID, presented: 
     the next connect with the new secret, which is proof of receipt.
     """
     row = await db.execute(
-        select(AgentCredential, Device.status)
+        select(AgentCredential, Device.status, Device.org_id)
         .join(Device, Device.id == AgentCredential.device_id)
         .where(AgentCredential.device_id == device_id)
     )
     rec = row.first()
     if rec is None:
         raise RevokedCredentialError("no credential for this device")
-    cred, device_status = rec
+    cred, device_status, org_id = rec
     if device_status is DeviceStatus.retired:
         raise RevokedCredentialError("device is retired")
 
@@ -388,6 +393,7 @@ async def renew_agent_secret(db: AsyncSession, device_id: uuid.UUID, presented: 
     cred.rotated_at = datetime.now(UTC)
     db.add(
         AuditLog(
+            org_id=org_id,
             actor_type=ActorType.agent,
             actor_id=str(device_id),
             action="agent.renewed",

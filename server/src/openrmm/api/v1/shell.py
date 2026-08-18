@@ -65,7 +65,7 @@ async def device_shell(
         if device is None:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
-        user_id, user_email = user.id, user.email
+        user_id, user_email, org_id = user.id, user.email, device.org_id
 
     await websocket.accept()
 
@@ -76,7 +76,9 @@ async def device_shell(
     # fail, including by the process disappearing, and a root shell that
     # happened must not depend on this handler surviving to say so.
     session_id = uuid.uuid4()
-    await open_session_record(session_id, device_id, user_id=user_id, user_email=user_email)
+    await open_session_record(
+        session_id, device_id, user_id=user_id, user_email=user_email, org_id=org_id
+    )
 
     close_reason, bytes_in, bytes_out = "error", 0, 0
     try:
@@ -105,6 +107,7 @@ async def device_shell(
     async with session_scope() as db:
         db.add(
             AuditLog(
+                org_id=org_id,
                 actor_type=ActorType.user,
                 actor_id=user_email,
                 action="shell.session",

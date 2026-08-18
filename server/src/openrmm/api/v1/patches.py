@@ -121,6 +121,7 @@ async def approve_patches(body: ApprovalRequest, db: DbSession, user: CurrentUse
             device_id=body.device_id,
             decision=decision,
             decided_by=user.email,
+            org_id=user.org_id,
         )
     await db.commit()
     return {"decided": len(body.patch_ids), "decision": decision.value}

@@ -333,6 +333,7 @@ async def open_session_record(
     *,
     user_id: uuid.UUID | None,
     user_email: str,
+    org_id: uuid.UUID | None,
 ) -> None:
     """Record that a root shell is being opened, before it opens.
 
@@ -360,6 +361,7 @@ async def open_session_record(
         )
         db.add(
             AuditLog(
+                org_id=org_id,
                 actor_type=ActorType.user,
                 actor_id=user_email,
                 action="shell.opened",

@@ -36,6 +36,10 @@ KEY_PREFIX = "orpk_"
 # other auth provider that happened to be mounted.
 CLAIM_KEY_ID = "openrmm_key_id"
 CLAIM_KEY_NAME = "openrmm_key_name"
+#: The key's organization, carried on the token so that audit rows written for
+#: a tool call are filed under the tenant whose key it is. Without it every MCP
+#: call produced an entry with no organization, which no reader can see.
+CLAIM_KEY_ORG = "openrmm_key_org"
 
 SCOPES = (
     "devices:read",
@@ -54,6 +58,7 @@ class ApiKeyPrincipal:
     id: str
     name: str
     scopes: tuple[str, ...]
+    org_id: uuid.UUID | None = None
 
     def has(self, scope: str) -> bool:
         return scope in self.scopes
@@ -98,7 +103,9 @@ async def authenticate(raw_key: str) -> ApiKeyPrincipal | None:
         if row.expires_at is not None and row.expires_at <= now:
             return None
         row.last_used_at = now
-        return ApiKeyPrincipal(id=str(row.id), name=row.name, scopes=tuple(row.scopes or ()))
+        return ApiKeyPrincipal(
+            id=str(row.id), name=row.name, scopes=tuple(row.scopes or ()), org_id=row.org_id
+        )
 
 
 def access_token_for(principal: ApiKeyPrincipal, raw_key: str) -> AccessToken:
@@ -107,7 +114,11 @@ def access_token_for(principal: ApiKeyPrincipal, raw_key: str) -> AccessToken:
         token=raw_key,
         client_id=principal.id,
         scopes=list(principal.scopes),
-        claims={CLAIM_KEY_ID: principal.id, CLAIM_KEY_NAME: principal.name},
+        claims={
+            CLAIM_KEY_ID: principal.id,
+            CLAIM_KEY_NAME: principal.name,
+            CLAIM_KEY_ORG: str(principal.org_id) if principal.org_id else None,
+        },
     )
 
 
@@ -123,10 +134,12 @@ def current_principal() -> ApiKeyPrincipal:
     key_id = claims.get(CLAIM_KEY_ID)
     if not key_id:
         raise ToolError("This token was not issued by OpenRMM. Use an OpenRMM API key.")
+    org = claims.get(CLAIM_KEY_ORG)
     return ApiKeyPrincipal(
         id=str(key_id),
         name=str(claims.get(CLAIM_KEY_NAME) or "unnamed"),
         scopes=tuple(token.scopes or ()),
+        org_id=uuid.UUID(str(org)) if org else None,
     )
 
 
@@ -155,6 +168,7 @@ async def audit(
     async with session_scope() as db:
         db.add(
             AuditLog(
+                org_id=(principal.org_id if principal else None),
                 actor_type=ActorType.api_key,
                 actor_id=(principal.name[:64] if principal else None),
                 action=action[:120],

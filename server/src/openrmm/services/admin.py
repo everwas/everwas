@@ -23,6 +23,13 @@ from openrmm.security.passwords import hash_password
 
 log = structlog.get_logger()
 
+#: The acting operator's organization, which every entry in this module is
+#: filed under. These functions take an email rather than a User, so the org
+#: has to travel beside it; the alternative was deriving it from the row being
+#: created, and a user or key created by an admin in one tenant would then file
+#: its own creation under whichever tenant it landed in.
+OrgId = uuid.UUID | None
+
 #: Scopes an API key may hold. Anything not in here is a typo, and a typo in a
 #: scope grants nothing while looking like it granted something.
 KNOWN_SCOPES = frozenset(
@@ -48,7 +55,7 @@ class AdminError(Exception):
 
 
 async def create_user(
-    db: AsyncSession, *, email: str, password: str, role: Role, actor: str
+    db: AsyncSession, *, email: str, password: str, role: Role, actor: str, actor_org: OrgId
 ) -> User:
     existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing is not None:
@@ -58,6 +65,7 @@ async def create_user(
     db.add(user)
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="user.created",
@@ -71,7 +79,7 @@ async def create_user(
 
 
 async def set_user_active(
-    db: AsyncSession, user_id: uuid.UUID, *, active: bool, actor: str
+    db: AsyncSession, user_id: uuid.UUID, *, active: bool, actor: str, actor_org: OrgId
 ) -> User:
     """Disable rather than delete. A deleted user's name vanishes from every
     audit entry they ever produced; a disabled one cannot log in and the trail
@@ -89,6 +97,7 @@ async def set_user_active(
     user.is_active = active
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="user.enabled" if active else "user.disabled",
@@ -100,7 +109,9 @@ async def set_user_active(
     return user
 
 
-async def set_user_role(db: AsyncSession, user_id: uuid.UUID, *, role: Role, actor: str) -> User:
+async def set_user_role(
+    db: AsyncSession, user_id: uuid.UUID, *, role: Role, actor: str, actor_org: OrgId
+) -> User:
     user = await db.get(User, user_id)
     if user is None:
         raise AdminError("unknown user")
@@ -110,6 +121,7 @@ async def set_user_role(db: AsyncSession, user_id: uuid.UUID, *, role: Role, act
     was, user.role = user.role, role
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="user.role_changed",
@@ -139,6 +151,7 @@ async def mint_api_key(
     scopes: list[str],
     ttl_days: int | None,
     actor: str,
+    actor_org: OrgId,
 ) -> tuple[ApiKey, str]:
     """Create a key and return it in plaintext ONCE.
 
@@ -164,6 +177,7 @@ async def mint_api_key(
     db.add(key)
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="api_key.created",
@@ -177,12 +191,15 @@ async def mint_api_key(
     return key, f"orpk_{key_id}_{secret}"
 
 
-async def revoke_api_key(db: AsyncSession, key_id: uuid.UUID, actor: str) -> ApiKey:
+async def revoke_api_key(
+    db: AsyncSession, key_id: uuid.UUID, actor: str, *, actor_org: OrgId
+) -> ApiKey:
     key = await db.get(ApiKey, key_id)
     if key is None:
         raise AdminError("unknown key")
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="api_key.revoked",
@@ -199,7 +216,7 @@ async def revoke_api_key(db: AsyncSession, key_id: uuid.UUID, actor: str) -> Api
 # ---------------------------------------------------------------- sites
 
 
-async def create_site(db: AsyncSession, *, name: str, actor: str) -> Site:
+async def create_site(db: AsyncSession, *, name: str, actor: str, actor_org: OrgId) -> Site:
     existing = (await db.execute(select(Site).where(Site.name == name))).scalar_one_or_none()
     if existing is not None:
         raise AdminError(f"a site called {name!r} already exists")
@@ -207,6 +224,7 @@ async def create_site(db: AsyncSession, *, name: str, actor: str) -> Site:
     db.add(site)
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="site.created",
@@ -218,7 +236,9 @@ async def create_site(db: AsyncSession, *, name: str, actor: str) -> Site:
     return site
 
 
-async def rename_site(db: AsyncSession, site_id: uuid.UUID, *, name: str, actor: str) -> Site:
+async def rename_site(
+    db: AsyncSession, site_id: uuid.UUID, *, name: str, actor: str, actor_org: OrgId
+) -> Site:
     """Rename in place. Devices reference the site by id, so nothing moves."""
     site = await db.get(Site, site_id)
     if site is None:
@@ -232,6 +252,7 @@ async def rename_site(db: AsyncSession, site_id: uuid.UUID, *, name: str, actor:
     was, site.name = site.name, name
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="site.renamed",
@@ -244,7 +265,9 @@ async def rename_site(db: AsyncSession, site_id: uuid.UUID, *, name: str, actor:
     return site
 
 
-async def delete_site(db: AsyncSession, site_id: uuid.UUID, actor: str) -> Site:
+async def delete_site(
+    db: AsyncSession, site_id: uuid.UUID, actor: str, *, actor_org: OrgId
+) -> Site:
     """Refused while devices still point at it.
 
     devices.site_id is ON DELETE SET NULL, so deleting a populated site would
@@ -260,6 +283,7 @@ async def delete_site(db: AsyncSession, site_id: uuid.UUID, actor: str) -> Site:
 
     db.add(
         AuditLog(
+            org_id=actor_org,
             actor_type=ActorType.user,
             actor_id=actor,
             action="site.deleted",

@@ -274,3 +274,105 @@ async def test_a_device_with_no_matching_schedules_needs_no_sync():
     async with get_sessionmaker()() as db:
         doc = build_document(device, await load_schedules(db))
     assert doc["schedule_version"] == 0, "this device would be pushed an empty document for ever"
+
+
+# --------------------------------------------------------------------------
+# A target nothing can evaluate
+# --------------------------------------------------------------------------
+#
+# {"device_ids": [...], "all": true} is what RunRequest sends for every run, so
+# an operator copying a target out of a run request produces one. _selector
+# refuses it, which is right for a single run and fatal for the reconciler:
+# the schedule list is shared by the whole fleet, so one such row raised for
+# every device on every heartbeat and no agent anywhere got a document.
+
+AMBIGUOUS_TARGET = {"device_ids": [str(uuid7())], "tags": [], "all": True}
+
+
+async def test_a_target_naming_two_selectors_is_refused(client):
+    """At the boundary, so the row cannot exist. cron and tz beside it have
+    been validated since the schedule API was written; target was a bare dict."""
+    _device, script, _schedule = await _fixture()
+    r = await client.post(
+        "/api/v1/scripts/schedules",
+        json={
+            "name": "ambiguous",
+            "script_id": str(script.id),
+            "cron": "0 2 * * *",
+            "target": AMBIGUOUS_TARGET,
+        },
+    )
+    assert r.status_code == 422, "a schedule no device can evaluate was accepted"
+    assert "selector" in r.text
+
+
+async def test_a_target_naming_no_selector_is_refused(client):
+    """An empty target matches nothing, so the schedule is saved, listed, and
+    never fires anywhere. A typo in the key name lands here too."""
+    _device, script, _schedule = await _fixture()
+    r = await client.post(
+        "/api/v1/scripts/schedules",
+        json={
+            "name": "targets-nothing",
+            "script_id": str(script.id),
+            "cron": "0 2 * * *",
+            "target": {"device_id": "not-the-key-name"},
+        },
+    )
+    assert r.status_code == 422
+
+
+async def test_one_unusable_schedule_does_not_stop_the_others():
+    """The rows already in the database. Validation at the boundary does
+    nothing for a schedule saved before the validator existed, and there is
+    exactly one shared list, so the bad row has to be skipped rather than
+    allowed to raise."""
+    device, script, good = await _fixture()
+    async with get_sessionmaker()() as db, db.begin():
+        db.add(
+            ScriptSchedule(
+                name="ambiguous",
+                script_id=script.id,
+                cron="0 3 * * *",
+                tz="UTC",
+                target=AMBIGUOUS_TARGET,
+            )
+        )
+
+    async with get_sessionmaker()() as db:
+        doc = build_document(device, await load_schedules(db))
+
+    assert [e["entry_id"] for e in doc["entries"]] == [str(good.id)], (
+        "one unusable schedule took the whole document with it"
+    )
+
+
+async def test_the_reconciler_survives_a_schedule_it_cannot_evaluate():
+    """The path that actually broke: ScheduleSyncer.check runs on every
+    heartbeat from every device against the shared cached list, and the
+    dispatcher only logs what it raises, so delivery stopped fleet-wide with
+    nothing in the UI."""
+    from openrmm.dispatcher.schedule_sync import ScheduleSyncer
+
+    device, script, _good = await _fixture()
+    async with get_sessionmaker()() as db, db.begin():
+        db.add(
+            ScriptSchedule(
+                name="ambiguous",
+                script_id=script.id,
+                cron="0 3 * * *",
+                tz="UTC",
+                target=AMBIGUOUS_TARGET,
+            )
+        )
+
+    async with get_sessionmaker()() as db:
+        loaded = await load_schedules(db)
+
+    class Syncer(ScheduleSyncer):
+        async def _current(self):
+            return loaded
+
+    # nc=None, so the push itself cannot succeed; sync_device swallows that and
+    # returns None. What must not happen is check() raising before it gets there.
+    assert await Syncer(nc=None).check(device, 0) is False

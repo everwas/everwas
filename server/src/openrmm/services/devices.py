@@ -59,6 +59,10 @@ async def delete_device(db: AsyncSession, device_id: uuid.UUID, actor: str) -> D
     # its subjects on purpose), but the hostname does not survive the row.
     db.add(
         AuditLog(
+            # Read off the device while it still exists. This is the entry the
+            # whole write-before-delete dance is for, so it must be readable
+            # after the row it describes is gone.
+            org_id=device.org_id,
             actor_type=ActorType.user,
             actor_id=actor,
             action="device.deleted",

@@ -29,6 +29,7 @@ from openrmm.models.job_outbox import (
 )
 from openrmm.models.patch import PatchJob, PatchJobStatus
 from openrmm.models.script import RunStatus, ScriptRun
+from openrmm.services.audit import device_org
 from openrmm.services.jobs import job_envelope
 
 log = structlog.get_logger()
@@ -124,6 +125,7 @@ async def _record_failure(db: AsyncSession, row: JobOutbox, error: str) -> None:
     await _fail_owner(db, row, reason)
     db.add(
         AuditLog(
+            org_id=await device_org(db, row.device_id),
             actor_type=ActorType.system,
             actor_id="job-outbox",
             action="job.dispatch_failed",

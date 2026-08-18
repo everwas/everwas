@@ -7,6 +7,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from openrmm.models.audit import ActorType, AuditLog
+from openrmm.services.audit import device_org
 
 log = structlog.get_logger()
 
@@ -31,6 +32,11 @@ async def record_agent_event(db: AsyncSession, device_id: uuid.UUID, data: dict)
         return
     db.add(
         AuditLog(
+            # Looked up: an agent event arrives off the wire with no caller to
+            # inherit an organization from. An unknown device yields None, and
+            # a row nobody can read, which is the right answer for an event
+            # from a device that is not ours.
+            org_id=await device_org(db, device_id),
             actor_type=ActorType.agent,
             actor_id=str(device_id),
             action=str(event)[:120],

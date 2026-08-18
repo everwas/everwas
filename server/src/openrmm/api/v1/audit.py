@@ -18,7 +18,6 @@ from sqlalchemy import select
 
 from openrmm.api.deps import CurrentUser, DbSession
 from openrmm.models.audit import ActorType, AuditLog
-from openrmm.models.device import Device
 from openrmm.schemas.audit import AuditEntryOut, AuditPage
 from openrmm.security.tenancy import caller_org, scope_to_org
 
@@ -41,7 +40,14 @@ async def list_audit(
     before: datetime | None = Query(default=None, description="cursor: older than this"),
     limit: int = Query(default=50, ge=1, le=MAX_LIMIT),
 ) -> AuditPage:
-    query = select(AuditLog).order_by(AuditLog.at.desc(), AuditLog.id.desc())
+    # Scoped before any filter is applied. An entry names an operator and the
+    # host they ran something on, so an unscoped list is another tenant's staff
+    # directory and fleet inventory, reachable with ?target_id=<guessed uuid>.
+    query = scope_to_org(
+        select(AuditLog).order_by(AuditLog.at.desc(), AuditLog.id.desc()),
+        AuditLog.org_id,
+        caller_org(_user),
+    )
 
     if action:
         query = query.where(AuditLog.action == action)
@@ -81,8 +87,17 @@ async def list_actions(db: DbSession, _user: CurrentUser) -> list[str]:
 
     Typing an action by hand means typos return an empty page that looks
     exactly like "nothing happened".
+
+    Scoped too: the set of actions another organization performs says what
+    they do with the product, and it is the cheapest thing here to enumerate.
     """
-    rows = await db.execute(select(AuditLog.action).distinct().order_by(AuditLog.action))
+    rows = await db.execute(
+        scope_to_org(
+            select(AuditLog.action).distinct().order_by(AuditLog.action),
+            AuditLog.org_id,
+            caller_org(_user),
+        )
+    )
     return list(rows.scalars())
 
 
@@ -95,42 +110,38 @@ async def device_history(
 ) -> list[AuditEntryOut]:
     """Everything done to one machine, whoever did it.
 
-    Scoped to the caller's organization first: the audit trail names who ran
-    what on which host, so leaking it across the boundary leaks both the
-    existence of another tenant's fleet and the identities of their operators.
+    Scoped to the caller's organization: the audit trail names who ran what on
+    which host, so leaking it across the boundary leaks both the existence of
+    another tenant's fleet and the identities of their operators.
+
+    Scoped on the AUDIT ROWS, not on the device. The log outlives its subjects
+    deliberately — delete_device writes its entry before the row goes — so
+    authorizing by loading the device made the history of a deleted machine
+    unreadable at exactly the moment somebody needed it. The rows carry their
+    own org_id (migration 0018) so the boundary does not depend on a parent
+    that may be gone.
 
     Separate from the filtered list because it is the question an incident
     starts with, and because a device is named both as a target and, when the
     agent itself reports, as the actor.
     """
-    # 404 before any audit row is read. The device is the authorization
-    # subject here even though the rows live in another table.
-    #
-    # KNOWN LIMIT: audit_log deliberately outlives its subjects, but this
-    # authorizes on the device row, so the history of a DELETED device is no
-    # longer readable through this route. Fixing that properly means giving
-    # audit_log its own org_id rather than reaching one through a parent that
-    # may be gone. Serving it unscoped was the alternative, and that hands
-    # another organization's operator identities to anyone who guesses a UUID.
-    owned = (
-        await db.execute(
-            scope_to_org(
-                select(Device.id).where(Device.id == device_id),
-                Device.org_id,
-                caller_org(_user),
-            )
-        )
-    ).scalar_one_or_none()
-    if owned is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown device")
-
     rows = await db.execute(
-        select(AuditLog)
-        .where(
-            (AuditLog.target_id == str(device_id))
-            | ((AuditLog.actor_type == ActorType.agent) & (AuditLog.actor_id == str(device_id)))
+        scope_to_org(
+            select(AuditLog).where(
+                (AuditLog.target_id == str(device_id))
+                | ((AuditLog.actor_type == ActorType.agent) & (AuditLog.actor_id == str(device_id)))
+            ),
+            AuditLog.org_id,
+            caller_org(_user),
         )
         .order_by(AuditLog.at.desc())
         .limit(limit)
     )
-    return [AuditEntryOut.model_validate(r) for r in rows.scalars()]
+    entries = [AuditEntryOut.model_validate(r) for r in rows.scalars()]
+    if not entries:
+        # 404 rather than an empty list, so a device in another organization
+        # reads exactly like one that never existed. An empty 200 would confirm
+        # the UUID is not ours, which is the same tell the device routes avoid
+        # by answering 404 instead of 403.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no audit history for this device")
+    return entries

@@ -87,8 +87,15 @@ async def approve(
     device_id: uuid.UUID | None,
     decision: ApprovalDecision,
     decided_by: str,
+    org_id: uuid.UUID | None,
     policy_id: uuid.UUID | None = None,
 ) -> PatchApproval:
+    """Record a decision about a patch. `org_id` files the audit entry.
+
+    It is passed in rather than derived: an approval can be fleet-wide
+    (device_id is None), so there is not always a device to read it off, and
+    the caller — a route, a policy run — always knows whose decision it is.
+    """
     stmt = (
         pg_insert(PatchApproval.__table__)
         .values(
@@ -113,6 +120,7 @@ async def approve(
     approval_id = (await db.execute(stmt)).scalar_one()
     db.add(
         AuditLog(
+            org_id=org_id,
             actor_type=ActorType.user,
             actor_id=decided_by,
             action=f"patch.{decision.value}",
@@ -199,6 +207,7 @@ async def queue_patch_install(
     )
     db.add(
         AuditLog(
+            org_id=device.org_id,
             actor_type=ActorType.user,
             actor_id=requested_by,
             action="patch.install_queued",
@@ -252,6 +261,7 @@ async def auto_approve_for_policies(db: AsyncSession, device: Device, patches: l
                 device_id=device.id,
                 decision=ApprovalDecision.approved,
                 decided_by=f"policy:{policy.name}",
+                org_id=device.org_id,
                 policy_id=policy.id,
             )
             approved += 1

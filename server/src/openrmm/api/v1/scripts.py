@@ -218,7 +218,14 @@ async def preview_schedule(schedule_id: uuid.UUID, db: DbSession, _user: Current
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown schedule")
 
     devices = (await db.execute(select(Device))).scalars().all()
-    matched = [d for d in devices if device_matches_target(d, schedule.target or {})]
+    try:
+        matched = [d for d in devices if device_matches_target(d, schedule.target or {})]
+    except TargetError as exc:
+        # A row saved before the target validator existed. The reconciler now
+        # skips it silently for the fleet's sake, so this is where an operator
+        # finds out why the schedule never fires, and the message says how to
+        # fix it. A 500 here would read as "preview is broken".
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
     tz = ZoneInfo(schedule.tz or "UTC")
     itr = croniter(schedule.cron, datetime.now(tz))

@@ -88,6 +88,23 @@ class ScheduleIn(BaseModel):
             raise ValueError(f"{v!r} is not a valid cron expression")
         return v
 
+    @field_validator("target")
+    @classmethod
+    def _target_names_one_selector(cls, v: dict) -> dict:
+        # A schedule's target is evaluated for EVERY device on EVERY heartbeat,
+        # off one list shared by the whole fleet. An unusable one used to save
+        # with a 201 and then raise inside the reconciler, so no agent anywhere
+        # received a schedule document until somebody found the row. Two
+        # selectors is the plausible mistake: RunRequest always sends all three
+        # keys, so a target copied out of a run request has device_ids and all.
+        from openrmm.services.jobs import TargetError, validate_target
+
+        try:
+            validate_target(v)
+        except TargetError as exc:
+            raise ValueError(str(exc)) from exc
+        return v
+
     @field_validator("tz")
     @classmethod
     def _tz_exists(cls, v: str) -> str:

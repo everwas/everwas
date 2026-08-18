@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Index, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +21,20 @@ class AuditLog(Base):
 
     __tablename__ = "audit_log"
     __table_args__ = (Index("ix_audit_log_at_brin", "at", postgresql_using="brin"),)
+
+    # Its OWN tenant, not one reached through the thing it describes. The log
+    # outlives its subjects on purpose (delete_device writes the entry before
+    # the row goes), so a reader that authorized through the device could not
+    # show the history of a deleted one.
+    #
+    # Nullable, and no default: unlike every other table, a default here would
+    # quietly file an entry under the wrong tenant whenever a writer forgot.
+    # NULL is unreadable instead, because readers filter `org_id = :caller`.
+    org_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"),
+        default=None,
+        index=True,
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

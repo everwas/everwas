@@ -61,7 +61,12 @@ async def list_users(db: DbSession, _user: CurrentUser) -> list[UserOut]:
 async def add_user(body: UserIn, db: DbSession, user: CurrentUser) -> UserOut:
     try:
         created = await create_user(
-            db, email=body.email, password=body.password, role=body.role, actor=user.email
+            db,
+            email=body.email,
+            password=body.password,
+            role=body.role,
+            actor=user.email,
+            actor_org=user.org_id,
         )
     except AdminError as exc:
         raise _refused(exc) from exc
@@ -74,7 +79,9 @@ async def change_role(
     user_id: uuid.UUID, body: UserRoleIn, db: DbSession, user: CurrentUser
 ) -> UserOut:
     try:
-        updated = await set_user_role(db, user_id, role=body.role, actor=user.email)
+        updated = await set_user_role(
+            db, user_id, role=body.role, actor=user.email, actor_org=user.org_id
+        )
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -84,7 +91,9 @@ async def change_role(
 @router.post("/users/{user_id}/disable")
 async def disable_user(user_id: uuid.UUID, db: DbSession, user: CurrentUser) -> UserOut:
     try:
-        updated = await set_user_active(db, user_id, active=False, actor=user.email)
+        updated = await set_user_active(
+            db, user_id, active=False, actor=user.email, actor_org=user.org_id
+        )
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -94,7 +103,9 @@ async def disable_user(user_id: uuid.UUID, db: DbSession, user: CurrentUser) -> 
 @router.post("/users/{user_id}/enable")
 async def enable_user(user_id: uuid.UUID, db: DbSession, user: CurrentUser) -> UserOut:
     try:
-        updated = await set_user_active(db, user_id, active=True, actor=user.email)
+        updated = await set_user_active(
+            db, user_id, active=True, actor=user.email, actor_org=user.org_id
+        )
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -128,6 +139,7 @@ async def add_api_key(body: ApiKeyIn, db: DbSession, user: CurrentUser) -> ApiKe
             scopes=body.scopes,
             ttl_days=body.ttl_days,
             actor=user.email,
+            actor_org=user.org_id,
         )
     except AdminError as exc:
         raise _refused(exc) from exc
@@ -138,7 +150,7 @@ async def add_api_key(body: ApiKeyIn, db: DbSession, user: CurrentUser) -> ApiKe
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(key_id: uuid.UUID, db: DbSession, user: CurrentUser) -> None:
     try:
-        await revoke_api_key(db, key_id, actor=user.email)
+        await revoke_api_key(db, key_id, actor=user.email, actor_org=user.org_id)
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -156,7 +168,7 @@ async def list_sites(db: DbSession, _user: CurrentUser) -> list[SiteOut]:
 @router.post("/sites", status_code=status.HTTP_201_CREATED)
 async def add_site(body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
     try:
-        site = await create_site(db, name=body.name, actor=user.email)
+        site = await create_site(db, name=body.name, actor=user.email, actor_org=user.org_id)
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -166,7 +178,9 @@ async def add_site(body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
 @router.put("/sites/{site_id}")
 async def edit_site(site_id: uuid.UUID, body: SiteIn, db: DbSession, user: CurrentUser) -> SiteOut:
     try:
-        site = await rename_site(db, site_id, name=body.name, actor=user.email)
+        site = await rename_site(
+            db, site_id, name=body.name, actor=user.email, actor_org=user.org_id
+        )
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()
@@ -176,7 +190,7 @@ async def edit_site(site_id: uuid.UUID, body: SiteIn, db: DbSession, user: Curre
 @router.delete("/sites/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_site(site_id: uuid.UUID, db: DbSession, user: CurrentUser) -> None:
     try:
-        await delete_site(db, site_id, actor=user.email)
+        await delete_site(db, site_id, actor=user.email, actor_org=user.org_id)
     except AdminError as exc:
         raise _refused(exc) from exc
     await db.commit()

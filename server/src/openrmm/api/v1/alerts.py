@@ -94,6 +94,7 @@ async def create_rule(body: AlertRuleIn, db: DbSession, user: CurrentUser) -> Al
         db.add(RuleChannel(rule_id=rule.id, channel_id=channel_id))
     db.add(
         AuditLog(
+            org_id=user.org_id,
             actor_type=ActorType.user,
             actor_id=user.email,
             action="alert_rule.created",
@@ -164,6 +165,7 @@ async def ack_alert(alert_id: uuid.UUID, db: DbSession, user: CurrentUser) -> Al
     alert.acked_by = user.email
     db.add(
         AuditLog(
+            org_id=user.org_id,
             actor_type=ActorType.user,
             actor_id=user.email,
             action="alert.acknowledged",
@@ -184,6 +186,7 @@ async def resolve_alert(alert_id: uuid.UUID, db: DbSession, user: CurrentUser) -
     alert.resolved_at = datetime.now(UTC)
     db.add(
         AuditLog(
+            org_id=user.org_id,
             actor_type=ActorType.user,
             actor_id=user.email,
             action="alert.resolved",

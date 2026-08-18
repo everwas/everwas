@@ -27,10 +27,6 @@ class DeviceCertificate(Base):
     fingerprint_sha256: Mapped[str] = mapped_column(String(64))
     not_before: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     not_after: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    issued_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), default=None
-    )
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revocation_reason: Mapped[str | None] = mapped_column(String(64), default=None)

@@ -28,6 +28,7 @@ from sqlalchemy import select
 from openrmm.db.engine import get_sessionmaker
 from openrmm.models.audit import AuditLog
 from openrmm.models.device import Device, OsFamily
+from openrmm.models.org import DEFAULT_ORG_ID
 from openrmm.models.script import ShellSession
 from openrmm.services.shell_session import close_session_record, open_session_record
 from openrmm.util.ids import uuid7
@@ -52,7 +53,9 @@ async def test_the_session_exists_before_any_bytes_flow():
     device_id = await _device()
     session_id = uuid.uuid4()
 
-    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
+    await open_session_record(
+        session_id, device_id, user_id=None, user_email="admin@example.com", org_id=DEFAULT_ORG_ID
+    )
 
     row = await _row(session_id)
     assert row is not None, "a root shell was open with no record of it anywhere"
@@ -64,7 +67,9 @@ async def test_the_audit_entry_is_written_at_open_not_at_close():
     device_id = await _device()
     session_id = uuid.uuid4()
 
-    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
+    await open_session_record(
+        session_id, device_id, user_id=None, user_email="admin@example.com", org_id=DEFAULT_ORG_ID
+    )
 
     async with get_sessionmaker()() as db:
         rows = (
@@ -83,7 +88,9 @@ async def test_started_at_is_the_start_not_the_end():
     session_id = uuid.uuid4()
     before = datetime.now(UTC)
 
-    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
+    await open_session_record(
+        session_id, device_id, user_id=None, user_email="admin@example.com", org_id=DEFAULT_ORG_ID
+    )
     row = await _row(session_id)
     assert row.started_at >= before.replace(microsecond=0) - __import__("datetime").timedelta(
         seconds=5
@@ -106,7 +113,9 @@ async def test_an_unclosed_session_is_self_describing():
     """
     device_id = await _device()
     session_id = uuid.uuid4()
-    await open_session_record(session_id, device_id, user_id=None, user_email="admin@example.com")
+    await open_session_record(
+        session_id, device_id, user_id=None, user_email="admin@example.com", org_id=DEFAULT_ORG_ID
+    )
     # No close: the worker died here.
     row = await _row(session_id)
     assert row is not None

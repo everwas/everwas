@@ -19,6 +19,7 @@ from openrmm.mcp.context import parse_api_key
 from openrmm.models.api_key import ApiKey
 from openrmm.models.audit import AuditLog
 from openrmm.models.device import Device, OsFamily, Site
+from openrmm.models.org import DEFAULT_ORG_ID
 from openrmm.models.user import Role, User
 from openrmm.security.passwords import hash_password
 from openrmm.services.admin import (
@@ -48,7 +49,9 @@ async def test_the_last_admin_cannot_be_demoted():
     admin = await _admin()
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="last active admin"):
-            await set_user_role(db, admin.id, role=Role.viewer, actor="root@example.com")
+            await set_user_role(
+                db, admin.id, role=Role.viewer, actor="root@example.com", actor_org=DEFAULT_ORG_ID
+            )
 
 
 async def test_the_last_admin_can_be_demoted_once_there_is_another():
@@ -60,9 +63,12 @@ async def test_the_last_admin_can_be_demoted_once_there_is_another():
             password="x" * 12,
             role=Role.admin,
             actor="root@example.com",
+            actor_org=DEFAULT_ORG_ID,
         )
     async with get_sessionmaker()() as db, db.begin():
-        assert await set_user_role(db, admin.id, role=Role.viewer, actor="root@example.com")
+        assert await set_user_role(
+            db, admin.id, role=Role.viewer, actor="root@example.com", actor_org=DEFAULT_ORG_ID
+        )
 
 
 async def test_you_cannot_disable_yourself():
@@ -70,7 +76,9 @@ async def test_you_cannot_disable_yourself():
     admin = await _admin()
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="your own account"):
-            await set_user_active(db, admin.id, active=False, actor="root@example.com")
+            await set_user_active(
+                db, admin.id, active=False, actor="root@example.com", actor_org=DEFAULT_ORG_ID
+            )
 
 
 async def test_a_disabled_admin_does_not_count_as_cover():
@@ -79,26 +87,45 @@ async def test_a_disabled_admin_does_not_count_as_cover():
     admin = await _admin()
     async with get_sessionmaker()() as db, db.begin():
         other = await create_user(
-            db, email="b@example.com", password="x" * 12, role=Role.admin, actor="root@example.com"
+            db,
+            email="b@example.com",
+            password="x" * 12,
+            role=Role.admin,
+            actor="root@example.com",
+            actor_org=DEFAULT_ORG_ID,
         )
         other_id = other.id
     async with get_sessionmaker()() as db, db.begin():
-        await set_user_active(db, other_id, active=False, actor="root@example.com")
+        await set_user_active(
+            db, other_id, active=False, actor="root@example.com", actor_org=DEFAULT_ORG_ID
+        )
 
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="last active admin"):
-            await set_user_role(db, admin.id, role=Role.viewer, actor="root@example.com")
+            await set_user_role(
+                db, admin.id, role=Role.viewer, actor="root@example.com", actor_org=DEFAULT_ORG_ID
+            )
 
 
 async def test_duplicate_email_is_refused():
     async with get_sessionmaker()() as db, db.begin():
         await create_user(
-            db, email="dup@example.com", password="x" * 12, role=Role.viewer, actor="a@b.c"
+            db,
+            email="dup@example.com",
+            password="x" * 12,
+            role=Role.viewer,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
         )
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="already has an account"):
             await create_user(
-                db, email="dup@example.com", password="x" * 12, role=Role.viewer, actor="a@b.c"
+                db,
+                email="dup@example.com",
+                password="x" * 12,
+                role=Role.viewer,
+                actor="a@b.c",
+                actor_org=DEFAULT_ORG_ID,
             )
 
 
@@ -107,7 +134,12 @@ async def test_only_the_hash_is_stored():
     stored, a database read would be every integration's credentials."""
     async with get_sessionmaker()() as db, db.begin():
         key, plaintext = await mint_api_key(
-            db, name="mcp", scopes=["devices:read"], ttl_days=30, actor="a@b.c"
+            db,
+            name="mcp",
+            scopes=["devices:read"],
+            ttl_days=30,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
         )
         key_id = key.id
 
@@ -133,23 +165,40 @@ async def test_an_unknown_scope_is_refused():
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="unknown scope"):
             await mint_api_key(
-                db, name="typo", scopes=["devices:reed"], ttl_days=None, actor="a@b.c"
+                db,
+                name="typo",
+                scopes=["devices:reed"],
+                ttl_days=None,
+                actor="a@b.c",
+                actor_org=DEFAULT_ORG_ID,
             )
 
 
 async def test_a_key_with_no_scopes_is_refused():
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="at least one"):
-            await mint_api_key(db, name="empty", scopes=[], ttl_days=None, actor="a@b.c")
+            await mint_api_key(
+                db, name="empty", scopes=[], ttl_days=None, actor="a@b.c", actor_org=DEFAULT_ORG_ID
+            )
 
 
 async def test_two_keys_never_share_a_secret():
     async with get_sessionmaker()() as db, db.begin():
         _, a = await mint_api_key(
-            db, name="a", scopes=["devices:read"], ttl_days=None, actor="a@b.c"
+            db,
+            name="a",
+            scopes=["devices:read"],
+            ttl_days=None,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
         )
         _, b = await mint_api_key(
-            db, name="b", scopes=["devices:read"], ttl_days=None, actor="a@b.c"
+            db,
+            name="b",
+            scopes=["devices:read"],
+            ttl_days=None,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
         )
     assert a != b
 
@@ -159,14 +208,14 @@ async def test_a_site_with_devices_cannot_be_deleted():
     silently orphan every machine into 'no site'. The only sign would be a
     fleet list that had quietly lost its grouping."""
     async with get_sessionmaker()() as db, db.begin():
-        site = await create_site(db, name="HQ", actor="a@b.c")
+        site = await create_site(db, name="HQ", actor="a@b.c", actor_org=DEFAULT_ORG_ID)
         await db.flush()
         db.add(Device(id=uuid7(), hostname="in-hq", os_family=OsFamily.linux, site_id=site.id))
         site_id = site.id
 
     async with get_sessionmaker()() as db, db.begin():
         with pytest.raises(AdminError, match="still has devices"):
-            await delete_site(db, site_id, actor="a@b.c")
+            await delete_site(db, site_id, actor="a@b.c", actor_org=DEFAULT_ORG_ID)
 
     async with get_sessionmaker()() as db:
         assert await db.get(Site, site_id) is not None
@@ -174,10 +223,10 @@ async def test_a_site_with_devices_cannot_be_deleted():
 
 async def test_an_empty_site_can_be_deleted():
     async with get_sessionmaker()() as db, db.begin():
-        site = await create_site(db, name="Empty", actor="a@b.c")
+        site = await create_site(db, name="Empty", actor="a@b.c", actor_org=DEFAULT_ORG_ID)
         site_id = site.id
     async with get_sessionmaker()() as db, db.begin():
-        await delete_site(db, site_id, actor="a@b.c")
+        await delete_site(db, site_id, actor="a@b.c", actor_org=DEFAULT_ORG_ID)
     async with get_sessionmaker()() as db:
         assert await db.get(Site, site_id) is None
 
@@ -187,10 +236,22 @@ async def test_every_mutation_is_audited():
     is the one nobody can reconstruct afterwards."""
     async with get_sessionmaker()() as db, db.begin():
         await create_user(
-            db, email="new@example.com", password="x" * 12, role=Role.viewer, actor="a@b.c"
+            db,
+            email="new@example.com",
+            password="x" * 12,
+            role=Role.viewer,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
         )
-        await mint_api_key(db, name="k", scopes=["devices:read"], ttl_days=None, actor="a@b.c")
-        await create_site(db, name="Branch", actor="a@b.c")
+        await mint_api_key(
+            db,
+            name="k",
+            scopes=["devices:read"],
+            ttl_days=None,
+            actor="a@b.c",
+            actor_org=DEFAULT_ORG_ID,
+        )
+        await create_site(db, name="Branch", actor="a@b.c", actor_org=DEFAULT_ORG_ID)
 
     async with get_sessionmaker()() as db:
         actions = set((await db.execute(select(AuditLog.action))).scalars())
@@ -206,7 +267,12 @@ async def test_a_secret_containing_an_underscore_still_parses():
     for _ in range(40):
         async with get_sessionmaker()() as db, db.begin():
             key, plaintext = await mint_api_key(
-                db, name="k", scopes=["devices:read"], ttl_days=None, actor="a@b.c"
+                db,
+                name="k",
+                scopes=["devices:read"],
+                ttl_days=None,
+                actor="a@b.c",
+                actor_org=DEFAULT_ORG_ID,
             )
             expected_id, expected_hash = key.key_id, key.secret_hash
 

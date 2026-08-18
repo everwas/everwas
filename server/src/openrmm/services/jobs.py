@@ -80,6 +80,22 @@ def _selector(target: dict) -> tuple[str, list] | None:
     return chosen[0] if chosen else None
 
 
+def validate_target(target: dict) -> None:
+    """Refuse a selector nothing can act on. Raises TargetError.
+
+    Exists so the API boundary and the matcher cannot drift apart: both ask
+    _selector, so a target that validates is one every consumer can evaluate.
+    A schedule is the case that needs it, because its target is read once per
+    device per heartbeat from a list shared by the whole fleet rather than
+    once per request.
+    """
+    if _selector(target or {}) is None:
+        raise TargetError(
+            "target names no selector, so it matches nothing and would never "
+            "run anywhere; pass exactly one of device_ids, tags, or all"
+        )
+
+
 def device_matches_target(device: Device, target: dict) -> bool:
     """Does this one device fall inside the selector? No query, no ceiling.
 
@@ -191,6 +207,10 @@ async def queue_script_run(
 
     db.add(
         AuditLog(
+            # The script's organization: `requested_by` is a bare string here
+            # (a schedule name, not always a user), and the script is the
+            # subject the entry is filed under.
+            org_id=script.org_id,
             actor_type=ActorType.user,
             actor_id=requested_by,
             action="script.queued",

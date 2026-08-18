@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openrmm.models.device import Device
 from openrmm.models.script import Script, ScriptSchedule
 from openrmm.natsio.agent_request import request_agent
-from openrmm.services.jobs import device_matches_target
+from openrmm.services.jobs import TargetError, device_matches_target, validate_target
 
 log = structlog.get_logger()
 
@@ -103,6 +103,21 @@ def schedule_version(entries: list[dict]) -> int:
     return zlib.crc32(canonical.encode()) & 0x7FFFFFFF
 
 
+def _targets_device(schedule: ScriptSchedule, device: Device) -> bool:
+    """Whether one schedule applies here, treating an unusable target as "no".
+
+    A target that names two selectors raises, and this list is shared by the
+    whole fleet: one such row used to abort the document for every device on
+    every heartbeat, so NO agent received any schedule at all, indefinitely,
+    with nothing to see in the UI. Skipping the one entry costs the machines
+    that schedule targeted; raising costs every machine there is.
+    """
+    try:
+        return device_matches_target(device, schedule.target or {})
+    except TargetError:
+        return False
+
+
 def build_document(device: Device, schedules: Sequence[tuple[ScriptSchedule, Script]]) -> dict:
     """The full sched.sync payload for one device.
 
@@ -114,21 +129,41 @@ def build_document(device: Device, schedules: Sequence[tuple[ScriptSchedule, Scr
     entries = [
         entry_for(schedule, script)
         for schedule, script in schedules
-        if schedule.enabled and device_matches_target(device, schedule.target or {})
+        if schedule.enabled and _targets_device(schedule, device)
     ]
     entries.sort(key=lambda e: e["entry_id"])  # stable, so the version is stable
     return {"schedule_version": schedule_version(entries), "entries": entries}
 
 
 async def load_schedules(db: AsyncSession) -> list[tuple[ScriptSchedule, Script]]:
-    """Every enabled schedule with its script, ready to build documents from."""
+    """Every USABLE enabled schedule with its script, ready to build from.
+
+    A schedule whose target cannot be evaluated is dropped here rather than at
+    every device, so it is named in the log once per reload (30s in the
+    dispatcher) instead of once per device per heartbeat. The API refuses to
+    save one now, so what reaches this is a row that predates that validator.
+    """
     rows = await db.execute(
         select(ScriptSchedule, Script)
         .join(Script, Script.id == ScriptSchedule.script_id)
         .where(ScriptSchedule.enabled)
         .order_by(ScriptSchedule.id)
     )
-    return [(schedule, script) for schedule, script in rows.all()]
+    usable: list[tuple[ScriptSchedule, Script]] = []
+    for schedule, script in rows.all():
+        try:
+            validate_target(schedule.target or {})
+        except TargetError as exc:
+            log.error(
+                "schedule has an unusable target and is being skipped",
+                schedule_id=str(schedule.id),
+                name=schedule.name,
+                target=schedule.target,
+                err=str(exc),
+            )
+            continue
+        usable.append((schedule, script))
+    return usable
 
 
 async def sync_device(
