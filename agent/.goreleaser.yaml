@@ -35,6 +35,14 @@ project_name: openrmm-agent
 
 before:
   hooks:
+    pre:
+      # Windows Installer treats a file with no VERSIONINFO resource as
+      # unversioned and falls back to comparing timestamps, at which point it
+      # can decide the existing binary "looks modified" and refuse to overwrite
+      # it. Observed on a real Windows 11 VM: the install reported success, the
+      # service restarted, and the old binary stayed on disk. The resource is
+      # what makes MSI compare versions instead of guessing.
+      - bash packaging/windows/gen-versioninfo.sh {{ .Version }}
     # Deliberately not `go mod tidy`: a release must build the dependency set
     # that was reviewed and committed, not one resolved at release time.
     - go mod download
