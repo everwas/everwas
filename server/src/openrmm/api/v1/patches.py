@@ -137,7 +137,7 @@ async def scan_device(device_id: uuid.UUID, db: DbSession, _user: CurrentUser) -
 
 @router.post("/deploy", dependencies=[OPERATOR])
 async def deploy(body: DeployRequest, db: DbSession, user: CurrentUser) -> PatchJobOut:
-    device = await _device_or_404(db, body.device_id)
+    device = await _device_or_404(db, body.device_id, user)
     allowed = await approved_external_ids(db, device, body.external_ids or None)
     if body.external_ids:
         # Never install something that was not approved, even if asked to.
