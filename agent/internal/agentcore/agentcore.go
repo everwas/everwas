@@ -97,17 +97,33 @@ const netcertUrgentEvery = time.Hour
 // certificate has no such proof available here and the machine may be holding
 // nothing at all.
 //
-// The interval is a parameter rather than a constant read from inside so a
-// test can drive many cycles: with it hard-coded, any assertion about repeated
-// behaviour observes exactly one startup attempt and passes whether or not the
-// behaviour it claims to check exists.
-func netcertLoop(
-	ctx context.Context,
-	ensure func(context.Context) (netcert.Phase, time.Time, error),
-	every, urgentEvery time.Duration,
-	warnUser func(context.Context, netcert.Phase, time.Time),
-	log *slog.Logger,
-) error {
+// The intervals are parameters rather than constants read from inside so a
+// test can drive many cycles: with them hard-coded, any assertion about
+// repeated behaviour observes exactly one startup attempt and passes whether
+// or not the behaviour it claims to check exists.
+
+// netcertConfig is a struct rather than six positional parameters because
+// three of them are now durations and two are callbacks, and a call site with
+// two adjacent time.Durations is one transposition away from a fleet that
+// retries urgently forever and routinely never.
+type netcertConfig struct {
+	// ensure obtains or renews, and reports what the device holds afterwards.
+	// On failure it still returns whatever is on disk, because the urgency of
+	// the failure depends entirely on that.
+	ensure func(context.Context) (*netcert.Material, error)
+	// agentID picks this device's renewal offset within the fleet's spread.
+	agentID string
+	// every is the routine cadence; urgent applies past netcert.UrgentAt.
+	every, urgent time.Duration
+	// warnUser interrupts whoever is at the machine. Optional.
+	warnUser func(context.Context, netcert.Phase, time.Time)
+	// observe publishes what the device holds, so the heartbeat can report it.
+	// Optional.
+	observe func(*netcert.Material)
+	log     *slog.Logger
+}
+
+func netcertLoop(ctx context.Context, cfg netcertConfig) error {
 	// Whether we have already said the server is not issuing certificates.
 	// Most deployments will never turn this on, and an agent that warns about
 	// an unused feature twice a day forever teaches its operators that its
@@ -116,43 +132,57 @@ func netcertLoop(
 
 	// attempt reports how long to wait before the next one.
 	attempt := func() time.Duration {
-		phase, expires, err := ensure(ctx)
+		m, err := cfg.ensure(ctx)
+		// m is whatever the device holds now, which on a failed renewal is the
+		// certificate it had before. Published even on failure: the server
+		// needs to know what this machine is ACTUALLY using, and a failed
+		// renewal is exactly when that stops matching what we last issued.
+		if cfg.observe != nil {
+			cfg.observe(m)
+		}
+
+		phase := m.PhaseAt(time.Now(), cfg.agentID)
+		var expires time.Time
+		if m != nil {
+			expires = m.NotAfter
+		}
+
 		switch {
 		case err == nil:
 		case errors.Is(err, netcert.ErrNotConfigured):
 			if !reportedUnconfigured {
-				log.Info("server is not issuing device certificates; 802.1X material will not be requested")
+				cfg.log.Info("server is not issuing device certificates; 802.1X material will not be requested")
 				reportedUnconfigured = true
 			}
 			// No CA on the server means there is no deadline to escalate
 			// towards, so stay on the relaxed cadence and say nothing further.
-			return every
+			return cfg.every
 		case errors.Is(err, context.Canceled):
-			return every
+			return cfg.every
 		case phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired:
 			// Past the point where this is a routine retry. Renewal has been
 			// failing for most of the margin and the machine is heading for,
 			// or already in, an outage.
-			log.Error("the network certificate is about to expire and cannot be renewed",
+			cfg.log.Error("the network certificate is about to expire and cannot be renewed",
 				"phase", phase.String(), "expires", expires.Format(time.RFC3339), "err", err)
 			// The server cannot be told, because the broken thing IS the path
 			// to the server: that is why renewal is failing. The person at the
 			// machine is the only party still reachable, and the only one who
 			// can plug in a cable or join the VPN.
-			if warnUser != nil {
-				warnUser(ctx, phase, expires)
+			if cfg.warnUser != nil {
+				cfg.warnUser(ctx, phase, expires)
 			}
 		default:
 			// Ordinary. A failure here leaves whatever the device already held
 			// untouched, so the machine keeps its network access, and there is
 			// most of the margin still ahead.
-			log.Warn("could not obtain a network certificate, will retry", "err", err)
+			cfg.log.Warn("could not obtain a network certificate, will retry", "err", err)
 		}
 
 		if phase == netcert.PhaseUrgent || phase == netcert.PhaseExpired {
-			return min(every, urgentEvery)
+			return min(cfg.every, cfg.urgent)
 		}
-		return every
+		return cfg.every
 	}
 
 	wait := attempt()
@@ -202,21 +232,25 @@ type Supervisor struct {
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
 
-	// EnsureNetCert obtains or renews the device's 802.1X certificate, and
-	// reports the phase and expiry of whatever the device holds afterwards.
+	// EnsureNetCert obtains or renews the device's 802.1X certificate and
+	// reports whatever the device holds afterwards.
 	//
-	// The phase comes back even on failure, and that is the point: it is the
-	// difference between a device one day past half life and one an hour from
-	// expiry, which is what decides how hard to retry and whether to interrupt
-	// the person using the machine.
+	// The material comes back even on failure, and that is the point: how
+	// urgent a failure is depends entirely on what is still on disk, and the
+	// same error means "retry tomorrow" with three weeks left and "act now"
+	// with hours left.
 	//
 	// Optional; when nil the agent never requests one, which is correct for
 	// every deployment that does not use 802.1X.
-	EnsureNetCert func(context.Context) (netcert.Phase, time.Time, error)
+	EnsureNetCert func(context.Context) (*netcert.Material, error)
 
 	// WarnUserAboutCertificate interrupts whoever is at the machine when its
 	// certificate is close to expiry and cannot be renewed. Optional.
 	WarnUserAboutCertificate func(context.Context, netcert.Phase, time.Time)
+
+	// Certificate carries what the device actually holds from the netcert
+	// loop to the heartbeat. Created by Start when nil.
+	Certificate *CertReport
 
 	wg sync.WaitGroup
 }
@@ -229,6 +263,9 @@ type task struct {
 // Start builds the modules and launches every task. It returns immediately;
 // cancel ctx to stop, then Wait for the goroutines to drain.
 func (s *Supervisor) Start(ctx context.Context) {
+	if s.Certificate == nil {
+		s.Certificate = &CertReport{}
+	}
 	aud := audit.New(s.NC, s.AgentID, s.Log)
 	shells := shell.New(s.NC, s.AgentID, aud, s.Log)
 	runner := scripts.NewRunner(s.NC, s.AgentID, s.StateDir, aud, s.Log)
@@ -268,7 +305,8 @@ func (s *Supervisor) Start(ctx context.Context) {
 
 	tasks := []task{
 		{"heartbeat", func(ctx context.Context, log *slog.Logger) error {
-			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version, scheduler.Version, log)
+			return heartbeat.Run(ctx, s.NC, s.AgentID, s.Version,
+				scheduler.Version, s.Certificate.Get, log)
 		}},
 		{"telemetry", func(ctx context.Context, log *slog.Logger) error {
 			return telemetry.Run(ctx, s.NC, s.AgentID, log)
@@ -311,8 +349,15 @@ func (s *Supervisor) Start(ctx context.Context) {
 			if s.EnsureNetCert == nil {
 				return nil
 			}
-			return netcertLoop(ctx, s.EnsureNetCert, netcertCheckEvery, netcertUrgentEvery,
-				s.WarnUserAboutCertificate, log)
+			return netcertLoop(ctx, netcertConfig{
+				ensure:   s.EnsureNetCert,
+				agentID:  s.AgentID,
+				every:    netcertCheckEvery,
+				urgent:   netcertUrgentEvery,
+				warnUser: s.WarnUserAboutCertificate,
+				observe:  s.Certificate.Set,
+				log:      log,
+			})
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
 		// one stops being the fallback. Getting this wrong is expensive in one

@@ -90,6 +90,13 @@ type Material struct {
 	NotAfter  time.Time
 	NotBefore time.Time
 
+	// Serial identifies this exact certificate, lowercase hex, matching the
+	// form the server records. Reported in the heartbeat so the server can
+	// tell what the device is ACTUALLY holding rather than what it was last
+	// issued, which are different whenever a renewal half-failed or a machine
+	// came back from a backup image.
+	Serial string
+
 	// Issued reports that THIS call obtained the certificate, as opposed to
 	// finding one already on disk. Without it the caller cannot tell the two
 	// apart, and the choice is between logging every routine check (so the one
@@ -240,6 +247,7 @@ func Save(dir, certPEM, chainPEM string) (*Material, error) {
 		ChainPath: chainPath,
 		NotBefore: cert.NotBefore,
 		NotAfter:  cert.NotAfter,
+		Serial:    serialHex(cert),
 	}, nil
 }
 
@@ -263,6 +271,7 @@ func Load(dir string) (*Material, error) {
 		ChainPath: filepath.Join(dir, chainFileName),
 		NotBefore: cert.NotBefore,
 		NotAfter:  cert.NotAfter,
+		Serial:    serialHex(cert),
 	}, nil
 }
 
@@ -380,6 +389,13 @@ func (m *Material) DueForRenewal(now time.Time) bool {
 	}
 	elapsed := now.Sub(m.NotBefore)
 	return elapsed >= time.Duration(float64(life)*RenewAt)
+}
+
+// serialHex renders a serial the same way the server records it: lowercase
+// hex with no leading zeros, so the two can be compared as strings without
+// either side needing to know how the other formats a big integer.
+func serialHex(cert *x509.Certificate) string {
+	return fmt.Sprintf("%x", cert.SerialNumber)
 }
 
 func parseCert(certPEM string) (*x509.Certificate, error) {

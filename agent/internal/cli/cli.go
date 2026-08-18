@@ -227,36 +227,29 @@ func runAgent(parent context.Context) int {
 			cfg.AgentSecret = secret
 			return cfg.Save()
 		},
-		EnsureNetCert: func(ctx context.Context) (netcert.Phase, time.Time, error) {
+		EnsureNetCert: func(ctx context.Context) (*netcert.Material, error) {
 			// Read the secret at call time, not at wiring time. A rotation
 			// replaces it while the process runs, and a closure that captured
 			// the value at startup would keep presenting the old one and be
 			// refused from the first rotation onwards, on a path that only
 			// runs every twelve hours: nobody would connect the two.
-			now := time.Now()
 			m, err := netcert.Ensure(
-				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, now,
+				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, time.Now(),
 			)
-			// m is whatever the device holds, which on a failed renewal is the
-			// certificate it had before. Its phase is what makes the failure
-			// routine or urgent.
-			var expires time.Time
-			if m != nil {
-				expires = m.NotAfter
-			}
-			if err != nil {
-				return m.PhaseAt(now, cfg.AgentID), expires, err
-			}
 			// Only when one was actually obtained. This is the record that
 			// this machine can authenticate to the network and until when,
 			// which is the first thing anyone asks after a device stops
 			// getting a DHCP lease.
-			if m.Issued {
+			if err == nil && m.Issued {
 				log.Info("network certificate issued",
+					"serial", m.Serial,
 					"not_after", m.NotAfter.Format(time.RFC3339),
 					"path", m.CertPath)
 			}
-			return m.PhaseAt(now, cfg.AgentID), expires, nil
+			// m is returned even on failure: it is whatever the device still
+			// holds, and both the urgency of the failure and what we report to
+			// the server are read from it.
+			return m, err
 		},
 		WarnUserAboutCertificate: warnUserAboutCertificate(stateDir, log),
 	}

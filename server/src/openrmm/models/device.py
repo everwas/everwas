@@ -69,6 +69,23 @@ class Device(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
     )
+    #: The 802.1X certificate this device says it is ACTUALLY holding, as
+    #: reported in its heartbeat. Not the same fact as the newest row in
+    #: device_certificates, which is what we last issued it: they diverge on a
+    #: renewal that half-failed, on a machine restored from a backup image, and
+    #: on material deleted by hand. None means the agent has not told us, which
+    #: is the honest state for an old agent and for any fleet not using 802.1X.
+    reported_cert_serial: Mapped[str | None] = mapped_column(
+        String(64), default=None, index=True
+    )
+    reported_cert_not_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    #: When it last told us. Separates "reported nothing just now", meaning the
+    #: material is genuinely gone, from "never reported", meaning we do not know.
+    reported_cert_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     enrolled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
