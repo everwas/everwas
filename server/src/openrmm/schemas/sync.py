@@ -53,7 +53,18 @@ class SyncDeviceOut(BaseModel):
     org_id: uuid.UUID
     site_id: uuid.UUID | None
     hostname: str
+    #: The raw device state (enrolled|active|offline|retired). Kept for
+    #: convenience, but it conflates a durable lifecycle fact with 90-second
+    #: reachability telemetry — consumers should key policy on `lifecycle`
+    #: and treat `status`/`reachable` as volatile.
     status: str
+    #: The durable half of status: enrolled (never heartbeated) |
+    #: operational | retired. Safe to diff; changes mean something.
+    lifecycle: str
+    #: The volatile half: last heartbeat within the offline threshold. Null
+    #: when the device has never heartbeated. Telemetry, not inventory —
+    #: exclude from diffs.
+    reachable: bool | None
     tags: list[str]
     agent_version: str
     os_family: str
@@ -147,6 +158,10 @@ class SyncPosturePage(SyncPageBase):
 class SyncPatchOut(BaseModel):
     device_id: uuid.UUID
     external_id: str
+    #: The canonical key for a patch catalog: the first KB id when the patch
+    #: has one, else external_id. Server-computed so every consumer inherits
+    #: the same precedence instead of inventing it.
+    identifier: str
     title: str
     kind: str
     severity: str

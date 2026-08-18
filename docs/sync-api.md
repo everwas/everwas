@@ -113,7 +113,9 @@ rollup ride the **list** payload so no per-device follow-up is ever needed.
 | `id` | uuid | Stable device id (UUIDv7, assigned at enrollment, survives everything except purge) |
 | `org_id`, `site_id` | uuid, uuid? | Placement. `site_id` null until assigned |
 | `hostname` | str | |
-| `status` | str | `enrolled` `active` `offline` `retired`. Retired devices are included; removing them from the consumer is the consumer's policy |
+| `status` | str | Raw state (`enrolled` `active` `offline` `retired`). Conflates a durable fact with heartbeat telemetry — key policy on `lifecycle` instead |
+| `lifecycle` | str | The durable half: `enrolled` (never heartbeated) \| `operational` \| `retired`. Safe to diff. Retired devices are included; removing them from the consumer is the consumer's policy |
+| `reachable` | bool? | The volatile half, derived from `last_heartbeat_at` against the offline threshold. Null = never heartbeated (unknown, not unreachable). Telemetry — exclude from diffs |
 | `tags` | [str] | |
 | `agent_version`, `os_family`, `os_version`, `arch` | str | |
 | `enrolled_at`, `last_heartbeat_at` | ts, ts? | |
@@ -162,11 +164,13 @@ healthy machine off the network.
 
 ### `GET /sync/patches`
 
-`{device_id, external_id, title, kind, severity, kb_ids[], cves[],
+`{device_id, external_id, identifier, title, kind, severity, kb_ids[], cves[],
 size_bytes, reboot_likely, status, unsupported, detail, observed_at,
 first_seen_at}`.
 
-`status` is the operator's standing decision — `approved`, `declined`, or
+`identifier` is the canonical catalog key — the first KB id when the patch
+has one, else `external_id` — computed server-side so every consumer keys
+patches identically. `status` is the operator's standing decision — `approved`, `declined`, or
 `pending` — with device-specific approvals shadowing fleet-wide ones. It is
 **not install progress**; that lives in patch jobs, which are not part of
 this surface.
@@ -215,8 +219,9 @@ A consumer that diffs whole payloads should denylist the fields that change
 without meaning anything durable:
 
 - `devices.last_heartbeat_at` — moves every heartbeat.
-- `devices.status` — flaps `active` ↔ `offline` on the heartbeat threshold
-  (90 s by default). Sync it as reachability telemetry, not as inventory.
+- `devices.status` and `devices.reachable` — flap on the heartbeat threshold
+  (90 s by default). Sync them as reachability telemetry, not as inventory;
+  `lifecycle` is the diffable field.
 - `*.observed_at` — moves with every agent report even when values do not.
   Posture is the sharpest case: every assessment cycle moves it even when
   every verdict is unchanged, so diff posture on `(check, status, detail)`.

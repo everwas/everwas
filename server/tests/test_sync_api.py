@@ -556,6 +556,100 @@ async def test_patches_requires_its_own_scope():
     assert resp.status_code == 403
 
 
+async def test_patch_identifier_prefers_kb_then_external_id():
+    """Consumers key their patch catalogs on `identifier`; the precedence
+    (first KB id, else external_id) is computed here so no consumer has to
+    invent it."""
+    (device_id,) = await mk_devices(1)
+    await ingest(device_id, "patchstate", PATCHSTATE)
+    headers = await bearer(["devices:read", "patches:read"])
+
+    from sqlalchemy import select, update
+
+    from openrmm.models.patch import PatchCatalog
+
+    async with client() as c:
+        # No KB ids in the catalog yet -> identifier falls back to external_id.
+        (item,) = (await c.get("/api/v1/sync/patches", headers=headers)).json()["items"]
+        assert item["identifier"] == item["external_id"] == "KB5044284"
+
+        async with session_scope() as db:
+            catalog_id = (
+                await db.execute(
+                    select(PatchCatalog.id).where(PatchCatalog.external_id == "KB5044284")
+                )
+            ).scalar_one()
+            await db.execute(
+                update(PatchCatalog)
+                .where(PatchCatalog.id == catalog_id)
+                .values(kb_ids=["KB5044284", "KB5044285"])
+            )
+        (item,) = (await c.get("/api/v1/sync/patches", headers=headers)).json()["items"]
+    assert item["identifier"] == "KB5044284"
+    assert item["kb_ids"] == ["KB5044284", "KB5044285"]
+
+
+# --- lifecycle and reachability ---------------------------------------------------
+
+
+async def test_lifecycle_splits_durable_state_from_reachability():
+    """status conflates 'retired' (a decision) with 'offline' (a 90-second
+    heartbeat flap). lifecycle carries only the durable half; reachable
+    carries only the volatile half, derived from the heartbeat timestamp."""
+    fresh = datetime.now(UTC) - timedelta(seconds=5)
+    stale = datetime.now(UTC) - timedelta(hours=3)
+
+    async with get_sessionmaker()() as db, db.begin():
+        db.add_all(
+            [
+                Device(
+                    id=uuid7(),
+                    hostname="never-seen",
+                    os_family=OsFamily.linux,
+                    status=DeviceStatus.enrolled,
+                ),
+                Device(
+                    id=uuid7(),
+                    hostname="humming",
+                    os_family=OsFamily.linux,
+                    status=DeviceStatus.active,
+                    last_heartbeat_at=fresh,
+                ),
+                Device(
+                    id=uuid7(),
+                    hostname="quiet",
+                    os_family=OsFamily.linux,
+                    status=DeviceStatus.offline,
+                    last_heartbeat_at=stale,
+                ),
+                Device(
+                    id=uuid7(),
+                    hostname="decommissioned",
+                    os_family=OsFamily.linux,
+                    status=DeviceStatus.retired,
+                    last_heartbeat_at=stale,
+                ),
+            ]
+        )
+
+    headers = await bearer(["devices:read"])
+    async with client() as c:
+        items = (await c.get("/api/v1/sync/devices", headers=headers)).json()["items"]
+    by_host = {i["hostname"]: i for i in items}
+
+    assert by_host["never-seen"]["lifecycle"] == "enrolled"
+    assert by_host["never-seen"]["reachable"] is None  # unknown, not unreachable
+
+    assert by_host["humming"]["lifecycle"] == "operational"
+    assert by_host["humming"]["reachable"] is True
+
+    assert by_host["quiet"]["lifecycle"] == "operational"
+    assert by_host["quiet"]["reachable"] is False
+
+    assert by_host["decommissioned"]["lifecycle"] == "retired"
+    assert by_host["decommissioned"]["reachable"] is False
+
+
 # --- the change feed -------------------------------------------------------------
 
 

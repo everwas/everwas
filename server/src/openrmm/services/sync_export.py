@@ -20,12 +20,13 @@ hold about the past); see the long comment in api/v1/devices.py:get_network.
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Select, func, literal, select, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from openrmm.models.device import Device
+from openrmm.config import get_settings
+from openrmm.models.device import Device, DeviceStatus
 from openrmm.models.facts import (
     FACT_TABLES,
     FactHardware,
@@ -165,6 +166,27 @@ async def device_page(
     return [_assemble_device(d, hw.get(d.id, {}), net.get(d.id, [])) for d in devices], has_more
 
 
+def _lifecycle(device: Device) -> str:
+    """The durable half of device.status. retired and enrolled-never-
+    heartbeated are facts a consumer bases skip policy on; active/offline is
+    heartbeat telemetry and collapses to 'operational' here."""
+    if device.status == DeviceStatus.retired:
+        return "retired"
+    if device.status == DeviceStatus.enrolled:
+        return "enrolled"
+    return "operational"
+
+
+def _reachable(device: Device) -> bool | None:
+    """The volatile half, derived from the heartbeat timestamp rather than
+    the status flapper so it cannot disagree with last_heartbeat_at. None
+    when the device has never heartbeated — unknown, not unreachable."""
+    if device.last_heartbeat_at is None:
+        return None
+    threshold = timedelta(seconds=get_settings().heartbeat_offline_after_s)
+    return datetime.now(UTC) - device.last_heartbeat_at < threshold
+
+
 def _assemble_device(
     device: Device, facts: dict[str, dict], interfaces: list[dict]
 ) -> SyncDeviceOut:
@@ -193,6 +215,8 @@ def _assemble_device(
         site_id=device.site_id,
         hostname=device.hostname,
         status=device.status.value,
+        lifecycle=_lifecycle(device),
+        reachable=_reachable(device),
         tags=device.tags or [],
         agent_version=device.agent_version,
         os_family=device.os_family.value,
@@ -456,14 +480,16 @@ async def patch_page(
             )
         else:
             status = "pending"
+        kb_ids = list(entry.kb_ids) if entry else []
         items.append(
             SyncPatchOut(
                 device_id=r.device_id,
                 external_id=ext,
+                identifier=kb_ids[0] if kb_ids else ext,
                 title=(entry.title if entry else payload.get("title", "")) or ext,
                 kind=str(entry.kind if entry else payload.get("kind", "other")),
                 severity=str(entry.severity if entry else payload.get("severity", "unknown")),
-                kb_ids=list(entry.kb_ids) if entry else [],
+                kb_ids=kb_ids,
                 cves=list(entry.cves) if entry else [],
                 size_bytes=entry.size_bytes if entry else payload.get("size_bytes"),
                 reboot_likely=bool(entry.reboot_likely if entry else payload.get("reboot_likely")),
