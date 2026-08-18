@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# The docsite mirrors three contract documents that live, canonically, in the
-# repo: the wire protocol, the MCP doc, and the ADRs. A mirror that nobody is
-# forced to touch goes stale silently -- the page keeps rendering, the search
+# The docsite mirrors the contract documents that live, canonically, in the
+# repo: the wire protocol, the MCP doc, the sync API, and the ADRs. A mirror
+# that nobody is forced to touch goes stale silently -- the page keeps
+# rendering, the search
 # keeps finding it, and the first person to notice the drift is a user whose
 # agent is speaking a protocol the docs no longer describe.
 #
@@ -33,6 +34,11 @@ fi
 
 if hit '^docs/adr/' && ! hit '^docsite/src/content/docs/decisions/'; then
   echo "::error::docs/adr/ changed but no page under docsite/src/content/docs/decisions/ did"
+  fail=1
+fi
+
+if hit '^docs/sync-api\.md$' && ! hit '^docsite/src/content/docs/reference/sync-api\.md$'; then
+  echo "::error::docs/sync-api.md changed but its mirror docsite/src/content/docs/reference/sync-api.md did not"
   fail=1
 fi
 

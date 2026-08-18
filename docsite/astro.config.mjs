@@ -47,6 +47,7 @@ export default defineConfig({
             'reference/cli',
             'reference/environment',
             'reference/mcp-tools',
+            'reference/sync-api',
             'reference/wire-protocol',
           ],
         },
