@@ -19,6 +19,7 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/heartbeat"
 	"github.com/rsp2k/openrmm/agent/internal/inventory"
 	"github.com/rsp2k/openrmm/agent/internal/jobs"
+	"github.com/rsp2k/openrmm/agent/internal/netcert"
 	"github.com/rsp2k/openrmm/agent/internal/sched"
 	"github.com/rsp2k/openrmm/agent/internal/scripts"
 	"github.com/rsp2k/openrmm/agent/internal/shell"
@@ -71,6 +72,71 @@ func renewLoop(ctx context.Context, renew func(context.Context) error, log *slog
 	}
 }
 
+// netcertCheckEvery is how often the device re-examines its network
+// certificate. Renewal starts at half of a ninety-day life, so twice a day is
+// far more often than strictly needed; it is cheap because a certificate that
+// is not yet due costs one file read and no network at all. The frequency buys
+// two things: a server that has the CA enabled after the fleet was already
+// deployed is picked up the same day without touching a single agent, and a
+// machine that was switched off through its entire renewal window starts
+// catching up within hours of coming back rather than at its next restart.
+const netcertCheckEvery = 12 * time.Hour
+
+// netcertLoop keeps the device's 802.1X certificate current.
+//
+// Unlike renewLoop this DOES attempt immediately, because there is no earlier
+// step that already did it. The management credential is renewed before the
+// NATS connection is made, so the connection itself proves receipt; a network
+// certificate has no such proof available here and the machine may be holding
+// nothing at all.
+//
+// The interval is a parameter rather than a constant read from inside so a
+// test can drive many cycles: with it hard-coded, any assertion about repeated
+// behaviour observes exactly one startup attempt and passes whether or not the
+// behaviour it claims to check exists.
+func netcertLoop(
+	ctx context.Context,
+	ensure func(context.Context) error,
+	every time.Duration,
+	log *slog.Logger,
+) error {
+	// Whether we have already said the server is not issuing certificates.
+	// Most deployments will never turn this on, and an agent that warns about
+	// an unused feature twice a day forever teaches its operators that its
+	// warnings are noise, which is expensive the day one of them matters.
+	var reportedUnconfigured bool
+
+	attempt := func() {
+		switch err := ensure(ctx); {
+		case err == nil:
+		case errors.Is(err, netcert.ErrNotConfigured):
+			if !reportedUnconfigured {
+				log.Info("server is not issuing device certificates; 802.1X material will not be requested")
+				reportedUnconfigured = true
+			}
+		case errors.Is(err, context.Canceled):
+		default:
+			// Deliberately not fatal. A failure here leaves whatever the
+			// device already held untouched, so the machine keeps its network
+			// access; the emergency is only if this keeps failing until the
+			// certificate expires, which is weeks away by construction.
+			log.Warn("could not obtain a network certificate, will retry", "err", err)
+		}
+	}
+	attempt()
+
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			attempt()
+		}
+	}
+}
+
 // probeTimeout bounds one post-update health check. Every check it now makes
 // is local state or a single round trip, so this is generous rather than tight.
 const probeTimeout = 15 * time.Second
@@ -104,6 +170,11 @@ type Supervisor struct {
 
 	// RotateSecret persists a new agent secret handed down by the server.
 	RotateSecret func(secret string) error
+
+	// EnsureNetCert obtains or renews the device's 802.1X certificate.
+	// Optional; when nil the agent never requests one, which is correct for
+	// every deployment that does not use 802.1X.
+	EnsureNetCert func(context.Context) error
 
 	wg sync.WaitGroup
 }
@@ -189,6 +260,16 @@ func (s *Supervisor) Start(ctx context.Context) {
 				return nil
 			}
 			return renewLoop(ctx, s.RenewCredential, log)
+		}},
+		// The 802.1X certificate, kept on its own timer for the same reason
+		// credential renewal is pulled rather than pushed: the device that
+		// most needs a fresh certificate is the one that has been switched
+		// off, and it has to ask on its own once it is back.
+		{"netcert", func(ctx context.Context, log *slog.Logger) error {
+			if s.EnsureNetCert == nil {
+				return nil
+			}
+			return netcertLoop(ctx, s.EnsureNetCert, netcertCheckEvery, log)
 		}},
 		// Confirms a freshly updated build actually WORKS before the previous
 		// one stops being the fallback. Getting this wrong is expensive in one

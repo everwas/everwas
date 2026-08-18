@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -17,12 +18,24 @@ import (
 	"github.com/rsp2k/openrmm/agent/internal/config"
 	"github.com/rsp2k/openrmm/agent/internal/conn"
 	"github.com/rsp2k/openrmm/agent/internal/enroll"
+	"github.com/rsp2k/openrmm/agent/internal/netcert"
 	"github.com/rsp2k/openrmm/agent/internal/svc"
 	"github.com/rsp2k/openrmm/agent/internal/update"
 )
 
 // Version is injected at build time via -ldflags.
 var Version = "dev"
+
+// netcertDir is where the 802.1X key, certificate and chain live.
+//
+// A subdirectory of the state dir rather than the state dir itself, because a
+// supplicant needs to read the certificate and chain while the private key
+// stays owner-only, and keeping them together makes the eventual per-platform
+// install step (wpa_supplicant, NetworkManager, the Windows certificate store)
+// one directory to point at instead of three paths to keep in step.
+func netcertDir(stateDir string) string {
+	return filepath.Join(stateDir, "netcert")
+}
 
 func Run(args []string) int {
 	if len(args) < 1 {
@@ -198,6 +211,29 @@ func runAgent(parent context.Context) int {
 			// grace window, so there is no reconnect gap here.
 			cfg.AgentSecret = secret
 			return cfg.Save()
+		},
+		EnsureNetCert: func(ctx context.Context) error {
+			// Read the secret at call time, not at wiring time. A rotation
+			// replaces it while the process runs, and a closure that captured
+			// the value at startup would keep presenting the old one and be
+			// refused from the first rotation onwards, on a path that only
+			// runs every twelve hours: nobody would connect the two.
+			m, err := netcert.Ensure(
+				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, time.Now(),
+			)
+			if err != nil {
+				return err
+			}
+			// Only when one was actually obtained. This is the record that
+			// this machine can authenticate to the network and until when,
+			// which is the first thing anyone asks after a device stops
+			// getting a DHCP lease.
+			if m.Issued {
+				log.Info("network certificate issued",
+					"not_after", m.NotAfter.Format(time.RFC3339),
+					"path", m.CertPath)
+			}
+			return nil
 		},
 	}
 	sup.Start(ctx)
