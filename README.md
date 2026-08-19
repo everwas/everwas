@@ -1,6 +1,13 @@
 # Everwas
 
+[![CI](https://github.com/everwas/everwas/actions/workflows/ci.yml/badge.svg)](https://github.com/everwas/everwas/actions/workflows/ci.yml)
+[![Server: AGPL-3.0](https://img.shields.io/badge/server-AGPL--3.0-b97f3a)](LICENSE)
+[![Agent: Apache-2.0](https://img.shields.io/badge/agent-Apache--2.0-5fc9e8)](agent/LICENSE)
+
 Open-source remote monitoring and management for Windows, macOS, and Linux.
+Website: [everwas.supported.systems](https://everwas.supported.systems) ·
+Docs: [docs.everwas.supported.systems](https://docs.everwas.supported.systems) ·
+[Contributing](CONTRIBUTING.md)
 
 Monitor a fleet, get alerted when something breaks, open a real terminal on any
 machine from your browser, run scripts across hundreds of endpoints, and keep
@@ -64,6 +71,7 @@ Web dashboard (React + shadcn/ui)      MCP server (opt-in)
 Requirements: Docker, `uv`, Go 1.22+, Node 20+.
 
 ```bash
+git clone https://github.com/everwas/everwas && cd everwas
 cp .env.example .env
 cd server && uv run everwas gen-nats-keys   # paste both values into .env
 cd .. && make dev                            # bring up the stack (hot reload)
