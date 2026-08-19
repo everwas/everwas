@@ -53,7 +53,7 @@ export default function App() {
       <aside className="hidden w-56 shrink-0 flex-col border-r sm:flex">
         <div className="flex h-14 items-center gap-2 border-b px-4 font-semibold">
           <MonitorSmartphone className="size-5" />
-          OpenRMM
+          Everwas
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-2">
           {nav.map(({ label, icon: Icon, to }) =>

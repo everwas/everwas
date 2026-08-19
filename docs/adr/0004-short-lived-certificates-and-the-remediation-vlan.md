@@ -64,10 +64,10 @@ looks like something else entirely.
 ### 1. The remediation VLAN is a deployment REQUIREMENT, not an assumption.
 
 An 802.1X failure assigns the port to a remediation VLAN rather than rejecting
-it. That VLAN must permit, at minimum, DNS, DHCP, and HTTPS to the OpenRMM
+it. That VLAN must permit, at minimum, DNS, DHCP, and HTTPS to the Everwas
 server. It does not need to permit anything else, and should not.
 
-This is switch and RADIUS configuration OpenRMM does not control, which is
+This is switch and RADIUS configuration Everwas does not control, which is
 exactly why it has to be stated as a prerequisite and checked, rather than
 assumed by three different components independently.
 
@@ -91,7 +91,7 @@ pipeline, and no fleet-wide failure mode. That is a shorter exposure window
 than CRL-based revocation-on-renewal would have produced, and it is simpler.
 
 The floor on how short is not the holiday laptop any more, because remediation
-recovers that. It is how long OpenRMM itself may be unavailable: renewal at
+recovers that. It is how long Everwas itself may be unavailable: renewal at
 half life gives 15 days in which the server can be down before any device is
 affected, and a device that is affected lands in remediation rather than
 nowhere. Deployments that want it shorter can set it; the agent reads the
@@ -140,7 +140,7 @@ restricted VLAN can reach exactly one host and that host is its management
 server, becomes true by construction rather than by hope.
 
 Deployments without a remediation VLAN are explicitly unsupported for 802.1X.
-They can still run OpenRMM; they cannot safely run short certificates, and they
+They can still run Everwas; they cannot safely run short certificates, and they
 should not enable CRL checking either, because both failure modes need the
 remediation path to be recoverable. The honest position for such a deployment
 is longer certificates and detection rather than prevention.

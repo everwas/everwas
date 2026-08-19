@@ -1,6 +1,6 @@
-# OpenRMM Wire Protocol — NATS Subjects & Envelope (v1)
+# Everwas Wire Protocol — NATS Subjects & Envelope (v1)
 
-This document is the contract between the server (`server/src/openrmm/natsio/subjects.py`)
+This document is the contract between the server (`server/src/everwas/natsio/subjects.py`)
 and the agent (`agent/internal/wire/subjects.go`). Both implementations are written
 against this file. Changes here require bumping the envelope `v` only if breaking;
 additive changes (new subjects, new optional fields) are always allowed.

@@ -1,6 +1,6 @@
 # Acquiring a Windows code signing certificate
 
-OpenRMM has no code signing certificate yet, so the release workflow refuses
+Everwas has no code signing certificate yet, so the release workflow refuses
 to publish Windows artifacts. This is what closing that gap involves.
 
 Nothing here is a workaround. A self-signed certificate does not help: it
@@ -80,10 +80,10 @@ will run:
 
 | Secret | Value |
 | --- | --- |
-| `OPENRMM_SIGN_BACKEND` | jsign store type: `TRUSTEDSIGNING`, `DIGICERTONE`, `ESIGNER`, `AZUREKEYVAULT`, `AWS`, `GOOGLECLOUD`, `PKCS11`, `YUBIKEY`, `PKCS12` |
-| `OPENRMM_SIGN_KEYSTORE` | service endpoint, PKCS#11 config file, or keystore path |
-| `OPENRMM_SIGN_ALIAS` | certificate alias within the keystore |
-| `OPENRMM_SIGN_SECRET` | keystore password or API token |
+| `EVERWAS_SIGN_BACKEND` | jsign store type: `TRUSTEDSIGNING`, `DIGICERTONE`, `ESIGNER`, `AZUREKEYVAULT`, `AWS`, `GOOGLECLOUD`, `PKCS11`, `YUBIKEY`, `PKCS12` |
+| `EVERWAS_SIGN_KEYSTORE` | service endpoint, PKCS#11 config file, or keystore path |
+| `EVERWAS_SIGN_ALIAS` | certificate alias within the keystore |
+| `EVERWAS_SIGN_SECRET` | keystore password or API token |
 
 For Azure Artifact Signing that reads as backend `TRUSTEDSIGNING`, keystore
 the regional endpoint (`https://eus.codesigning.azure.net`), alias
@@ -94,13 +94,13 @@ and the secret the pipe-separated API key, client certificate and its
 password that jsign expects. jsign's own documentation is authoritative for
 each backend's exact format.
 
-`OPENRMM_SIGN_TSA` overrides the timestamp authority, which defaults to
+`EVERWAS_SIGN_TSA` overrides the timestamp authority, which defaults to
 DigiCert's. Do not disable timestamping. Without an RFC 3161 countersignature
 every signature stops validating the day the certificate expires, including
 on agents already installed across the fleet, and the failure arrives as a
 fleet that stops being trusted rather than as a build error.
 
-Once a certificate exists, set `OPENRMM_SIGN_CAFILE` in the release job to the
+Once a certificate exists, set `EVERWAS_SIGN_CAFILE` in the release job to the
 issuing root and `verify-signature.sh` will additionally require the chain to
 validate. It is left off until then because a Linux CA bundle has no opinion
 about Microsoft's code signing roots, and a chain check against it would fail

@@ -1,6 +1,6 @@
 # MCP server
 
-OpenRMM ships an MCP server so an AI assistant can query and (with explicit
+Everwas ships an MCP server so an AI assistant can query and (with explicit
 confirmation) act on your fleet. It is **off by default** and requires a scoped
 API key.
 
@@ -18,16 +18,16 @@ exactly what `get_device_facts` exposes.
 
 ```bash
 # .env
-OPENRMM_MCP_ENABLED=true
+EVERWAS_MCP_ENABLED=true
 
-docker compose --profile mcp up -d openrmm-mcp
+docker compose --profile mcp up -d everwas-mcp
 ```
 
 Mint a key with only the scopes you want the assistant to have:
 
 ```bash
 make api-key NAME=claude SCOPES=devices:read,alerts:read,patches:read
-# prints once: orpk_<id>_<secret>
+# prints once: ewpk_<id>_<secret>
 ```
 
 Scopes: `devices:read`, `alerts:read`, `alerts:write`, `scripts:run`,
@@ -37,8 +37,8 @@ what the assistant is asked to do.
 ## Connecting
 
 ```bash
-claude mcp add --transport http openrmm https://rmm.example.com/mcp \
-  --header "Authorization: Bearer orpk_..."
+claude mcp add --transport http everwas https://rmm.example.com/mcp \
+  --header "Authorization: Bearer ewpk_..."
 ```
 
 In dev the server listens on `http://127.0.0.1:28001/mcp`.

@@ -286,9 +286,9 @@ function NewChannelForm({
     kind === "email"
       ? "ops@example.com"
       : kind === "webhook"
-        ? "https://hooks.example.com/openrmm"
+        ? "https://hooks.example.com/everwas"
         : kind === "ntfy"
-          ? "my-openrmm-topic"
+          ? "my-everwas-topic"
           : "https://gotify.example.com|token"
 
   return (

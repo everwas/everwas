@@ -92,7 +92,7 @@ export function DevicesPage() {
             <>
               No active devices. Generate an enrollment token and install an agent:
               <pre className="mt-3 rounded bg-muted p-3 text-left font-mono text-xs">
-                make enroll-token{"\n"}openrmm-agent enroll --server https://… --token ore_…
+                make enroll-token{"\n"}everwas-agent enroll --server https://… --token ew_…
               </pre>
             </>
           )}

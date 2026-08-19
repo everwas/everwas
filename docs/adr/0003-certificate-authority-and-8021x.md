@@ -1,4 +1,4 @@
-# ADR-0003: A device CA in OpenRMM, EAP-TLS in l2trace, and posture-gated network access
+# ADR-0003: A device CA in Everwas, EAP-TLS in l2trace, and posture-gated network access
 
 Status: accepted (2026-08-18; proposed 2026-08-17). Amended by
 [ADR-0004](0004-short-lived-certificates-and-the-remediation-vlan.md):
@@ -22,7 +22,7 @@ receive its replacement. Recovery is a site visit and a fresh enrollment token
 per host. The bug is not the grace window; it is that delivery is a **push** to
 a machine that may not be there.
 
-**802.1X as a first-class capability.** We want OpenRMM to provision and manage
+**802.1X as a first-class capability.** We want Everwas to provision and manage
 the certificates endpoints use for EAP-TLS network authentication, which means
 running a certificate authority and a certificate lifecycle: issuance, renewal,
 revocation, and per-platform installation into the OS key store and supplicant.
@@ -52,18 +52,18 @@ so `posture_fresh` is always False"*, and *"l2trace has no identity source
 today, so `identity_group` is left None ... until a resolver populates it"*.
 Those are seams cut for a component that did not exist yet.
 
-OpenRMM is that component. It already knows, bitemporally, whether a device is
+Everwas is that component. It already knows, bitemporally, whether a device is
 enrolled, patched, healthy, when it last checked in, and who is logged into it.
 
 ## Decision
 
-### 1. OpenRMM issues. l2trace verifies.
+### 1. Everwas issues. l2trace verifies.
 
-OpenRMM runs the device CA and signs CSRs. l2trace holds the trust anchor and
+Everwas runs the device CA and signs CSRs. l2trace holds the trust anchor and
 consumes a CRL. The signing key never goes near the RADIUS service.
 
 Two reasons. Issuance requires an authenticated channel to the endpoint, and
-OpenRMM already has exactly one: an enrolled agent on wss/443. l2trace has no
+Everwas already has exactly one: an enrolled agent on wss/443. l2trace has no
 relationship with an endpoint before that endpoint is on the network. And a
 network-facing service holding a signing key is privilege it does not need: an
 l2trace compromise must not be able to mint identities that join the customer's
@@ -71,7 +71,7 @@ network.
 
 ### 2. The management credential is SEPARATE from the network certificate.
 
-The agent authenticates to OpenRMM with its own credential over wss/443. The
+The agent authenticates to Everwas with its own credential over wss/443. The
 802.1X certificate is a different credential, from a different intermediate,
 with a different EKU and lifetime.
 
@@ -96,7 +96,7 @@ retries before anything is at risk, and issuance is staggered so a batch does
 not expire together.
 
 Then the part this pairing makes possible and almost no PKI deployment can do:
-after installing a renewed certificate, OpenRMM asks l2trace to force a
+after installing a renewed certificate, Everwas asks l2trace to force a
 re-authentication via CoA. If the device comes back authenticated on the new
 certificate, renewal is **confirmed**. If it fails, the old certificate is still
 valid for weeks and the management channel is still up, so it is fixed remotely.
@@ -107,14 +107,14 @@ Renewal is otherwise a hope. Here it is a test with a rollback window.
 
 1. Device arrives with no certificate. l2trace is in monitor mode (its default)
    or the port does MAB. Either way the device lands somewhere with web egress.
-2. The agent enrolls to OpenRMM over wss/443 with a one-time token.
+2. The agent enrolls to Everwas over wss/443 with a one-time token.
 3. The agent generates a keypair **locally**, TPM-backed and non-exportable
    where the platform allows, and sends a CSR. The private key never leaves the
-   device and OpenRMM never sees it.
-4. OpenRMM signs a client certificate (EKU `clientAuth`).
+   device and Everwas never sees it.
+4. Everwas signs a client certificate (EKU `clientAuth`).
 5. The agent installs it into the OS key store and writes the supplicant
    profile.
-6. OpenRMM tells l2trace the device is cert-capable; l2trace issues a CoA to
+6. Everwas tells l2trace the device is cert-capable; l2trace issues a CoA to
    bounce the port.
 7. The device re-authenticates with EAP-TLS and lands on its real VLAN.
 
@@ -123,9 +123,9 @@ every step but 3-5 already exists in one of the two projects.
 
 ### 5. Posture feeds policy.
 
-OpenRMM populates l2trace's `posture_fresh` and `identity_group` for an
+Everwas populates l2trace's `posture_fresh` and `identity_group` for an
 endpoint. A policy can then say: permit EAP-TLS from a certificate issued by
-the OpenRMM CA, whose device is currently enrolled, has no critical patches
+the Everwas CA, whose device is currently enrolled, has no critical patches
 outstanding, and checked in within the hour.
 
 That is posture-based NAC. The interface is deliberately narrow, one boolean
@@ -134,7 +134,7 @@ that way; the freshness computation belongs in `policy_cache.build_auth_context`
 where it already lives.
 
 The loop closes both ways: l2trace's `trigger_reauth` becomes the enforcement
-arm for an OpenRMM decision, and the OpenRMM agent becomes the remediation arm
+arm for an Everwas decision, and the Everwas agent becomes the remediation arm
 for an l2trace quarantine.
 
 ### 6. Rotation grace becomes conditional on delivery, except for revocation.
@@ -205,7 +205,7 @@ so it is superficially the natural home. Rejected on privilege: see decision 1.
 4. **Per-platform key store and supplicant profiles.**
 5. **Posture into `AuthContext`**, and CoA-verified renewal.
 
-Steps 1 and 2 are OpenRMM. Step 3 is l2trace. Steps 4 and 5 are the seam.
+Steps 1 and 2 are Everwas. Step 3 is l2trace. Steps 4 and 5 are the seam.
 
 ## Open questions
 
@@ -214,7 +214,7 @@ Steps 1 and 2 are OpenRMM. Step 3 is l2trace. Steps 4 and 5 are the seam.
 - Certificate lifetime: long enough to survive a holiday, short enough that a
   stolen non-TPM key has a bounded life. 90 days with renewal at 45 is the
   starting proposal.
-- Does OpenRMM push posture to l2trace, or does l2trace pull it? Push is fresher;
+- Does Everwas push posture to l2trace, or does l2trace pull it? Push is fresher;
   pull keeps the trust direction one-way, which matters because l2trace is the
   network-facing service.
 - CRL only, or OCSP as well? CRL freshness bounds revocation latency for the

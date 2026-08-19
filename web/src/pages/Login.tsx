@@ -31,7 +31,7 @@ export function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <MonitorSmartphone className="mb-2 size-8" />
-          <CardTitle>OpenRMM</CardTitle>
+          <CardTitle>Everwas</CardTitle>
           <CardDescription>Sign in to manage your fleet</CardDescription>
         </CardHeader>
         <CardContent>

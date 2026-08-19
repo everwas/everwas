@@ -1,4 +1,4 @@
-# OpenRMM
+# Everwas
 
 Open-source remote monitoring and management for Windows, macOS, and Linux.
 
@@ -11,7 +11,7 @@ endpoint.
 
 The commercial options are excellent and expensive. The open-source options are
 either monitoring-only or carry licenses that stop you building on them.
-OpenRMM is genuinely open source: the server is AGPL-3.0, the agent is
+Everwas is genuinely open source: the server is AGPL-3.0, the agent is
 Apache-2.0, and contributions are accepted under the [DCO](DCO).
 
 Two things you will not find elsewhere:
@@ -65,7 +65,7 @@ Requirements: Docker, `uv`, Go 1.22+, Node 20+.
 
 ```bash
 cp .env.example .env
-cd server && uv run openrmm gen-nats-keys   # paste both values into .env
+cd server && uv run everwas gen-nats-keys   # paste both values into .env
 cd .. && make dev                            # bring up the stack (hot reload)
 make migrate
 make admin EMAIL=you@example.com
@@ -74,9 +74,9 @@ make admin EMAIL=you@example.com
 Then enroll a machine:
 
 ```bash
-make enroll-token                            # prints ore_...
-cd agent && go build -o bin/openrmm-agent ./cmd/openrmm-agent
-sudo ./bin/openrmm-agent install --server http://localhost:28000 --token ore_...
+make enroll-token                            # prints ew_...
+cd agent && go build -o bin/everwas-agent ./cmd/everwas-agent
+sudo ./bin/everwas-agent install --server http://localhost:28000 --token ew_...
 ```
 
 The dashboard is at http://localhost:25173.
