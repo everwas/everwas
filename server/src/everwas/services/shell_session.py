@@ -106,7 +106,15 @@ class AsciicastRecorder:
         chunk, self._pending, self._pending_bytes = "".join(self._pending), [], 0
         # A recording is never worth failing a live session for.
         with contextlib.suppress(Exception):
-            await asyncio.to_thread(self._fh.write, chunk)
+            await asyncio.to_thread(self._write_through, chunk)
+
+    def _write_through(self, chunk: str) -> None:
+        # fh.write alone only moves the data into Python's own buffer, which
+        # keeps neither the memory promise (it is still in memory) nor the
+        # durability one (a killed process loses it). Flush the handle so a
+        # flushed recording actually exists on the filesystem.
+        self._fh.write(chunk)
+        self._fh.flush()
 
     async def aclose(self) -> None:
         await self.flush()
