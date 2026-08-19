@@ -119,6 +119,21 @@ func runAgent(parent context.Context) int {
 		log.Error("resolve state dir", "err", err)
 		return 1
 	}
+	// Migrate a pre-rename state directory BEFORE anything tries to read an
+	// identity out of the new one. An agent installed as OpenRMM keeps its
+	// credential, its 802.1X material and its schedule under the old path, and
+	// a build that cannot see them reports "not enrolled" and exits, which for
+	// a self-updated fleet means every machine goes dark at once and none can
+	// phone home to be fixed.
+	if moved, mErr := config.MigrateLegacyState(); mErr != nil {
+		// Not fatal on its own: the agent may still be enrolled under the new
+		// path, and failing to start over a migration that was not needed would
+		// be worse than the migration not happening.
+		log.Error("could not migrate the pre-rename state directory", "err", mErr)
+	} else if moved {
+		log.Info("migrated state from the pre-rename directory")
+	}
+
 	// Repair the state directory's permissions on every start, before anything
 	// reads or writes a secret through it.
 	//
@@ -354,6 +369,11 @@ func waitForShutdown(ctx context.Context, deaf <-chan struct{}, restart <-chan s
 }
 
 func cmdStatus() int {
+	// Same migration as the run path. Without it the first thing an operator
+	// runs after a failed upgrade confirms the wrong diagnosis.
+	if _, err := config.MigrateLegacyState(); err != nil {
+		fmt.Fprintf(os.Stderr, "status: could not migrate pre-rename state: %v\n", err)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "status: %v\n", err)
