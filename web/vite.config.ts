@@ -23,9 +23,9 @@ export default defineConfig({
     //
     // Unset (bare `npm run dev`, or the published 127.0.0.1:25173 port) keeps
     // vite's own defaults, which are correct for that case.
-    hmr: process.env.OPENRMM_PUBLIC_HOST
+    hmr: process.env.EVERWAS_PUBLIC_HOST
       ? {
-          host: process.env.OPENRMM_PUBLIC_HOST,
+          host: process.env.EVERWAS_PUBLIC_HOST,
           protocol: "wss",
           clientPort: 443,
         }
@@ -34,7 +34,7 @@ export default defineConfig({
       // In the compose dev stack the API is reachable by service name;
       // for bare `npm run dev` it falls back to localhost.
       "/api": {
-        target: process.env.OPENRMM_API_URL ?? "http://localhost:8000",
+        target: process.env.EVERWAS_API_URL ?? "http://localhost:8000",
         changeOrigin: true,
         ws: true, // the remote shell rides a WebSocket through this proxy
       },

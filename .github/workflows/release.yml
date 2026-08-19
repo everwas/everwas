@@ -55,7 +55,7 @@ jobs:
         # osslsigncode is the signature check. WiX itself is not an option
         # here: it installs as a dotnet tool on Linux and then refuses to
         # build, warning that only Windows is supported. See
-        # agent/packaging/windows/openrmm-agent.wxs.
+        # agent/packaging/windows/everwas-agent.wxs.
         run: |
           sudo apt-get update
           sudo apt-get install -y minisign msitools osslsigncode
@@ -90,10 +90,10 @@ jobs:
 
       - name: Check the trust anchor is present
         env:
-          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+          EVERWAS_UPDATE_PUBKEY: ${{ secrets.EVERWAS_UPDATE_PUBKEY }}
         run: |
-          if [ -z "$OPENRMM_UPDATE_PUBKEY" ]; then
-            echo "::error::OPENRMM_UPDATE_PUBKEY is not set. Binaries built"\
+          if [ -z "$EVERWAS_UPDATE_PUBKEY" ]; then
+            echo "::error::EVERWAS_UPDATE_PUBKEY is not set. Binaries built"\
                  "without it fail closed on ErrNoTrustAnchor and can never"\
                  "self-update, which is only discovered on the fleet."
             exit 1
@@ -108,13 +108,13 @@ jobs:
         # same, which outlives this release by years.
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) }}
         env:
-          OPENRMM_SIGN_BACKEND: ${{ secrets.OPENRMM_SIGN_BACKEND }}
-          OPENRMM_SIGN_KEYSTORE: ${{ secrets.OPENRMM_SIGN_KEYSTORE }}
-          OPENRMM_SIGN_ALIAS: ${{ secrets.OPENRMM_SIGN_ALIAS }}
-          OPENRMM_SIGN_SECRET: ${{ secrets.OPENRMM_SIGN_SECRET }}
+          EVERWAS_SIGN_BACKEND: ${{ secrets.EVERWAS_SIGN_BACKEND }}
+          EVERWAS_SIGN_KEYSTORE: ${{ secrets.EVERWAS_SIGN_KEYSTORE }}
+          EVERWAS_SIGN_ALIAS: ${{ secrets.EVERWAS_SIGN_ALIAS }}
+          EVERWAS_SIGN_SECRET: ${{ secrets.EVERWAS_SIGN_SECRET }}
         run: |
           missing=""
-          for v in OPENRMM_SIGN_BACKEND OPENRMM_SIGN_KEYSTORE OPENRMM_SIGN_ALIAS OPENRMM_SIGN_SECRET; do
+          for v in EVERWAS_SIGN_BACKEND EVERWAS_SIGN_KEYSTORE EVERWAS_SIGN_ALIAS EVERWAS_SIGN_SECRET; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -133,18 +133,18 @@ jobs:
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+          EVERWAS_UPDATE_PUBKEY: ${{ secrets.EVERWAS_UPDATE_PUBKEY }}
           MINISIGN_SECRET_KEY_FILE: ${{ runner.temp }}/minisign.key
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
           # Consumed by the Windows post-build hook: it signs the exe and
           # builds the MSI around the signed copy, before the archive stage
           # can pick up an unsigned one.
-          OPENRMM_SIGN_BACKEND: ${{ secrets.OPENRMM_SIGN_BACKEND }}
-          OPENRMM_SIGN_KEYSTORE: ${{ secrets.OPENRMM_SIGN_KEYSTORE }}
-          OPENRMM_SIGN_ALIAS: ${{ secrets.OPENRMM_SIGN_ALIAS }}
-          OPENRMM_SIGN_SECRET: ${{ secrets.OPENRMM_SIGN_SECRET }}
-          OPENRMM_SIGN_JSIGN_JAR: ${{ runner.temp }}/jsign.jar
-          OPENRMM_ALLOW_UNSIGNED: ${{ (github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) && '1' || '' }}
+          EVERWAS_SIGN_BACKEND: ${{ secrets.EVERWAS_SIGN_BACKEND }}
+          EVERWAS_SIGN_KEYSTORE: ${{ secrets.EVERWAS_SIGN_KEYSTORE }}
+          EVERWAS_SIGN_ALIAS: ${{ secrets.EVERWAS_SIGN_ALIAS }}
+          EVERWAS_SIGN_SECRET: ${{ secrets.EVERWAS_SIGN_SECRET }}
+          EVERWAS_SIGN_JSIGN_JAR: ${{ runner.temp }}/jsign.jar
+          EVERWAS_ALLOW_UNSIGNED: ${{ (github.event_name == 'workflow_dispatch' && inputs.allow_unsigned) && '1' || '' }}
         uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
@@ -158,12 +158,12 @@ jobs:
       # is otherwise found one agent at a time.
       - name: Verify a signature the way an agent would
         env:
-          OPENRMM_UPDATE_PUBKEY: ${{ secrets.OPENRMM_UPDATE_PUBKEY }}
+          EVERWAS_UPDATE_PUBKEY: ${{ secrets.EVERWAS_UPDATE_PUBKEY }}
         run: |
           set -euo pipefail
           artifact=$(ls dist/*_linux_amd64*.tar.gz | head -1)
-          echo "untrusted comment: openrmm release key" > "$RUNNER_TEMP/pub"
-          echo "$OPENRMM_UPDATE_PUBKEY" >> "$RUNNER_TEMP/pub"
+          echo "untrusted comment: everwas release key" > "$RUNNER_TEMP/pub"
+          echo "$EVERWAS_UPDATE_PUBKEY" >> "$RUNNER_TEMP/pub"
           minisign -V -p "$RUNNER_TEMP/pub" -m "$artifact"
           echo "verified $artifact against the embedded trust anchor"
 
@@ -197,10 +197,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: openrmm-server
+          - image: everwas-server
             context: .
             dockerfile: docker/server.Dockerfile
-          - image: openrmm-web
+          - image: everwas-web
             context: .
             dockerfile: docker/web.Dockerfile
     steps:

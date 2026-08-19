@@ -25,22 +25,22 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: openrmm
-          POSTGRES_PASSWORD: openrmm
-          POSTGRES_DB: openrmm
+          POSTGRES_USER: everwas
+          POSTGRES_PASSWORD: everwas
+          POSTGRES_DB: everwas
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U openrmm"
+          --health-cmd "pg_isready -U everwas"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      OPENRMM_TEST_PG: postgresql+asyncpg://openrmm:openrmm@localhost:5432
+      EVERWAS_TEST_PG: postgresql+asyncpg://everwas:everwas@localhost:5432
       # Turns "the database is missing" from a silent skip into a failure.
       # Adding the service above is not enough on its own: if it ever breaks,
       # the suite would go back to skipping and nobody would notice.
-      OPENRMM_REQUIRE_PG: "1"
+      EVERWAS_REQUIRE_PG: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
           go-version-file: agent/go.mod
       - run: go vet ./...
       - run: go test ./...
-      - run: go build ./cmd/openrmm-agent
+      - run: go build ./cmd/everwas-agent
 
   # The MSI is assembled by wixl, which parses parts of the WiX schema it does
   # not implement and drops them without a word: a Secure property, a
@@ -95,13 +95,13 @@ jobs:
         with:
           go-version-file: agent/go.mod
       - run: sudo apt-get update && sudo apt-get install -y msitools
-      - run: GOOS=windows GOARCH=amd64 go build -trimpath -o /tmp/openrmm-agent.exe ./cmd/openrmm-agent
+      - run: GOOS=windows GOARCH=amd64 go build -trimpath -o /tmp/everwas-agent.exe ./cmd/everwas-agent
       - name: Build and inspect the MSI
         env:
-          OPENRMM_ALLOW_UNSIGNED: "1"
+          EVERWAS_ALLOW_UNSIGNED: "1"
         run: |
           ./packaging/windows/build-msi.sh \
-            --exe /tmp/openrmm-agent.exe --arch amd64 \
+            --exe /tmp/everwas-agent.exe --arch amd64 \
             --version 2026.08.17.1 --out /tmp/msi
 
   web:
