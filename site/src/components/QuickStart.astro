@@ -2,8 +2,7 @@
 import { Icon } from 'astro-icon/components';
 import './QuickStart.css';
 
-const serverCmds = `# public source release imminent; from your checkout:
-cd everwas
+const serverCmds = `git clone https://github.com/everwas/everwas && cd everwas
 cp .env.example .env
 cd server && uv run everwas gen-nats-keys   # paste both values into .env
 cd .. && make dev
