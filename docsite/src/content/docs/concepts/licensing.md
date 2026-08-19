@@ -1,9 +1,9 @@
 ---
 title: Licensing
-description: AGPL-3.0 server, Apache-2.0 agent, DCO contributions, and why OpenRMM is a greenfield project rather than a fork.
+description: AGPL-3.0 server, Apache-2.0 agent, DCO contributions, and why Everwas is a greenfield project rather than a fork.
 ---
 
-OpenRMM uses two licenses on purpose:
+Everwas uses two licenses on purpose:
 
 - **The server is AGPL-3.0.** Anyone can self-host it, modify it, and
   offer it as a service, and improvements to it stay open, including

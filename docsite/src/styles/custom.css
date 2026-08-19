@@ -1,4 +1,4 @@
-/* OpenRMM docs: Starlight theme mapped onto the marketing site tokens.
+/* Everwas docs: Starlight theme mapped onto the marketing site tokens.
  *
  * The two accent hues are load-bearing, same as on the marketing site:
  * amber marks VALID time (what was true on the machine), cyan marks
@@ -11,11 +11,11 @@
   --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', monospace;
 
   /* semantic hues shared with site/src/styles/tokens.css */
-  --openrmm-amber: #ffb454;
-  --openrmm-amber-bright: #ffcf8a;
-  --openrmm-amber-dim: #b97f3a;
-  --openrmm-cyan: #5fc9e8;
-  --openrmm-cyan-bright: #9addf2;
+  --everwas-amber: #ffb454;
+  --everwas-amber-bright: #ffcf8a;
+  --everwas-amber-dim: #b97f3a;
+  --everwas-cyan: #5fc9e8;
+  --everwas-cyan-bright: #9addf2;
 }
 
 /* Dark theme (default): graphite base from the marketing site. */
@@ -53,10 +53,10 @@
   --sl-color-gray-7: #f5f6f8;
   --sl-color-black: #ffffff;
 
-  --openrmm-amber: #9a6420;
-  --openrmm-amber-bright: #7a4d15;
-  --openrmm-cyan: #1d7d9c;
-  --openrmm-cyan-bright: #155e76;
+  --everwas-amber: #9a6420;
+  --everwas-amber-bright: #7a4d15;
+  --everwas-cyan: #1d7d9c;
+  --everwas-cyan-bright: #155e76;
 }
 
 /* Display face for headings, matching the marketing site. */
@@ -78,12 +78,12 @@
 }
 
 .vt {
-  color: var(--openrmm-amber-bright);
+  color: var(--everwas-amber-bright);
   background: rgba(255, 180, 84, 0.14);
 }
 
 .rt {
-  color: var(--openrmm-cyan-bright);
+  color: var(--everwas-cyan-bright);
   background: rgba(95, 201, 232, 0.12);
 }
 

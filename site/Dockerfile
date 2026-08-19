@@ -1,4 +1,4 @@
-# Multi-stage build for the OpenRMM marketing site.
+# Multi-stage build for the Everwas marketing site.
 #
 #   docker compose --profile dev up → dev target (astro dev + HMR)
 #   docker compose up (no profile)  → prod target (caddy serves dist/)

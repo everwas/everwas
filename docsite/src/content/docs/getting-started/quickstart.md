@@ -1,6 +1,6 @@
 ---
 title: Get the server running
-description: Bring up the OpenRMM server stack with Docker Compose, apply migrations, and create the first admin login.
+description: Bring up the Everwas server stack with Docker Compose, apply migrations, and create the first admin login.
 ---
 
 This tutorial takes you from a checkout of the repository to a running
@@ -19,7 +19,7 @@ on image builds.
   It handles TLS for every hostname automatically.
 
 The server stack is four services: PostgreSQL, NATS with JetStream, the
-FastAPI application (`openrmm-api`), and the dispatcher that handles
+FastAPI application (`everwas-api`), and the dispatcher that handles
 ingest, alerting, and scheduling.
 
 ## 1. Configure the environment
@@ -33,7 +33,7 @@ cp .env.example .env
 Set the hostname your fleet and your browser will use:
 
 ```bash
-OPENRMM_DOMAIN=rmm.example.com
+EVERWAS_DOMAIN=rmm.example.com
 ```
 
 The web app and the API share this one origin on purpose, and agents dial
@@ -44,10 +44,10 @@ Generate the secrets:
 
 ```bash
 # session cookie signing
-openssl rand -hex 32   # → OPENRMM_SECRET_KEY
+openssl rand -hex 32   # → EVERWAS_SECRET_KEY
 
 # internal NATS password for the api/dispatcher
-openssl rand -hex 24   # → OPENRMM_NATS_SERVER_PASSWORD
+openssl rand -hex 24   # → EVERWAS_NATS_SERVER_PASSWORD
 
 # and a strong POSTGRES_PASSWORD of your choosing
 ```
@@ -56,16 +56,16 @@ Then generate the NATS auth-callout keypair. This is what lets the server
 vouch for agents when they connect:
 
 ```bash
-cd server && uv run openrmm gen-nats-keys
+cd server && uv run everwas gen-nats-keys
 ```
 
-It prints two lines, `OPENRMM_NATS_AUTH_SEED=...` and
-`OPENRMM_NATS_AUTH_ISSUER=...`, ready to paste into `.env`.
+It prints two lines, `EVERWAS_NATS_AUTH_SEED=...` and
+`EVERWAS_NATS_AUTH_ISSUER=...`, ready to paste into `.env`.
 
-Finally, make sure `OPENRMM_NATS_PUBLIC_URL` matches your domain:
+Finally, make sure `EVERWAS_NATS_PUBLIC_URL` matches your domain:
 
 ```bash
-OPENRMM_NATS_PUBLIC_URL=wss://nats-rmm.example.com
+EVERWAS_NATS_PUBLIC_URL=wss://nats-rmm.example.com
 ```
 
 This URL is baked into each agent's config at enrollment, so it is worth
@@ -78,7 +78,7 @@ move agents that are already in the field.
 make up
 ```
 
-This builds and starts everything in the mode set by `OPENRMM_MODE` in
+This builds and starts everything in the mode set by `EVERWAS_MODE` in
 `.env`. The default is `dev`, which gives you hot reload and a
 [Mailpit](https://mailpit.axllent.org/) instance at `mail-rmm.example.com`
 so alert emails land somewhere you can see them. Switch to `prod` when you
@@ -104,7 +104,7 @@ You have a server and an empty fleet. The next step is
 
 ## If something is off
 
-`make ps` shows service health, and `make logs SVC=openrmm-api` tails one
+`make ps` shows service health, and `make logs SVC=everwas-api` tails one
 service. The compose file gives PostgreSQL and NATS healthchecks, so a
 service stuck in `starting` usually means a missing `.env` value; the
 compose file fails fast with a message naming the variable.

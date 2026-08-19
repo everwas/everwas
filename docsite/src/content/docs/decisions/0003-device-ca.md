@@ -1,6 +1,6 @@
 ---
 title: "ADR-0003: A device CA, EAP-TLS in l2trace, and posture-gated network access"
-description: OpenRMM issues device certificates, a companion RADIUS server verifies them, and the management credential stays deliberately separate.
+description: Everwas issues device certificates, a companion RADIUS server verifies them, and the management credential stays deliberately separate.
 sidebar:
   label: "0003 · Device CA & 802.1X"
   order: 3
@@ -26,7 +26,7 @@ holding a secret that expired on Saturday, with no channel left to
 receive its replacement. The bug is not the grace window; it is that
 delivery is a **push** to a machine that may not be there.
 
-**802.1X as a first-class capability.** We want OpenRMM to provision and
+**802.1X as a first-class capability.** We want Everwas to provision and
 manage the certificates endpoints use for EAP-TLS network
 authentication, which means running a certificate authority and a full
 certificate lifecycle.
@@ -37,10 +37,10 @@ That property, not the certificate itself, is what removes the lockout.
 
 ## Decision
 
-**1. OpenRMM issues; l2trace verifies.** OpenRMM runs the device CA and
+**1. Everwas issues; l2trace verifies.** Everwas runs the device CA and
 signs CSRs. l2trace holds the trust anchor and consumes a CRL. The
 signing key never goes near the RADIUS service: issuance needs an
-authenticated channel to the endpoint, which only OpenRMM has, and a
+authenticated channel to the endpoint, which only Everwas has, and a
 network-facing service holding a signing key is privilege it does not
 need.
 
@@ -100,7 +100,7 @@ absent.
 4. Per-platform key store and supplicant profiles.
 5. Posture into the RADIUS policy context, and CoA-verified renewal.
 
-Steps 1 and 2 are OpenRMM. Step 3 is l2trace. Steps 4 and 5 are the
+Steps 1 and 2 are Everwas. Step 3 is l2trace. Steps 4 and 5 are the
 seam. The full record, including the open questions on key custody,
 certificate lifetime, and CRL versus OCSP, is in `docs/adr/0003` in the
 repository.

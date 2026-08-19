@@ -51,9 +51,9 @@ The full subject namespace is in the
 
 Two processes from one Python package:
 
-- **`openrmm-api`**: the FastAPI application serving the web app and the
+- **`everwas-api`**: the FastAPI application serving the web app and the
   HTTP API from a single origin. Enrollment also lands here, over HTTPS.
-- **`openrmm-dispatcher`**: an asyncio process consuming the JetStream
+- **`everwas-dispatcher`**: an asyncio process consuming the JetStream
   ingest streams, evaluating alert rules, reconciling schedules, and
   answering NATS auth-callout requests.
 

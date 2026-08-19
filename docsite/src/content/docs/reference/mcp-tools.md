@@ -1,6 +1,6 @@
 ---
 title: MCP tools
-description: Every tool the OpenRMM MCP server exposes, the scope each requires, and the confirmation contract for mutations.
+description: Every tool the Everwas MCP server exposes, the scope each requires, and the confirmation contract for mutations.
 ---
 
 Setup and the safety model are covered in

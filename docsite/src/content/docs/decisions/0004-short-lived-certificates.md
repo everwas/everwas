@@ -57,8 +57,8 @@ permit, and the RADIUS side did not implement one.
 **1. The remediation VLAN is a deployment requirement, not an
 assumption.** An 802.1X failure assigns the port to a remediation VLAN
 rather than rejecting it. That VLAN must permit, at minimum, DNS, DHCP,
-and HTTPS to the OpenRMM server, and should permit nothing else. It is
-switch and RADIUS configuration OpenRMM does not control, which is
+and HTTPS to the Everwas server, and should permit nothing else. It is
+switch and RADIUS configuration Everwas does not control, which is
 exactly why it is stated as a prerequisite and checked rather than
 assumed. The trade is standard NAC: an unauthenticated device can reach
 the management plane from remediation, where enrollment still needs a
@@ -73,7 +73,7 @@ drops to remediation, renews over 443, and reauthenticates. Lifetime
 drops from 90 days to 30, renewal at half life. A superseded certificate
 dies on its own within 30 days with no CRL, no publication pipeline, and
 no fleet-wide failure mode. The floor on how short is no longer the
-holiday laptop (remediation recovers it); it is how long OpenRMM itself
+holiday laptop (remediation recovers it); it is how long Everwas itself
 may be down, and renewal at half life gives the server 15 days of slack.
 
 **3. Routine supersession does not use the CRL.** Revocation is reserved
@@ -101,7 +101,7 @@ certificate lands in remediation, reaches the server, enrolls, is issued
 a certificate, and reauthenticates.
 
 Deployments without a remediation VLAN are explicitly unsupported for
-802.1X. They can still run OpenRMM; they cannot safely run short
+802.1X. They can still run Everwas; they cannot safely run short
 certificates and should not enable CRL checking either, because both
 failure modes need the remediation path to be recoverable. The honest
 position there is longer certificates and detection rather than

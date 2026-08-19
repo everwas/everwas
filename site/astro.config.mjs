@@ -5,7 +5,7 @@ import icon from 'astro-icon';
 
 // The public domain is swappable via SITE_URL (see .env / docker-compose).
 // Telemetry is disabled via ASTRO_TELEMETRY_DISABLED=1 in the Dockerfile.
-const site = process.env.SITE_URL ?? 'https://openrmm.supported.systems';
+const site = process.env.SITE_URL ?? 'https://everwas.supported.systems';
 
 export default defineConfig({
   site,

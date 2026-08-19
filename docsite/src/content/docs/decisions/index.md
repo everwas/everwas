@@ -1,12 +1,12 @@
 ---
 title: Architecture decisions
-description: The recorded decisions that shaped OpenRMM, with their context and consequences.
+description: The recorded decisions that shaped Everwas, with their context and consequences.
 sidebar:
   order: 0
   label: About these records
 ---
 
-These are OpenRMM's architecture decision records: the significant
+These are Everwas's architecture decision records: the significant
 choices, the context they were made in, the alternatives that lost, and
 the costs accepted. They are written down so that future contributors
 can distinguish "this is deliberate" from "nobody ever thought about

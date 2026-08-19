@@ -1,4 +1,4 @@
-# Multi-stage build for the OpenRMM docs site (Starlight).
+# Multi-stage build for the Everwas docs site (Starlight).
 #
 #   docker compose --profile dev up → dev target (astro dev + HMR)
 #   docker compose up (no profile)  → prod target (caddy serves dist/)

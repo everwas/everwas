@@ -19,7 +19,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
-  name: 'OpenRMM',
+  name: 'Everwas',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Windows, macOS, Linux',
   description,
@@ -72,9 +72,9 @@ const jsonLd = {
           tracker.setMetadata('purpose', 'verification');
         }
 
-        // Components stay tracker-agnostic: they dispatch openrmm:track on
+        // Components stay tracker-agnostic: they dispatch everwas:track on
         // the document, and only this file knows a tracker exists.
-        document.addEventListener('openrmm:track', (e) => {
+        document.addEventListener('everwas:track', (e) => {
           const { name, payload } = (e as CustomEvent).detail ?? {};
           if (name) tracker.event(name, payload ?? null);
         });

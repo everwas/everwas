@@ -1,9 +1,9 @@
 ---
 title: Device certificates for 802.1X
-description: OpenRMM runs a device CA that issues the certificates endpoints present for EAP-TLS network authentication, renewed by the agent before they can strand a machine.
+description: Everwas runs a device CA that issues the certificates endpoints present for EAP-TLS network authentication, renewed by the agent before they can strand a machine.
 ---
 
-OpenRMM can act as the certificate authority for your network: it issues
+Everwas can act as the certificate authority for your network: it issues
 each enrolled device a certificate for 802.1X EAP-TLS authentication,
 and the agent keeps that certificate renewed for the life of the
 machine. The design reasoning lives in
@@ -23,7 +23,7 @@ Issuance is off until two things exist: a CA passphrase and CA material.
 
 ```bash
 # .env
-OPENRMM_CA_PASSPHRASE=   # openssl rand -base64 36
+EVERWAS_CA_PASSPHRASE=   # openssl rand -base64 36
 ```
 
 Back the passphrase up separately from the server. Losing it orphans
@@ -143,7 +143,7 @@ Installing the certificate into each platform's supplicant
 (wpa_supplicant and NetworkManager, the Windows certificate store and
 Wired AutoConfig, macOS profiles and keychain) is ADR-0003's step 4 and
 is not built yet, and the remediation VLAN on the RADIUS side is a
-deployment prerequisite that OpenRMM cannot provide for you. Until both
+deployment prerequisite that Everwas cannot provide for you. Until both
 exist, treat this as the issuance and lifecycle layer: the certificates
 are real, renewed, and tracked, and the network enforcement that
 consumes them is the next seam.

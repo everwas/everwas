@@ -1,4 +1,4 @@
-# OpenRMM docs site — two profiles.
+# Everwas docs site — two profiles.
 #
 # Default (no --profile): prod — Caddy serves the built dist/.
 # --profile dev: Astro dev server with HMR, volume mounts for live reload.
@@ -7,32 +7,32 @@
 # Set DOMAIN in .env to pick the public hostname.
 
 services:
-  openrmm-docs:
+  everwas-docs:
     profiles: ["prod", ""]
     build:
       context: .
       target: prod
       args:
-        SITE_URL: https://${DOMAIN:-docs.openrmm.supported.systems}
-    image: openrmm-docs:prod
-    container_name: openrmm-docs
+        SITE_URL: https://${DOMAIN:-docs.everwas.supported.systems}
+    image: everwas-docs:prod
+    container_name: everwas-docs
     restart: unless-stopped
     networks:
       - caddy
     labels:
-      caddy: ${DOMAIN:-docs.openrmm.supported.systems}
+      caddy: ${DOMAIN:-docs.everwas.supported.systems}
       caddy.reverse_proxy: "{{upstreams 80}}"
 
-  openrmm-docs-dev:
+  everwas-docs-dev:
     profiles: ["dev"]
     build:
       context: .
       target: dev
-    image: openrmm-docs:dev
-    container_name: openrmm-docs-dev
+    image: everwas-docs:dev
+    container_name: everwas-docs-dev
     restart: unless-stopped
     environment:
-      - DOMAIN=${DOMAIN:-docs.openrmm.l.supported.systems}
+      - DOMAIN=${DOMAIN:-docs.everwas.l.supported.systems}
       - ASTRO_TELEMETRY_DISABLED=1
     volumes:
       # node_modules stays in the container so host platform mismatches
@@ -44,7 +44,7 @@ services:
     networks:
       - caddy
     labels:
-      caddy: ${DOMAIN:-docs.openrmm.l.supported.systems}
+      caddy: ${DOMAIN:-docs.everwas.l.supported.systems}
       caddy.reverse_proxy: "{{upstreams 4321}}"
       # Long-lived WebSocket settings for Vite HMR behind Caddy.
       caddy.reverse_proxy.flush_interval: "-1"

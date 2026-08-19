@@ -1,4 +1,4 @@
-# OpenRMM docs site — cookie-cutter targets.
+# Everwas docs site — cookie-cutter targets.
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -10,11 +10,11 @@ help: ## Show this help
 
 .PHONY: prod
 prod: ## Build + run the production docs container (Caddy serves dist/)
-	docker compose up -d --build openrmm-docs
+	docker compose up -d --build everwas-docs
 
 .PHONY: dev
 dev: ## Run the Astro dev server with HMR (--profile dev)
-	docker compose --profile dev up --build openrmm-docs-dev
+	docker compose --profile dev up --build everwas-docs-dev
 
 .PHONY: down
 down: ## Stop and remove the docs containers
@@ -27,4 +27,4 @@ logs: ## Tail logs (works for whichever profile is up)
 
 .PHONY: build
 build: ## Build the static site WITHOUT bringing up Caddy (CI gate)
-	docker compose build openrmm-docs
+	docker compose build everwas-docs

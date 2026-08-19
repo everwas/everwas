@@ -2,17 +2,18 @@
 import { Icon } from 'astro-icon/components';
 import './QuickStart.css';
 
-const serverCmds = `git clone https://github.com/openrmm/openrmm && cd openrmm
+const serverCmds = `# public source release imminent; from your checkout:
+cd everwas
 cp .env.example .env
-cd server && uv run openrmm gen-nats-keys   # paste both values into .env
+cd server && uv run everwas gen-nats-keys   # paste both values into .env
 cd .. && make dev
 make migrate
 make admin EMAIL=you@example.com`;
 
-const agentCmds = `make enroll-token        # prints ore_...
-cd agent && go build -o bin/openrmm-agent ./cmd/openrmm-agent
-sudo ./bin/openrmm-agent install \\
-  --server https://rmm.example.com --token ore_...`;
+const agentCmds = `make enroll-token        # prints ew_...
+cd agent && go build -o bin/everwas-agent ./cmd/everwas-agent
+sudo ./bin/everwas-agent install \\
+  --server https://rmm.example.com --token ew_...`;
 ---
 
 <section id="quick-start" class="section">
@@ -84,7 +85,7 @@ sudo ./bin/openrmm-agent install \\
       if (ok) {
         // north-star conversion: someone copied the install commands
         document.dispatchEvent(
-          new CustomEvent('openrmm:track', {
+          new CustomEvent('everwas:track', {
             detail: { name: 'quickstart_copy', payload: { variant: btn.dataset.variant } },
           }),
         );

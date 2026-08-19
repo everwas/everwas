@@ -3,7 +3,7 @@ title: Enable the MCP server
 description: Let an AI assistant query the fleet and, with explicit confirmation, act on it. Off by default, scoped by API key, fully audit-logged.
 ---
 
-OpenRMM ships an MCP server so an AI assistant can query and, with
+Everwas ships an MCP server so an AI assistant can query and, with
 explicit confirmation, act on your fleet. It is **off by default** and
 requires a scoped API key.
 
@@ -22,14 +22,14 @@ exactly what `get_device_facts` exposes. See
 
 ```bash
 # .env
-OPENRMM_MCP_ENABLED=true
+EVERWAS_MCP_ENABLED=true
 ```
 
 ```bash
-docker compose --profile mcp up -d openrmm-mcp
+docker compose --profile mcp up -d everwas-mcp
 ```
 
-The MCP endpoint gets its own hostname (`OPENRMM_MCP_DOMAIN`, defaulting
+The MCP endpoint gets its own hostname (`EVERWAS_MCP_DOMAIN`, defaulting
 to `mcp-<your-domain>`) rather than a path on the app origin. The reason
 is the auth model: browsers talk to the app with a session cookie, MCP
 clients present a bearer API key, and keeping the origins separate keeps
@@ -39,7 +39,7 @@ the cookie away from the API-key surface entirely.
 
 ```bash
 make api-key NAME=claude SCOPES=devices:read,alerts:read,patches:read
-# prints once: orpk_<id>_<secret>
+# prints once: ewpk_<id>_<secret>
 ```
 
 Available scopes: `devices:read`, `alerts:read`, `alerts:write`,
@@ -51,8 +51,8 @@ matter what the assistant is asked or how persuasively it asks.
 ## Connecting
 
 ```bash
-claude mcp add --transport http openrmm https://mcp-rmm.example.com/mcp \
-  --header "Authorization: Bearer orpk_..."
+claude mcp add --transport http everwas https://mcp-rmm.example.com/mcp \
+  --header "Authorization: Bearer ewpk_..."
 ```
 
 In dev the server listens on `http://127.0.0.1:28001/mcp`.

@@ -3,13 +3,13 @@ title: Query device history
 description: Ask what was true on a machine at any moment, and separately what the server believed at any moment.
 ---
 
-Every inventory fact OpenRMM stores (hardware, installed software,
+Every inventory fact Everwas stores (hardware, installed software,
 processes, services, patch state) is recorded on two time axes:
 
 - <span class="vt">valid time</span>: when it was true *on the machine*
 - <span class="rt">record time</span>: when the server *learned it*
 
-Most tools store one timestamp and quietly conflate the two. OpenRMM
+Most tools store one timestamp and quietly conflate the two. Everwas
 keeps both, which turns device history from a log into something you can
 interrogate. The theory lives in the
 [bitemporal concept page](/concepts/bitemporal/); this guide is about

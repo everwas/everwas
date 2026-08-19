@@ -1,4 +1,4 @@
-# OpenRMM marketing site — cookie-cutter targets.
+# Everwas marketing site — cookie-cutter targets.
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -10,11 +10,11 @@ help: ## Show this help
 
 .PHONY: prod
 prod: ## Build + run the production site container (Caddy serves dist/)
-	docker compose up -d --build openrmm-site
+	docker compose up -d --build everwas-site
 
 .PHONY: dev
 dev: ## Run the Astro dev server with HMR (--profile dev)
-	docker compose --profile dev up --build openrmm-site-dev
+	docker compose --profile dev up --build everwas-site-dev
 
 .PHONY: down
 down: ## Stop and remove the site containers
@@ -27,4 +27,4 @@ logs: ## Tail logs (works for whichever profile is up)
 
 .PHONY: build
 build: ## Build the static site WITHOUT bringing up Caddy (CI gate)
-	docker compose build openrmm-site
+	docker compose build everwas-site

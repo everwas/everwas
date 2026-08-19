@@ -4,16 +4,16 @@ import starlight from '@astrojs/starlight';
 
 // The public domain is swappable via SITE_URL (see .env / docker-compose).
 // Telemetry is disabled via ASTRO_TELEMETRY_DISABLED=1 in the Dockerfile.
-const site = process.env.SITE_URL ?? 'https://docs.openrmm.supported.systems';
+const site = process.env.SITE_URL ?? 'https://docs.everwas.supported.systems';
 
 export default defineConfig({
   site,
   devToolbar: { enabled: false },
   integrations: [
     starlight({
-      title: 'OpenRMM',
+      title: 'Everwas',
       description:
-        'Documentation for OpenRMM: open-source remote monitoring and management with bitemporal device history and a first-class MCP server.',
+        'Documentation for Everwas: open-source remote monitoring and management with bitemporal device history and a first-class MCP server.',
       favicon: '/favicon.svg',
       customCss: [
         '@fontsource-variable/inter',

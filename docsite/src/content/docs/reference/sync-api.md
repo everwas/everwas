@@ -9,35 +9,35 @@ mirrors it for readers. When in doubt, the repo file wins.
 :::
 
 `/api/v1/sync` exists so an external inventory (a Nautobot SSoT job, a CMDB
-loader, an asset system) can treat OpenRMM as a source of truth. It is
+loader, an asset system) can treat Everwas as a source of truth. It is
 read-only, bearer-token authenticated, and built around one access pattern:
 **sweep the whole fleet in pages, never fetch per device.** A 5,000-device
 fleet is a handful of paged sweeps, not five thousand calls.
 
 ## Authentication
 
-Credentials are OpenRMM API keys exchanged for short-lived tokens.
+Credentials are Everwas API keys exchanged for short-lived tokens.
 
 1. Mint a scoped key (admin UI, or `POST /api/v1/admin/api-keys`). A sync
    consumer wants `devices:read`, plus `patches:read` if it reads patch
-   state. The key looks like `orpk_<id>_<secret>` and is shown once.
+   state. The key looks like `ewpk_<id>_<secret>` and is shown once.
 2. Exchange it — RFC 6749 client credentials, form-encoded:
 
    ```
    POST /api/v1/auth/token
-   grant_type=client_credentials&client_secret=orpk_<id>_<secret>
+   grant_type=client_credentials&client_secret=ewpk_<id>_<secret>
    ```
 
    (`client_id=<id>` + `client_secret=<secret>` also works, for OAuth2
    client libraries.) The response is standard:
 
    ```json
-   {"access_token": "orst_...", "token_type": "Bearer",
+   {"access_token": "ewst_...", "token_type": "Bearer",
     "expires_in": 3600, "scope": "devices:read patches:read"}
    ```
 
-3. Call the sync endpoints with `Authorization: Bearer orst_...`. Re-exchange
-   when the token expires; `expires_in` is `OPENRMM_SYNC_TOKEN_TTL_S`
+3. Call the sync endpoints with `Authorization: Bearer ewst_...`. Re-exchange
+   when the token expires; `expires_in` is `EVERWAS_SYNC_TOKEN_TTL_S`
    (default 3600).
 
 Semantics worth knowing:
@@ -128,7 +128,7 @@ rollup ride the **list** payload so no per-device follow-up is ever needed.
 | `cpu_model`, `cpu_cores`, `memory_bytes` | str?, int?, int? | From current hardware facts |
 | `is_virtual` | bool? | Null when no hardware fact exists yet |
 | `device_class` | str? | `vm` when virtual, else the chassis bucket (`desktop`, `laptop`, `server`, `all-in-one`, `tablet`, ...), else null |
-| `dns_name` | null | Always null: OpenRMM does not track DNS names. The field exists so its absence is a statement, not a gap |
+| `dns_name` | null | Always null: Everwas does not track DNS names. The field exists so its absence is a statement, not a gap |
 | `mac_addresses` | [str] | Rollup of current interfaces, loopbacks excluded |
 | `ip_addresses` | [str] | Same rollup, **CIDR form preserved** (`192.0.2.10/24`) — the prefix length is what an IPAM consumer needs and cannot reconstruct |
 
@@ -236,7 +236,7 @@ without meaning anything durable:
 
 | Code | Meaning |
 |---|---|
-| 401 | Missing/invalid/expired token, or a raw `orpk_` key where a token belongs (the message says how to exchange it) |
+| 401 | Missing/invalid/expired token, or a raw `ewpk_` key where a token belongs (the message says how to exchange it) |
 | 403 | Token lacks the required scope; the response names the scopes it holds |
 | 404 | Resource outside your organization (indistinguishable from nonexistent, by design) |
 | 422 | Naive datetime, undecodable cursor, cursor from another endpoint, unknown `kind` |

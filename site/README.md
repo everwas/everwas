@@ -1,6 +1,6 @@
-# OpenRMM marketing site
+# Everwas marketing site
 
-Static Astro site for openrmm.supported.systems (domain swappable via
+Static Astro site for everwas.supported.systems (domain swappable via
 `DOMAIN` in `.env` — nothing else changes).
 
 ## Local development

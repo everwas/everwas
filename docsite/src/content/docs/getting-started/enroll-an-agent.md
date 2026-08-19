@@ -24,7 +24,7 @@ are enrolling a batch.
 Until published releases exist, build it from the repo:
 
 ```bash
-make agent          # → agent/bin/openrmm-agent for the local platform
+make agent          # → agent/bin/everwas-agent for the local platform
 ```
 
 Cross-compile with the usual Go environment variables (`GOOS`, `GOARCH`);
@@ -36,33 +36,33 @@ ship.
 On the endpoint, as a user that can write the agent's state directory:
 
 ```bash
-openrmm-agent enroll --server https://rmm.example.com --token <TOKEN>
+everwas-agent enroll --server https://rmm.example.com --token <TOKEN>
 ```
 
 Enrollment happens over HTTPS. The server assigns the device an
 `agent_id`, issues its credentials, and tells it which NATS URL to dial
-from then on (the `OPENRMM_NATS_PUBLIC_URL` you set during the
+from then on (the `EVERWAS_NATS_PUBLIC_URL` you set during the
 [quickstart](/getting-started/quickstart/)). On success:
 
 ```text
-enrolled; identity saved to /var/lib/openrmm-agent/state.json
+enrolled; identity saved to /var/lib/everwas-agent/state.json
 ```
 
 ## 4. Install as a service
 
 ```bash
-openrmm-agent install
+everwas-agent install
 ```
 
 This registers the agent with the platform's service manager: systemd on
 Linux, launchd on macOS, the Service Control Manager on Windows. There is
-a matching `uninstall`, and `openrmm-agent run` runs in the foreground if
+a matching `uninstall`, and `everwas-agent run` runs in the foreground if
 you want to watch it work first.
 
 ## 5. Confirm it is alive
 
 ```bash
-openrmm-agent status
+everwas-agent status
 ```
 
 prints the agent id, server, and NATS URL. Heartbeats go out every 30
