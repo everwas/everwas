@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker, session_scope
-from openrmm.models.device import AgentCredential, Device, DeviceStatus, OsFamily
-from openrmm.natsio.auth_callout import _user_jwt
-from openrmm.natsio.jwt import decode_jwt_payload
-from openrmm.services.enrollment import (
+from everwas.db.engine import get_sessionmaker, session_scope
+from everwas.models.device import AgentCredential, Device, DeviceStatus, OsFamily
+from everwas.natsio.auth_callout import _user_jwt
+from everwas.natsio.jwt import decode_jwt_payload
+from everwas.services.enrollment import (
     RotationInFlightError,
     retire_device,
     revoke_agent_secret,
@@ -26,7 +26,7 @@ from openrmm.services.enrollment import (
     rotation_in_flight,
     verify_agent_secret,
 )
-from openrmm.util.ids import uuid7
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -86,7 +86,7 @@ async def test_retire_is_audited():
     async with get_sessionmaker()() as db:
         from sqlalchemy import select
 
-        from openrmm.models.audit import AuditLog
+        from everwas.models.audit import AuditLog
 
         rows = (
             (await db.execute(select(AuditLog).where(AuditLog.action == "device.retired")))

@@ -4,10 +4,10 @@ from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
-import openrmm.models  # noqa: F401  (register all tables on Base.metadata)
+import everwas.models  # noqa: F401  (register all tables on Base.metadata)
 from alembic import context
-from openrmm.config import get_settings
-from openrmm.db.base import Base
+from everwas.config import get_settings
+from everwas.db.base import Base
 
 config = context.config
 if config.config_file_name is not None:

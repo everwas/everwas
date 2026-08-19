@@ -15,26 +15,26 @@
 # numeric prefix are first-match-wins in the order written, which is what path
 # routing actually needs.
 services:
-  openrmm-api:
+  everwas-api:
     restart: unless-stopped
 
-  openrmm-nats:
+  everwas-nats:
     restart: unless-stopped
 
-  openrmm-mcp:
+  everwas-mcp:
     restart: unless-stopped
 
-  openrmm-postgres:
+  everwas-postgres:
     restart: unless-stopped
 
-  openrmm-dispatcher:
+  everwas-dispatcher:
     restart: unless-stopped
 
-  openrmm-web:
+  everwas-web:
     restart: unless-stopped
-    networks: [openrmm-internal, caddy]
+    networks: [everwas-internal, caddy]
     labels:
-      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      caddy: ${EVERWAS_DOMAIN:?set EVERWAS_DOMAIN in .env}
       # Last of the three handles. `handle` is first-match-wins, so /api and
       # /nats claim their paths and this takes everything else, which for a
       # SPA means every client-side route falls through to index.html.

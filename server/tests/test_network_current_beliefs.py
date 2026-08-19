@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.bitemporal.store import record_facts
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.user import Role
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.store import record_facts
+from everwas.db.engine import get_sessionmaker
+from everwas.models.device import Device, OsFamily
+from everwas.models.user import Role
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -66,7 +66,7 @@ async def test_the_endpoints_filter_selects_exactly_one_row_per_interface():
     """
     from sqlalchemy import func, select
 
-    from openrmm.models.facts import FactNetwork
+    from everwas.models.facts import FactNetwork
 
     device_id = await _device_with_moved_interface()
 

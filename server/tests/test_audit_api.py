@@ -11,12 +11,12 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from openrmm.api.v1.audit import MAX_LIMIT
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.audit import ActorType, AuditLog
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.org import DEFAULT_ORG_ID, Organization
-from openrmm.util.ids import uuid7
+from everwas.api.v1.audit import MAX_LIMIT
+from everwas.db.engine import get_sessionmaker
+from everwas.models.audit import ActorType, AuditLog
+from everwas.models.device import Device, OsFamily
+from everwas.models.org import DEFAULT_ORG_ID, Organization
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -55,9 +55,9 @@ async def _other_org() -> uuid.UUID:
 
 
 def _client_in(org_id: uuid.UUID) -> AsyncClient:
-    from openrmm.api.app import create_app
-    from openrmm.api.deps import current_user
-    from openrmm.models.user import Role, User
+    from everwas.api.app import create_app
+    from everwas.api.deps import current_user
+    from everwas.models.user import Role, User
 
     app = create_app()
     app.dependency_overrides[current_user] = lambda: User(
@@ -204,8 +204,8 @@ async def test_the_real_deletion_path_leaves_a_readable_entry(client):
     all and would be invisible to every reader, which looks exactly like never
     having been written.
     """
-    from openrmm.models.device import DeviceStatus
-    from openrmm.services.devices import delete_device
+    from everwas.models.device import DeviceStatus
+    from everwas.services.devices import delete_device
 
     device_id = uuid7()
     async with get_sessionmaker()() as db, db.begin():

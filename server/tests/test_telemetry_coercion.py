@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from openrmm.ingest.telemetry import _real
+from everwas.ingest.telemetry import _real
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -54,12 +54,12 @@ async def test_one_unstorable_field_does_not_lose_the_sample():
 
     from sqlalchemy import select
 
-    from openrmm.db.engine import get_sessionmaker
-    from openrmm.ingest.telemetry import apply_telemetry
-    from openrmm.models.device import Device, OsFamily
-    from openrmm.models.telemetry import telemetry_metrics
-    from openrmm.services.partitions import ensure_partitions
-    from openrmm.util.ids import uuid7
+    from everwas.db.engine import get_sessionmaker
+    from everwas.ingest.telemetry import apply_telemetry
+    from everwas.models.device import Device, OsFamily
+    from everwas.models.telemetry import telemetry_metrics
+    from everwas.services.partitions import ensure_partitions
+    from everwas.util.ids import uuid7
 
     async with get_sessionmaker()() as db, db.begin():
         await ensure_partitions(db, retention_days=30)

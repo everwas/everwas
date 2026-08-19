@@ -12,7 +12,7 @@ agent/internal/sched/sched_test.go.
 import uuid
 from datetime import UTC, datetime
 
-from openrmm.services.schedules import SCHED_NAMESPACE, scheduled_job_id
+from everwas.services.schedules import SCHED_NAMESPACE, scheduled_job_id
 
 # Frozen: agent and server both assert this exact string.
 VECTOR_ENTRY = "nightly-scan"

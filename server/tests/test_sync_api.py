@@ -15,15 +15,15 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from openrmm.bitemporal.store import record_facts
-from openrmm.db.engine import get_sessionmaker, session_scope
-from openrmm.ingest.inventory import apply_inventory
-from openrmm.models.api_key import ApiKey
-from openrmm.models.device import Device, DeviceStatus, OsFamily, Site
-from openrmm.models.org import DEFAULT_ORG_ID, Organization
-from openrmm.security import sync_tokens
-from openrmm.security.api_keys import authenticate_key
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.store import record_facts
+from everwas.db.engine import get_sessionmaker, session_scope
+from everwas.ingest.inventory import apply_inventory
+from everwas.models.api_key import ApiKey
+from everwas.models.device import Device, DeviceStatus, OsFamily, Site
+from everwas.models.org import DEFAULT_ORG_ID, Organization
+from everwas.security import sync_tokens
+from everwas.security.api_keys import authenticate_key
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -44,13 +44,13 @@ async def bearer(scopes: list[str], org_id: uuid.UUID | None = DEFAULT_ORG_ID) -
             )
         )
     async with session_scope() as db:
-        principal = await authenticate_key(db, f"orpk_{key_id}_{secret}")
+        principal = await authenticate_key(db, f"ewpk_{key_id}_{secret}")
     token, _ = sync_tokens.issue(principal)
     return {"Authorization": f"Bearer {token}"}
 
 
 def client() -> httpx.AsyncClient:
-    from openrmm.api.app import create_app
+    from everwas.api.app import create_app
 
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app()), base_url="http://test"
@@ -263,7 +263,7 @@ async def test_orgless_principal_fails_closed_to_empty_pages():
     the claims path grew a bug. scope_to_org fails closed for exactly that
     case: empty pages, never the whole fleet."""
     await mk_devices(2)
-    from openrmm.security.api_keys import ApiKeyPrincipal
+    from everwas.security.api_keys import ApiKeyPrincipal
 
     # A real key row so the revocation lookup passes, an org-less principal
     # in the claims.
@@ -528,8 +528,8 @@ async def test_patch_sweep_catalog_join_and_approval_status():
         # Approve it fleet-wide through the service and watch status flip.
         from sqlalchemy import select
 
-        from openrmm.models.patch import ApprovalDecision, PatchCatalog
-        from openrmm.services.patching import approve
+        from everwas.models.patch import ApprovalDecision, PatchCatalog
+        from everwas.services.patching import approve
 
         async with session_scope() as db:
             catalog_id = (
@@ -566,7 +566,7 @@ async def test_patch_identifier_prefers_kb_then_external_id():
 
     from sqlalchemy import select, update
 
-    from openrmm.models.patch import PatchCatalog
+    from everwas.models.patch import PatchCatalog
 
     async with client() as c:
         # No KB ids in the catalog yet -> identifier falls back to external_id.

@@ -6,9 +6,9 @@ cheap, and the retry behaviour has to not swallow a real edit.
 
 import uuid
 
-from openrmm.dispatcher.schedule_sync import RETRY_FLOOR_S, ScheduleSyncer
-from openrmm.models.device import Device, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.dispatcher.schedule_sync import RETRY_FLOOR_S, ScheduleSyncer
+from everwas.models.device import Device, OsFamily
+from everwas.util.ids import uuid7
 
 
 class FakeSyncer(ScheduleSyncer):
@@ -30,7 +30,7 @@ class FakeSyncer(ScheduleSyncer):
     async def check(self, device, reported_version):
         # Patch the two things that touch the outside world, keeping the
         # branching under test.
-        import openrmm.dispatcher.schedule_sync as mod
+        import everwas.dispatcher.schedule_sync as mod
 
         real_build, real_sync, real_time = mod.build_document, mod.sync_device, mod.time.monotonic
         version = self._version_for

@@ -1,17 +1,17 @@
 # Dev overlay: hot reload, published ports (host ports prefixed 2xxxx to avoid
 # clashing with other stacks on this machine), mailpit. `make dev` applies this.
 services:
-  openrmm-postgres:
+  everwas-postgres:
     ports:
       - "127.0.0.1:25432:5432"
 
-  openrmm-nats:
+  everwas-nats:
     command: ["-c", "/etc/nats/nats.conf", "-m", "8222"]
     ports:
       - "127.0.0.1:24222:4222"
       - "127.0.0.1:28222:8222"
 
-  openrmm-api:
+  everwas-api:
     volumes:
       - ./server/src:/app/src
       - ./server/alembic:/app/alembic
@@ -19,25 +19,25 @@ services:
     ports:
       - "127.0.0.1:28000:8000"
 
-  openrmm-dispatcher:
-    command: ["watchfiles", "--filter", "python", "openrmm-dispatcher", "/app/src"]
+  everwas-dispatcher:
+    command: ["watchfiles", "--filter", "python", "everwas-dispatcher", "/app/src"]
     volumes:
       - ./server/src:/app/src
 
-  openrmm-web:
+  everwas-web:
     environment:
-      OPENRMM_API_URL: http://openrmm-api:8000
+      EVERWAS_API_URL: http://everwas-api:8000
       # Tells vite what the browser will actually be talking to. Without it
       # HMR advertises ws://localhost:5173, the browser tries that against an
       # https:// page, and every edit needs a manual reload with
       # "[vite] server connection lost" in the console.
-      OPENRMM_PUBLIC_HOST: ${OPENRMM_DOMAIN:-}
+      EVERWAS_PUBLIC_HOST: ${EVERWAS_DOMAIN:-}
     volumes:
       - ./web:/app
       - /app/node_modules
-    networks: [openrmm-internal, caddy]
+    networks: [everwas-internal, caddy]
     labels:
-      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      caddy: ${EVERWAS_DOMAIN:?set EVERWAS_DOMAIN in .env}
       caddy.3_handle: /*
       caddy.3_handle.reverse_proxy: "{{upstreams 5173}}"
       # Vite's HMR socket sends no application-level pings, so Caddy's
@@ -53,17 +53,17 @@ services:
     ports:
       - "127.0.0.1:25173:5173"
 
-  openrmm-mcp:
+  everwas-mcp:
     volumes:
       - ./server/src:/app/src
     ports:
       - "127.0.0.1:28001:8001"
 
-  openrmm-mailpit:
+  everwas-mailpit:
     image: axllent/mailpit:latest
-    networks: [openrmm-internal, caddy]
+    networks: [everwas-internal, caddy]
     labels:
-      caddy: ${OPENRMM_MAIL_DOMAIN:-mail-${OPENRMM_DOMAIN}}
+      caddy: ${EVERWAS_MAIL_DOMAIN:-mail-${EVERWAS_DOMAIN}}
       caddy.reverse_proxy: "{{upstreams 8025}}"
     ports:
       - "127.0.0.1:28025:8025"

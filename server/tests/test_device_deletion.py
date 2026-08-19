@@ -15,14 +15,14 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, insert, select
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.audit import AuditLog
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.models.telemetry import telemetry_metrics
-from openrmm.services.devices import DeviceNotRetiredError, delete_device
-from openrmm.services.enrollment import retire_device
-from openrmm.services.partitions import ensure_partitions
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_sessionmaker
+from everwas.models.audit import AuditLog
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.models.telemetry import telemetry_metrics
+from everwas.services.devices import DeviceNotRetiredError, delete_device
+from everwas.services.enrollment import retire_device
+from everwas.services.partitions import ensure_partitions
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -151,7 +151,7 @@ async def test_deletion_covers_every_partitioned_telemetry_table():
     """
     from sqlalchemy import func, insert, select
 
-    from openrmm.models.telemetry import PARTITIONED_TELEMETRY
+    from everwas.models.telemetry import PARTITIONED_TELEMETRY
 
     device_id = await _device(DeviceStatus.retired)
     ts = datetime.now(UTC)

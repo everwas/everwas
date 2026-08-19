@@ -19,17 +19,17 @@ from mcp.server.auth.middleware.auth_context import auth_context_var
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from sqlalchemy import func, select
 
-from openrmm.bitemporal.store import record_facts
-from openrmm.db.engine import get_sessionmaker
-from openrmm.mcp.context import authenticate, hash_secret, iso, parse_api_key
-from openrmm.mcp.server import ApiKeyVerifier, mcp
-from openrmm.models.alert import Alert, AlertRule, AlertState, Metric, Severity
-from openrmm.models.api_key import ApiKey
-from openrmm.models.audit import AuditLog
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.models.patch import PatchApproval, PatchCatalog, PatchSeverity
-from openrmm.models.script import RunStatus, Script, ScriptRun, ShellKind
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.store import record_facts
+from everwas.db.engine import get_sessionmaker
+from everwas.mcp.context import authenticate, hash_secret, iso, parse_api_key
+from everwas.mcp.server import ApiKeyVerifier, mcp
+from everwas.models.alert import Alert, AlertRule, AlertState, Metric, Severity
+from everwas.models.api_key import ApiKey
+from everwas.models.audit import AuditLog
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.models.patch import PatchApproval, PatchCatalog, PatchSeverity
+from everwas.models.script import RunStatus, Script, ScriptRun, ShellKind
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -41,7 +41,7 @@ FULL = [*READ_ONLY, "alerts:write", "scripts:run", "patches:write"]
 
 
 async def mint_key(name: str, scopes: list[str], *, expires_in: timedelta | None = None) -> str:
-    """Create an API key row the way `openrmm create-api-key` does."""
+    """Create an API key row the way `everwas create-api-key` does."""
     key_id = secrets.token_hex(11)
     secret = secrets.token_urlsafe(32)
     async with get_sessionmaker()() as db, db.begin():
@@ -54,7 +54,7 @@ async def mint_key(name: str, scopes: list[str], *, expires_in: timedelta | None
                 expires_at=(datetime.now(UTC) + expires_in if expires_in else None),
             )
         )
-    return f"orpk_{key_id}_{secret}"
+    return f"ewpk_{key_id}_{secret}"
 
 
 @asynccontextmanager
@@ -105,22 +105,22 @@ async def count(model, *where) -> int:
 
 
 def test_parse_api_key_shapes():
-    assert parse_api_key("orpk_abc_def") == ("abc", "def")
-    assert parse_api_key("orpk_abc_def_ghi") == ("abc", "def_ghi")
+    assert parse_api_key("ewpk_abc_def") == ("abc", "def")
+    assert parse_api_key("ewpk_abc_def_ghi") == ("abc", "def_ghi")
     assert parse_api_key("bearer-token") is None
-    assert parse_api_key("orpk_only") is None
+    assert parse_api_key("ewpk_only") is None
     assert parse_api_key("") is None
 
 
 async def test_authenticate_unknown_key():
-    assert await authenticate("orpk_deadbeefdeadbeefdeadbe_nope") is None
-    assert await authenticate("not-an-openrmm-key") is None
+    assert await authenticate("ewpk_deadbeefdeadbeefdeadbe_nope") is None
+    assert await authenticate("not-an-everwas-key") is None
 
 
 async def test_authenticate_wrong_secret():
     raw = await mint_key("wrong-secret", READ_ONLY)
     key_id, _ = parse_api_key(raw)
-    assert await authenticate(f"orpk_{key_id}_{secrets.token_urlsafe(32)}") is None
+    assert await authenticate(f"ewpk_{key_id}_{secrets.token_urlsafe(32)}") is None
 
 
 async def test_authenticate_expired_key():
@@ -599,7 +599,7 @@ EXPECTED_ANNOTATIONS = {
 async def test_every_tool_is_annotated_and_titled():
     from fastmcp import Client
 
-    from openrmm.mcp.server import mcp
+    from everwas.mcp.server import mcp
 
     async with Client(mcp) as client:
         tools = {t.name: t for t in await client.list_tools()}
@@ -622,7 +622,7 @@ async def test_mutating_tools_all_require_confirmation():
     """Every non-read-only tool must expose `confirm`, defaulting to false."""
     from fastmcp import Client
 
-    from openrmm.mcp.server import mcp
+    from everwas.mcp.server import mcp
 
     async with Client(mcp) as client:
         tools = await client.list_tools()

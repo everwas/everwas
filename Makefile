@@ -1,9 +1,9 @@
-# OpenRMM — docker compose + dev workflow
-# Mode comes from .env (OPENRMM_MODE=dev|prod); default dev.
+# Everwas — docker compose + dev workflow
+# Mode comes from .env (EVERWAS_MODE=dev|prod); default dev.
 
 -include .env
-OPENRMM_MODE ?= dev
-COMPOSE = docker compose -f docker-compose.yml -f docker-compose.$(OPENRMM_MODE).yml
+EVERWAS_MODE ?= dev
+COMPOSE = docker compose -f docker-compose.yml -f docker-compose.$(EVERWAS_MODE).yml
 
 .PHONY: help up down dev logs ps build restart migrate revision psql nats-cli \
         seed admin enroll-token api-key test lint fmt openapi agent release
@@ -16,7 +16,7 @@ up: ## Start the stack in current mode
 	$(COMPOSE) logs --tail 20
 
 dev: ## Start the dev stack (hot reload)
-	@test "$(OPENRMM_MODE)" = "dev" || (echo "OPENRMM_MODE is '$(OPENRMM_MODE)', not dev (edit .env)"; exit 1)
+	@test "$(EVERWAS_MODE)" = "dev" || (echo "EVERWAS_MODE is '$(EVERWAS_MODE)', not dev (edit .env)"; exit 1)
 	$(MAKE) up
 
 down: ## Stop the stack
@@ -36,25 +36,25 @@ restart: ## Restart services (SVC=name to filter)
 	$(COMPOSE) logs --tail 20 $(SVC)
 
 migrate: ## Apply database migrations
-	$(COMPOSE) exec openrmm-api alembic upgrade head
+	$(COMPOSE) exec everwas-api alembic upgrade head
 
 revision: ## Autogenerate a migration: make revision m="add devices"
-	$(COMPOSE) exec openrmm-api alembic revision --autogenerate -m "$(m)"
+	$(COMPOSE) exec everwas-api alembic revision --autogenerate -m "$(m)"
 
 psql: ## Postgres shell
-	$(COMPOSE) exec openrmm-postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+	$(COMPOSE) exec everwas-postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
 nats-cli: ## NATS box for debugging (nats CLI inside the network)
-	docker run --rm -it --network $(COMPOSE_PROJECT_NAME)_openrmm-internal natsio/nats-box -s nats://openrmm-nats:4222
+	docker run --rm -it --network $(COMPOSE_PROJECT_NAME)_everwas-internal natsio/nats-box -s nats://everwas-nats:4222
 
 admin: ## Create an admin user: make admin EMAIL=you@example.com
-	$(COMPOSE) exec openrmm-api openrmm create-admin $(EMAIL)
+	$(COMPOSE) exec everwas-api everwas create-admin $(EMAIL)
 
 enroll-token: ## Mint an agent enrollment token
-	$(COMPOSE) exec openrmm-api openrmm gen-enrollment-token
+	$(COMPOSE) exec everwas-api everwas gen-enrollment-token
 
 api-key: ## Mint an API key: make api-key NAME=claude SCOPES=devices:read,alerts:read
-	$(COMPOSE) exec openrmm-api openrmm create-api-key $(NAME) --scopes "$(SCOPES)"
+	$(COMPOSE) exec everwas-api everwas create-api-key $(NAME) --scopes "$(SCOPES)"
 
 test: ## Run server tests + agent tests
 	cd server && uv run pytest -q
@@ -69,10 +69,10 @@ fmt: ## Format everything
 	cd agent && gofmt -w .
 
 openapi: ## Dump the OpenAPI schema for web client generation
-	cd server && uv run python -c "import json; from openrmm.api.app import app; print(json.dumps(app.openapi()))" > ../web/openapi.json
+	cd server && uv run python -c "import json; from everwas.api.app import app; print(json.dumps(app.openapi()))" > ../web/openapi.json
 
 agent: ## Build the agent for the local platform
-	cd agent && go build -trimpath -o bin/openrmm-agent ./cmd/openrmm-agent
+	cd agent && go build -trimpath -o bin/everwas-agent ./cmd/everwas-agent
 
 release: ## Tag a CalVer release
 	git tag $$(date +%Y.%m.%d)

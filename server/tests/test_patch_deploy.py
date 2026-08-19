@@ -11,9 +11,9 @@ import uuid
 
 import pytest
 
-from openrmm.db.engine import session_scope
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.db.engine import session_scope
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

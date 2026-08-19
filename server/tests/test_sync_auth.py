@@ -15,10 +15,10 @@ import httpx
 import pytest
 from sqlalchemy import delete
 
-from openrmm.db.engine import get_sessionmaker, session_scope
-from openrmm.models.api_key import ApiKey
-from openrmm.security import sync_tokens
-from openrmm.security.api_keys import authenticate_key
+from everwas.db.engine import get_sessionmaker, session_scope
+from everwas.models.api_key import ApiKey
+from everwas.security import sync_tokens
+from everwas.security.api_keys import authenticate_key
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -39,14 +39,14 @@ async def mint_key(
         db.add(key)
         await db.flush()
         row_id = key.id
-    return row_id, f"orpk_{key_id}_{secret}"
+    return row_id, f"ewpk_{key_id}_{secret}"
 
 
 def sync_app():
     """The real app plus one scratch route guarded by the sync dependency,
     so the dependency's behavior is pinned before the sync router lands."""
-    from openrmm.api.app import create_app
-    from openrmm.api.sync_deps import SyncPrincipal, require_sync_scope
+    from everwas.api.app import create_app
+    from everwas.api.sync_deps import SyncPrincipal, require_sync_scope
 
     app = create_app()
 
@@ -83,7 +83,7 @@ async def test_whole_key_as_client_secret():
         resp = await exchange(c, client_secret=raw)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["access_token"].startswith("orst_")
+    assert body["access_token"].startswith("ewst_")
     assert body["token_type"] == "Bearer"
     assert body["scope"] == "devices:read"
     assert body["expires_in"] > 0
@@ -157,14 +157,14 @@ async def test_session_cookie_does_not_reach_sync():
     """The two authentication roots stay disjoint: the sync dependency never
     consults the cookie the SPA rides."""
     async with client_for(sync_app()) as c:
-        resp = await c.get("/test-sync/whoami", cookies={"openrmm_session": "anything"})
+        resp = await c.get("/test-sync/whoami", cookies={"everwas_session": "anything"})
     assert resp.status_code == 401
 
 
 async def test_tampered_signature_is_401():
     _, token = await bearer_token(["devices:read"])
-    claims_seg, sig = token.removeprefix("orst_").split(".")
-    forged = f"orst_{claims_seg}.{sig[:-4]}AAAA"
+    claims_seg, sig = token.removeprefix("ewst_").split(".")
+    forged = f"ewst_{claims_seg}.{sig[:-4]}AAAA"
     async with client_for(sync_app()) as c:
         resp = await c.get("/test-sync/whoami", headers={"Authorization": f"Bearer {forged}"})
     assert resp.status_code == 401
@@ -177,12 +177,12 @@ async def test_expired_token_is_401():
     import base64
     import json
 
-    claims_seg, _ = token.removeprefix("orst_").split(".")
+    claims_seg, _ = token.removeprefix("ewst_").split(".")
     claims = json.loads(base64.urlsafe_b64decode(claims_seg + "=" * (-len(claims_seg) % 4)))
     claims["exp"] = claims["iat"] - 1
     stale_bytes = json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
     stale = (
-        "orst_"
+        "ewst_"
         + base64.urlsafe_b64encode(stale_bytes).decode().rstrip("=")
         + "."
         + base64.urlsafe_b64encode(sync_tokens._sign(stale_bytes)).decode().rstrip("=")

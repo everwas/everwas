@@ -20,9 +20,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.db.engine import session_scope
-from openrmm.models.device import AgentCredential, Device, DeviceStatus, OsFamily
-from openrmm.services.enrollment import (
+from everwas.db.engine import session_scope
+from everwas.models.device import AgentCredential, Device, DeviceStatus, OsFamily
+from everwas.services.enrollment import (
     RevokedCredentialError,
     UnknownCredentialError,
     _sha256,
@@ -31,7 +31,7 @@ from openrmm.services.enrollment import (
     rotate_agent_secret,
     verify_agent_secret,
 )
-from openrmm.util.ids import uuid7
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -182,7 +182,7 @@ async def test_a_retired_device_cannot_renew():
 async def test_renewal_is_audited():
     from sqlalchemy import select
 
-    from openrmm.models.audit import AuditLog
+    from everwas.models.audit import AuditLog
 
     device_id = await _enrolled("gen0")
     async with session_scope() as db:

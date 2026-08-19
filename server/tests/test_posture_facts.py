@@ -8,11 +8,11 @@ per-check storage can say that.
 
 import pytest
 
-from openrmm.db.engine import session_scope
-from openrmm.ingest.inventory import _facts_from
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.models.facts import FACT_TABLES, FactKind, FactPosture
-from openrmm.util.ids import uuid7
+from everwas.db.engine import session_scope
+from everwas.ingest.inventory import _facts_from
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.models.facts import FACT_TABLES, FactKind, FactPosture
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -88,7 +88,7 @@ async def test_the_posture_table_stores_and_reads_back():
         await db.flush()
         device_id = device.id
 
-    from openrmm.bitemporal.store import record_facts
+    from everwas.bitemporal.store import record_facts
 
     facts = _facts_from(
         "posture",
@@ -129,7 +129,7 @@ async def test_a_check_added_later_has_no_history_before_it_existed():
         await db.flush()
         device_id = device.id
 
-    from openrmm.bitemporal.store import record_facts
+    from everwas.bitemporal.store import record_facts
 
     # First assessment: only the firewall check existed.
     async with session_scope() as db:
@@ -196,7 +196,7 @@ def test_the_posture_subject_is_accepted_at_the_boundary():
     import json
     from datetime import UTC, datetime
 
-    from openrmm.ingest.inventory import parse_inventory
+    from everwas.ingest.inventory import parse_inventory
 
     agent_id = uuid7()
     envelope = json.dumps(
@@ -222,8 +222,8 @@ async def test_apply_inventory_routes_posture_to_facts_not_snapshots():
 
     from sqlalchemy import select
 
-    from openrmm.ingest.inventory import apply_inventory
-    from openrmm.models.telemetry import DeviceSnapshot
+    from everwas.ingest.inventory import apply_inventory
+    from everwas.models.telemetry import DeviceSnapshot
 
     async with session_scope() as db:
         device = Device(

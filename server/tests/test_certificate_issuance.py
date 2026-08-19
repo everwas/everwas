@@ -16,18 +16,18 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from openrmm.db.engine import session_scope
-from openrmm.models.certificate import DeviceCertificate
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.services.ca import CERT_LIFETIME, build_csr, init_ca
-from openrmm.services.certificates import (
+from everwas.db.engine import session_scope
+from everwas.models.certificate import DeviceCertificate
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.services.ca import CERT_LIFETIME, build_csr, init_ca
+from everwas.services.certificates import (
     CertificateRefusedError,
     build_crl,
     issue_for_device,
     needs_renewal,
     revoke_certificate,
 )
-from openrmm.util.ids import uuid7
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

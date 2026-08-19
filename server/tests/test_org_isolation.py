@@ -19,13 +19,13 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from openrmm.api.app import create_app
-from openrmm.api.deps import current_user
-from openrmm.db.engine import get_sessionmaker, session_scope
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.models.org import Organization
-from openrmm.models.user import Role, User
-from openrmm.util.ids import uuid7
+from everwas.api.app import create_app
+from everwas.api.deps import current_user
+from everwas.db.engine import get_sessionmaker, session_scope
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.models.org import Organization
+from everwas.models.user import Role, User
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -175,7 +175,7 @@ async def test_the_shell_websocket_refuses_a_foreign_device():
     it outside the route-walking test above. It is also the single most
     valuable route to get right: it is an interactive root shell.
     """
-    from openrmm.api.deps import current_user as dep
+    from everwas.api.deps import current_user as dep
 
     _, b_device = await _two_orgs()
     app = create_app()
@@ -203,9 +203,9 @@ async def test_an_enrolled_device_inherits_the_tokens_organization():
     `WHERE org_id = :caller` excludes those silently rather than failing, so
     turning the boundary on would have hidden the entire existing fleet.
     """
-    from openrmm.models.device import EnrollmentToken
-    from openrmm.schemas.enrollment import EnrollRequest
-    from openrmm.services.enrollment import _sha256, enroll_device
+    from everwas.models.device import EnrollmentToken
+    from everwas.schemas.enrollment import EnrollRequest
+    from everwas.services.enrollment import _sha256, enroll_device
 
     await _two_orgs()
     async with session_scope() as db:

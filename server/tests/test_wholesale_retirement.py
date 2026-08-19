@@ -13,10 +13,10 @@ bitemporal history: an `as_of` query afterwards agrees that the packages ended.
 
 import pytest
 
-from openrmm.bitemporal.store import WholesaleRetirementError, record_facts
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.device import Device, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.store import WholesaleRetirementError, record_facts
+from everwas.db.engine import get_sessionmaker
+from everwas.models.device import Device, OsFamily
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -48,7 +48,7 @@ async def test_an_empty_snapshot_cannot_retire_every_fact():
 
     # Nothing was retired.
     async with get_sessionmaker()() as db:
-        from openrmm.bitemporal.query import get_facts
+        from everwas.bitemporal.query import get_facts
 
         still = await get_facts(db, "software", device_id)
         assert len(still) == 3

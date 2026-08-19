@@ -12,13 +12,13 @@ signature check somewhere else entirely.
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.alert import ChannelKind, NotificationChannel
-from openrmm.schemas.alert import SECRET_CONFIG_KEYS, ChannelOut
+from everwas.db.engine import get_sessionmaker
+from everwas.models.alert import ChannelKind, NotificationChannel
+from everwas.schemas.alert import SECRET_CONFIG_KEYS, ChannelOut
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
-WEBHOOK = {"url": "https://hooks.example.com/openrmm", "secret": "hmac-signing-secret"}
+WEBHOOK = {"url": "https://hooks.example.com/everwas", "secret": "hmac-signing-secret"}
 
 
 async def _channel(kind=ChannelKind.webhook, config=None) -> NotificationChannel:
@@ -45,7 +45,7 @@ async def test_non_secret_config_is_still_returned():
     which for a webhook is the URL."""
     c = await _channel()
     out = ChannelOut.redacted(c)
-    assert out.config["url"] == "https://hooks.example.com/openrmm"
+    assert out.config["url"] == "https://hooks.example.com/everwas"
 
 
 async def test_the_client_is_told_a_secret_exists():
@@ -73,7 +73,7 @@ async def test_editing_without_the_secret_preserves_it(client):
         json={
             "name": "renamed",
             "kind": "webhook",
-            "config": {"url": "https://hooks.example.com/openrmm"},
+            "config": {"url": "https://hooks.example.com/everwas"},
             "enabled": True,
         },
     )
@@ -98,7 +98,7 @@ async def test_sending_a_new_secret_replaces_it(client):
         json={
             "name": "ch-webhook",
             "kind": "webhook",
-            "config": {"url": "https://hooks.example.com/openrmm", "secret": "rotated"},
+            "config": {"url": "https://hooks.example.com/everwas", "secret": "rotated"},
             "enabled": True,
         },
     )

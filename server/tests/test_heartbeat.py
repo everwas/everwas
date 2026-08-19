@@ -1,9 +1,9 @@
 import json
 import uuid
 
-from openrmm.alerting.rules import CachedRule, rule_matches_device, value_for_metric
-from openrmm.ingest.heartbeat import parse_heartbeat
-from openrmm.models.alert import Metric, Operator, Severity
+from everwas.alerting.rules import CachedRule, rule_matches_device, value_for_metric
+from everwas.ingest.heartbeat import parse_heartbeat
+from everwas.models.alert import Metric, Operator, Severity
 
 
 def _envelope(agent_id: str, data: dict) -> bytes:

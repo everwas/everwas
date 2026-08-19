@@ -10,13 +10,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import insert
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.ingest.telemetry import apply_telemetry
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.telemetry import telemetry_network
-from openrmm.services.network_telemetry import MAX_GAP_S, interface_rates
-from openrmm.services.partitions import ensure_partitions
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_sessionmaker
+from everwas.ingest.telemetry import apply_telemetry
+from everwas.models.device import Device, OsFamily
+from everwas.models.telemetry import telemetry_network
+from everwas.services.network_telemetry import MAX_GAP_S, interface_rates
+from everwas.services.partitions import ensure_partitions
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

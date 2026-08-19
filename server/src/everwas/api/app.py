@@ -1,0 +1,62 @@
+from contextlib import asynccontextmanager
+
+import structlog
+from fastapi import FastAPI
+
+from everwas import __version__
+from everwas.api.v1 import (
+    admin,
+    agents,
+    alerts,
+    audit,
+    auth,
+    devices,
+    health,
+    packages,
+    patches,
+    scripts,
+    shell,
+    sync,
+)
+from everwas.db.engine import get_engine
+from everwas.natsio import client as nats_client
+
+log = structlog.get_logger()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    get_engine()
+    try:
+        await nats_client.connect()
+    except Exception as exc:  # the API still serves reads without NATS
+        log.warning("api could not connect to nats", error=str(exc))
+    yield
+    await nats_client.close()
+    await get_engine().dispose()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title="Everwas",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+    )
+    app.include_router(health.router, prefix="/api/v1", tags=["health"])
+    app.include_router(packages.router, prefix="/api/v1/packages", tags=["packages"])
+    app.include_router(audit.router, prefix="/api/v1/audit", tags=["audit"])
+    app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+    app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+    app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
+    app.include_router(devices.router, prefix="/api/v1/devices", tags=["devices"])
+    app.include_router(scripts.router, prefix="/api/v1/scripts", tags=["scripts"])
+    app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
+    app.include_router(patches.router, prefix="/api/v1/patches", tags=["patches"])
+    app.include_router(shell.router, prefix="/api/v1/devices", tags=["shell"])
+    app.include_router(sync.router, prefix="/api/v1/sync", tags=["sync"])
+    return app
+
+
+app = create_app()

@@ -11,11 +11,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.bitemporal.query import get_facts
-from openrmm.db.engine import get_sessionmaker, session_scope
-from openrmm.ingest.inventory import apply_inventory
-from openrmm.models.device import Device, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.query import get_facts
+from everwas.db.engine import get_sessionmaker, session_scope
+from everwas.ingest.inventory import apply_inventory
+from everwas.models.device import Device, OsFamily
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

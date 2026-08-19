@@ -14,15 +14,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.alerting.channels.base import ChannelError
-from openrmm.models.alert import (
+from everwas.alerting.channels.base import ChannelError
+from everwas.models.alert import (
     ChannelKind,
     NotificationChannel,
     NotificationOutbox,
     OutboxStatus,
 )
-from openrmm.services import outbox as outbox_mod
-from openrmm.services.outbox import (
+from everwas.services import outbox as outbox_mod
+from everwas.services.outbox import (
     MAX_ATTEMPTS,
     _deliver,
     _deliver_batch,
@@ -220,7 +220,7 @@ async def test_a_stuck_delivery_does_not_discard_the_rows_that_finished(monkeypa
 @pytest.mark.usefixtures("pg_database")
 class TestAgainstTheDatabase:
     async def _seed(self, channel: NotificationChannel, rows: list[tuple[str, datetime]]) -> None:
-        from openrmm.db.engine import get_sessionmaker
+        from everwas.db.engine import get_sessionmaker
 
         async with get_sessionmaker()() as db, db.begin():
             db.add(channel)
@@ -264,7 +264,7 @@ class TestAgainstTheDatabase:
         """End to end: disable, queue, re-enable, and the page still arrives."""
         from sqlalchemy import select, update
 
-        from openrmm.db.engine import get_sessionmaker
+        from everwas.db.engine import get_sessionmaker
 
         sent: list[str] = []
         install(monkeypatch, lambda: Fake(log=sent))
@@ -293,7 +293,7 @@ class TestAgainstTheDatabase:
         assert sent == ["critical"]
 
     async def test_outbox_health_reports_a_queue_that_is_not_draining(self):
-        from openrmm.db.engine import get_sessionmaker
+        from everwas.db.engine import get_sessionmaker
 
         channel = a_channel(name=f"ops-{uuid.uuid4().hex[:6]}")
         stale = datetime.now(UTC) - timedelta(minutes=45)
@@ -331,7 +331,7 @@ class TestAgainstTheDatabase:
         assert health["problems"], "a 45 minute old undelivered page is not healthy"
 
     async def test_outbox_health_is_quiet_on_an_empty_queue(self):
-        from openrmm.db.engine import get_sessionmaker
+        from everwas.db.engine import get_sessionmaker
 
         async with get_sessionmaker()() as db:
             health = await outbox_health(db)

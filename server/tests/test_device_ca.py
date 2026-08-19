@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from openrmm.services.ca import (
+from everwas.services.ca import (
     CERT_LIFETIME,
     CaNotInitialisedError,
     CsrRejectedError,

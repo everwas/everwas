@@ -1,5 +1,5 @@
 [project]
-name = "openrmm"
+name = "everwas"
 version = "2026.8.15"
 description = "Open-source remote monitoring and management — server"
 readme = "README.md"
@@ -34,11 +34,11 @@ dependencies = [
 ]
 
 [project.scripts]
-openrmm = "openrmm.cli:main"
-openrmm-dispatcher = "openrmm.dispatcher.main:main"
-openrmm-mcp = "openrmm.mcp.server:main"
-openrmm-stub-agent = "openrmm.devtools.stub_agent:cli"
-openrmm-fleet-sim = "openrmm.devtools.fleet_sim:cli"
+everwas = "everwas.cli:main"
+everwas-dispatcher = "everwas.dispatcher.main:main"
+everwas-mcp = "everwas.mcp.server:main"
+everwas-stub-agent = "everwas.devtools.stub_agent:cli"
+everwas-fleet-sim = "everwas.devtools.fleet_sim:cli"
 
 [build-system]
 requires = ["uv_build>=0.11.3,<0.12.0"]

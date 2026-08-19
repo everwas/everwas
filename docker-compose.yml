@@ -1,29 +1,29 @@
 services:
-  openrmm-postgres:
+  everwas-postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-openrmm}
-      POSTGRES_USER: ${POSTGRES_USER:-openrmm}
+      POSTGRES_DB: ${POSTGRES_DB:-everwas}
+      POSTGRES_USER: ${POSTGRES_USER:-everwas}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
-      - openrmm-pgdata:/var/lib/postgresql/data
-    networks: [openrmm-internal]
+      - everwas-pgdata:/var/lib/postgresql/data
+    networks: [everwas-internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10
 
-  openrmm-nats:
+  everwas-nats:
     image: nats:2.12-alpine
     command: ["-c", "/etc/nats/nats.conf"]
     environment:
-      OPENRMM_NATS_AUTH_ISSUER: ${OPENRMM_NATS_AUTH_ISSUER:?run `openrmm gen-nats-keys`}
-      OPENRMM_NATS_SERVER_PASSWORD: ${OPENRMM_NATS_SERVER_PASSWORD:?set in .env}
+      EVERWAS_NATS_AUTH_ISSUER: ${EVERWAS_NATS_AUTH_ISSUER:?run `everwas gen-nats-keys`}
+      EVERWAS_NATS_SERVER_PASSWORD: ${EVERWAS_NATS_SERVER_PASSWORD:?set in .env}
     volumes:
       - ./docker/nats/nats.conf:/etc/nats/nats.conf:ro
-      - openrmm-natsdata:/data
-    networks: [openrmm-internal, caddy]
+      - everwas-natsdata:/data
+    networks: [everwas-internal, caddy]
     labels:
       # A hostname of its own, serving at the ROOT.
       #
@@ -33,7 +33,7 @@ services:
       # the path, which is what made this look like a server problem for a
       # while: the Python probe connected happily to the exact URL the Go
       # agent could not use.
-      caddy: ${OPENRMM_NATS_DOMAIN:-nats-${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}}
+      caddy: ${EVERWAS_NATS_DOMAIN:-nats-${EVERWAS_DOMAIN:?set EVERWAS_DOMAIN in .env}}
       caddy.reverse_proxy: "{{upstreams 8080}}"
       # An agent connection stays open for the life of the agent, so every
       # timeout that would tidy up an "idle" websocket has to be off. Caddy's
@@ -52,27 +52,27 @@ services:
       timeout: 3s
       retries: 10
 
-  openrmm-api:
+  everwas-api:
     build:
       context: .
       dockerfile: docker/server.Dockerfile
-      target: ${OPENRMM_MODE:-dev}
+      target: ${EVERWAS_MODE:-dev}
     environment: &server-env
-      OPENRMM_MODE: ${OPENRMM_MODE:-dev}
-      OPENRMM_SECRET_KEY: ${OPENRMM_SECRET_KEY:?set in .env}
-      OPENRMM_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-openrmm}:${POSTGRES_PASSWORD}@openrmm-postgres:5432/${POSTGRES_DB:-openrmm}
-      OPENRMM_NATS_URL: nats://openrmm-nats:4222
-      OPENRMM_NATS_PUBLIC_URL: ${OPENRMM_NATS_PUBLIC_URL:-nats://localhost:24222}
-      OPENRMM_NATS_AUTH_SEED: ${OPENRMM_NATS_AUTH_SEED:-}
-      OPENRMM_NATS_SERVER_PASSWORD: ${OPENRMM_NATS_SERVER_PASSWORD:?set in .env}
-      OPENRMM_SMTP_HOST: ${OPENRMM_SMTP_HOST:-}
-      OPENRMM_SMTP_PORT: ${OPENRMM_SMTP_PORT:-587}
-      OPENRMM_SMTP_USER: ${OPENRMM_SMTP_USER:-}
-      OPENRMM_SMTP_PASSWORD: ${OPENRMM_SMTP_PASSWORD:-}
-      OPENRMM_SMTP_FROM: ${OPENRMM_SMTP_FROM:-openrmm@localhost}
-      OPENRMM_MCP_ENABLED: ${OPENRMM_MCP_ENABLED:-false}
-      OPENRMM_CA_PASSPHRASE: ${OPENRMM_CA_PASSPHRASE:-}
-    networks: [openrmm-internal, caddy]
+      EVERWAS_MODE: ${EVERWAS_MODE:-dev}
+      EVERWAS_SECRET_KEY: ${EVERWAS_SECRET_KEY:?set in .env}
+      EVERWAS_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-everwas}:${POSTGRES_PASSWORD}@everwas-postgres:5432/${POSTGRES_DB:-everwas}
+      EVERWAS_NATS_URL: nats://everwas-nats:4222
+      EVERWAS_NATS_PUBLIC_URL: ${EVERWAS_NATS_PUBLIC_URL:-nats://localhost:24222}
+      EVERWAS_NATS_AUTH_SEED: ${EVERWAS_NATS_AUTH_SEED:-}
+      EVERWAS_NATS_SERVER_PASSWORD: ${EVERWAS_NATS_SERVER_PASSWORD:?set in .env}
+      EVERWAS_SMTP_HOST: ${EVERWAS_SMTP_HOST:-}
+      EVERWAS_SMTP_PORT: ${EVERWAS_SMTP_PORT:-587}
+      EVERWAS_SMTP_USER: ${EVERWAS_SMTP_USER:-}
+      EVERWAS_SMTP_PASSWORD: ${EVERWAS_SMTP_PASSWORD:-}
+      EVERWAS_SMTP_FROM: ${EVERWAS_SMTP_FROM:-everwas@localhost}
+      EVERWAS_MCP_ENABLED: ${EVERWAS_MCP_ENABLED:-false}
+      EVERWAS_CA_PASSPHRASE: ${EVERWAS_CA_PASSPHRASE:-}
+    networks: [everwas-internal, caddy]
     volumes:
       # /data holds the device CA and the agent packages, and neither can live
       # in the container layer. A rebuild wipes that layer: for packages it
@@ -81,12 +81,12 @@ services:
       # fleet stops authenticating and cannot be fixed remotely. Both were in
       # the container layer until this was added, and the packages had already
       # been lost once to an unrelated rebuild.
-      - openrmm-data:/data
+      - everwas-data:/data
     labels:
       # Same origin as the SPA on purpose: the session cookie is HttpOnly and
       # SameSite=Lax, so splitting the API onto its own hostname would mean
       # CORS plus SameSite=None plus a cross-site cookie, to solve nothing.
-      caddy: ${OPENRMM_DOMAIN:?set OPENRMM_DOMAIN in .env}
+      caddy: ${EVERWAS_DOMAIN:?set EVERWAS_DOMAIN in .env}
       caddy.1_handle: /api/*
       caddy.1_handle.reverse_proxy: "{{upstreams 8000}}"
       # /api also carries the remote-shell websocket. It pings every 30s, so
@@ -100,72 +100,72 @@ services:
       caddy.1_handle.reverse_proxy.stream_timeout: "0"
       caddy.1_handle.reverse_proxy.stream_close_delay: 5s
     depends_on:
-      openrmm-postgres:
+      everwas-postgres:
         condition: service_healthy
-      openrmm-nats:
+      everwas-nats:
         condition: service_healthy
 
-  openrmm-dispatcher:
+  everwas-dispatcher:
     build:
       context: .
       dockerfile: docker/server.Dockerfile
-      target: ${OPENRMM_MODE:-dev}
-    command: ["openrmm-dispatcher"]
+      target: ${EVERWAS_MODE:-dev}
+    command: ["everwas-dispatcher"]
     environment: *server-env
-    networks: [openrmm-internal]
+    networks: [everwas-internal]
     depends_on:
-      openrmm-postgres:
+      everwas-postgres:
         condition: service_healthy
-      openrmm-nats:
+      everwas-nats:
         condition: service_healthy
 
-  # Opt-in: set OPENRMM_MCP_ENABLED=true in .env, then
+  # Opt-in: set EVERWAS_MCP_ENABLED=true in .env, then
   #   docker compose --profile mcp up -d
-  openrmm-mcp:
+  everwas-mcp:
     profiles: [mcp]
     build:
       context: .
       dockerfile: docker/server.Dockerfile
-      target: ${OPENRMM_MODE:-dev}
-    command: ["openrmm-mcp"]
+      target: ${EVERWAS_MODE:-dev}
+    command: ["everwas-mcp"]
     environment: *server-env
-    networks: [openrmm-internal, caddy]
+    networks: [everwas-internal, caddy]
     labels:
       # Its own hostname: MCP clients authenticate with a bearer API key, not
       # the browser session, so it shares nothing with the app's origin.
-      caddy: ${OPENRMM_MCP_DOMAIN:-mcp-${OPENRMM_DOMAIN}}
+      caddy: ${EVERWAS_MCP_DOMAIN:-mcp-${EVERWAS_DOMAIN}}
       caddy.reverse_proxy: "{{upstreams 8001}}"
       caddy.reverse_proxy.flush_interval: "-1"
       caddy.reverse_proxy.transport: http
       caddy.reverse_proxy.transport.read_timeout: "0"
       caddy.reverse_proxy.transport.write_timeout: "0"
     depends_on:
-      openrmm-postgres:
+      everwas-postgres:
         condition: service_healthy
-      openrmm-nats:
+      everwas-nats:
         condition: service_healthy
 
-  openrmm-web:
+  everwas-web:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-      target: ${OPENRMM_MODE:-dev}
-    networks: [openrmm-internal]
-    depends_on: [openrmm-api]
+      target: ${EVERWAS_MODE:-dev}
+    networks: [everwas-internal]
+    depends_on: [everwas-api]
 
 volumes:
-  openrmm-pgdata:
-  openrmm-natsdata:
+  everwas-pgdata:
+  everwas-natsdata:
   # Device CA material and agent packages. Deliberately a named volume rather
   # than the container layer, which a rebuild discards.
-  openrmm-data:
+  everwas-data:
 
 networks:
   # Everything talks over this. Postgres and the dispatcher live ONLY here:
   # they have no HTTP surface, and the caddy network is shared with every
   # other stack on the host, so putting a database on it would publish its
   # name into a namespace we do not own.
-  openrmm-internal: {}
+  everwas-internal: {}
 
   # caddy-docker-proxy watches this network and builds its config from the
   # labels above. Created outside this stack.

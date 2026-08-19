@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.ingest.results import apply_job_output, apply_job_result
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.script import (
+from everwas.db.engine import get_sessionmaker
+from everwas.ingest.results import apply_job_output, apply_job_result
+from everwas.models.device import Device, OsFamily
+from everwas.models.script import (
     RunStatus,
     RunTrigger,
     Script,
@@ -23,13 +23,13 @@ from openrmm.models.script import (
     ScriptSchedule,
     ShellKind,
 )
-from openrmm.services.schedules import (
+from everwas.services.schedules import (
     build_document,
     load_schedules,
     schedule_version,
     scheduled_job_id,
 )
-from openrmm.util.ids import uuid7
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -352,7 +352,7 @@ async def test_the_reconciler_survives_a_schedule_it_cannot_evaluate():
     heartbeat from every device against the shared cached list, and the
     dispatcher only logs what it raises, so delivery stopped fleet-wide with
     nothing in the UI."""
-    from openrmm.dispatcher.schedule_sync import ScheduleSyncer
+    from everwas.dispatcher.schedule_sync import ScheduleSyncer
 
     device, script, _good = await _fixture()
     async with get_sessionmaker()() as db, db.begin():

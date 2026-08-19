@@ -17,11 +17,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from openrmm.bitemporal.query import get_facts
-from openrmm.bitemporal.store import StaleObservationError, record_facts
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.device import Device, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.query import get_facts
+from everwas.bitemporal.store import StaleObservationError, record_facts
+from everwas.db.engine import get_sessionmaker
+from everwas.models.device import Device, OsFamily
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

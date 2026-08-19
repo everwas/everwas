@@ -3,7 +3,7 @@ import json
 
 import nkeys
 
-from openrmm.natsio.jwt import decode_jwt_payload, encode_nats_jwt, generate_account_keypair
+from everwas.natsio.jwt import decode_jwt_payload, encode_nats_jwt, generate_account_keypair
 
 
 def test_generated_seed_loads_in_nkeys_and_public_matches():

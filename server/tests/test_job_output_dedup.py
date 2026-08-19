@@ -18,11 +18,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.ingest.results import apply_job_output
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.script import RunStatus, RunTrigger, Script, ScriptRun, ShellKind
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_sessionmaker
+from everwas.ingest.results import apply_job_output
+from everwas.models.device import Device, OsFamily
+from everwas.models.script import RunStatus, RunTrigger, Script, ScriptRun, ShellKind
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

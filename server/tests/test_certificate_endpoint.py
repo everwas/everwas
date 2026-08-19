@@ -15,11 +15,11 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from openrmm.db.engine import session_scope
-from openrmm.models.device import AgentCredential, Device, DeviceStatus, OsFamily
-from openrmm.services.ca import build_csr, init_ca
-from openrmm.services.enrollment import _sha256
-from openrmm.util.ids import uuid7
+from everwas.db.engine import session_scope
+from everwas.models.device import AgentCredential, Device, DeviceStatus, OsFamily
+from everwas.services.ca import build_csr, init_ca
+from everwas.services.enrollment import _sha256
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -28,11 +28,11 @@ SECRET = "agent-secret-for-cert-tests"
 
 @pytest.fixture
 def ca_dir(tmp_path, monkeypatch):
-    from openrmm.config import get_settings
+    from everwas.config import get_settings
 
     get_settings.cache_clear()
-    monkeypatch.setenv("OPENRMM_CA_DIR", str(tmp_path / "ca"))
-    monkeypatch.setenv("OPENRMM_CA_PASSPHRASE", "test-ca-passphrase")
+    monkeypatch.setenv("EVERWAS_CA_DIR", str(tmp_path / "ca"))
+    monkeypatch.setenv("EVERWAS_CA_PASSPHRASE", "test-ca-passphrase")
     init_ca(tmp_path / "ca", passphrase="test-ca-passphrase", org="Test Org")
     yield tmp_path / "ca"
     get_settings.cache_clear()

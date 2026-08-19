@@ -1,10 +1,10 @@
 """Integration fixtures: a scratch database on a real PostgreSQL server.
 
-Uses OPENRMM_TEST_PG (base URL without database) or the dev compose instance.
+Uses EVERWAS_TEST_PG (base URL without database) or the dev compose instance.
 Tests requiring it skip cleanly when no server is reachable, so `pytest` works
 on a laptop with nothing running.
 
-Set OPENRMM_REQUIRE_PG=1 where the database is supposed to exist (CI) and a
+Set EVERWAS_REQUIRE_PG=1 where the database is supposed to exist (CI) and a
 missing one FAILS instead of skipping. Without that switch the whole suite goes
 green while quietly testing almost nothing: for months CI ran 87 pure-function
 tests and skipped 92, including every bitemporal, revocation, schedule and
@@ -19,20 +19,20 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
 TEST_PG = os.environ.get(
-    "OPENRMM_TEST_PG",
-    "postgresql+asyncpg://openrmm:{pw}@localhost:25432",
+    "EVERWAS_TEST_PG",
+    "postgresql+asyncpg://everwas:{pw}@localhost:25432",
 )
 
 
 def _required() -> bool:
-    return os.environ.get("OPENRMM_REQUIRE_PG", "").lower() in {"1", "true", "yes"}
+    return os.environ.get("EVERWAS_REQUIRE_PG", "").lower() in {"1", "true", "yes"}
 
 
 def _unavailable(reason: str) -> None:
     """Skip, or fail if this environment promised a database."""
     if _required():
         pytest.fail(
-            f"OPENRMM_REQUIRE_PG is set but PostgreSQL is unusable: {reason}. "
+            f"EVERWAS_REQUIRE_PG is set but PostgreSQL is unusable: {reason}. "
             "Refusing to skip: silently dropping half the suite is what this flag exists "
             "to prevent."
         )
@@ -68,7 +68,7 @@ async def pg_database():
     if admin_url is None:
         _unavailable("no test PostgreSQL configured")
 
-    dbname = f"openrmm_test_{uuid.uuid4().hex[:12]}"
+    dbname = f"everwas_test_{uuid.uuid4().hex[:12]}"
     admin = create_async_engine(admin_url + "/postgres", isolation_level="AUTOCOMMIT")
     try:
         async with admin.connect() as conn:
@@ -80,10 +80,10 @@ async def pg_database():
         _unavailable(f"test PostgreSQL unreachable ({exc})")
 
     db_url = f"{admin_url}/{dbname}"
-    os.environ["OPENRMM_DATABASE_URL"] = db_url
+    os.environ["EVERWAS_DATABASE_URL"] = db_url
 
     # run migrations against the scratch db (settings cache must not hold the old URL)
-    from openrmm.config import get_settings
+    from everwas.config import get_settings
 
     get_settings.cache_clear()
 
@@ -96,7 +96,7 @@ async def pg_database():
 
     yield db_url
 
-    from openrmm.db import engine as engine_mod
+    from everwas.db import engine as engine_mod
 
     if engine_mod._engine is not None:
         await engine_mod._engine.dispose()
@@ -127,10 +127,10 @@ async def client(pg_database):
     """
     import httpx
 
-    from openrmm.api.app import create_app
-    from openrmm.api.deps import current_user
-    from openrmm.models.org import DEFAULT_ORG_ID
-    from openrmm.models.user import Role, User
+    from everwas.api.app import create_app
+    from everwas.api.deps import current_user
+    from everwas.models.org import DEFAULT_ORG_ID
+    from everwas.models.user import Role, User
 
     app = create_app()
     # org_id matters now that the boundary is enforced. DEFAULT_ORG_ID is what
@@ -166,10 +166,10 @@ async def client_as(pg_database):
 
     import httpx
 
-    from openrmm.api.app import create_app
-    from openrmm.api.deps import current_user
-    from openrmm.models.org import DEFAULT_ORG_ID
-    from openrmm.models.user import User
+    from everwas.api.app import create_app
+    from everwas.api.deps import current_user
+    from everwas.models.org import DEFAULT_ORG_ID
+    from everwas.models.user import User
 
     @contextlib.asynccontextmanager
     async def make(role):

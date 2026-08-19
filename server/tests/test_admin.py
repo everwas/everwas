@@ -14,15 +14,15 @@ import hashlib
 import pytest
 from sqlalchemy import select
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.mcp.context import parse_api_key
-from openrmm.models.api_key import ApiKey
-from openrmm.models.audit import AuditLog
-from openrmm.models.device import Device, OsFamily, Site
-from openrmm.models.org import DEFAULT_ORG_ID
-from openrmm.models.user import Role, User
-from openrmm.security.passwords import hash_password
-from openrmm.services.admin import (
+from everwas.db.engine import get_sessionmaker
+from everwas.mcp.context import parse_api_key
+from everwas.models.api_key import ApiKey
+from everwas.models.audit import AuditLog
+from everwas.models.device import Device, OsFamily, Site
+from everwas.models.org import DEFAULT_ORG_ID
+from everwas.models.user import Role, User
+from everwas.security.passwords import hash_password
+from everwas.services.admin import (
     AdminError,
     create_site,
     create_user,
@@ -31,7 +31,7 @@ from openrmm.services.admin import (
     set_user_active,
     set_user_role,
 )
-from openrmm.util.ids import uuid7
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -147,7 +147,7 @@ async def test_only_the_hash_is_stored():
     # about half the time, so rsplit("_") lands inside the secret and this
     # test failed only on those runs. The real parser partitions on the FIRST
     # underscore after the prefix, which is unambiguous because key_id is hex.
-    assert plaintext.startswith("orpk_")
+    assert plaintext.startswith("ewpk_")
     parsed = parse_api_key(plaintext)
     assert parsed is not None, f"the production parser rejected a key it minted: {plaintext[:16]}…"
     parsed_key_id, secret = parsed
@@ -260,7 +260,7 @@ async def test_every_mutation_is_audited():
 
 async def test_a_secret_containing_an_underscore_still_parses():
     """token_urlsafe emits "_" and "-", so about half of all keys contain one.
-    The format is `orpk_<key_id>_<secret>` and only the FIRST underscore after
+    The format is `ewpk_<key_id>_<secret>` and only the FIRST underscore after
     the prefix is a delimiter, which works because key_id is hex. Splitting on
     the last one instead silently truncates the secret, and every key with an
     underscore fails to authenticate."""

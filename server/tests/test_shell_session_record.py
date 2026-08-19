@@ -25,13 +25,13 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.audit import AuditLog
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.org import DEFAULT_ORG_ID
-from openrmm.models.script import ShellSession
-from openrmm.services.shell_session import close_session_record, open_session_record
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_sessionmaker
+from everwas.models.audit import AuditLog
+from everwas.models.device import Device, OsFamily
+from everwas.models.org import DEFAULT_ORG_ID
+from everwas.models.script import ShellSession
+from everwas.services.shell_session import close_session_record, open_session_record
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

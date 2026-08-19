@@ -10,18 +10,18 @@ import aiosmtplib
 import httpx
 import pytest
 
-from openrmm.alerting.channels.base import HTTP_TIMEOUT, ChannelError
-from openrmm.alerting.channels.email import EmailChannel
-from openrmm.services.outbox import DELIVERY_TIMEOUT_S
+from everwas.alerting.channels.base import HTTP_TIMEOUT, ChannelError
+from everwas.alerting.channels.email import EmailChannel
+from everwas.services.outbox import DELIVERY_TIMEOUT_S
 
 
 @pytest.fixture
 def smtp_settings(monkeypatch):
-    from openrmm.config import get_settings
+    from everwas.config import get_settings
 
-    monkeypatch.setenv("OPENRMM_SMTP_HOST", "mailpit")
-    monkeypatch.setenv("OPENRMM_SMTP_PORT", "1025")
-    monkeypatch.setenv("OPENRMM_SMTP_FROM", "openrmm@example.com")
+    monkeypatch.setenv("EVERWAS_SMTP_HOST", "mailpit")
+    monkeypatch.setenv("EVERWAS_SMTP_PORT", "1025")
+    monkeypatch.setenv("EVERWAS_SMTP_FROM", "everwas@example.com")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -73,7 +73,7 @@ def test_http_timeouts_are_per_phase_and_bounded_overall():
 
 
 def _note():
-    from openrmm.alerting.channels.base import Notification
+    from everwas.alerting.channels.base import Notification
 
     return Notification(
         kind="alert.firing",

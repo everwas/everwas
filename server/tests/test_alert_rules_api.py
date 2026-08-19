@@ -11,12 +11,12 @@ import uuid
 import httpx
 import pytest
 
-from openrmm.api.app import create_app
-from openrmm.api.deps import current_user
-from openrmm.db.deps import db_session
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.alert import ChannelKind, NotificationChannel
-from openrmm.models.user import Role, User
+from everwas.api.app import create_app
+from everwas.api.deps import current_user
+from everwas.db.deps import db_session
+from everwas.db.engine import get_sessionmaker
+from everwas.models.alert import ChannelKind, NotificationChannel
+from everwas.models.user import Role, User
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 

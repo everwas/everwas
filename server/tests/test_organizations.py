@@ -8,10 +8,10 @@ change rather than another migration across every table.
 import pytest
 from sqlalchemy import inspect, select, text
 
-from openrmm.db.engine import get_engine, get_sessionmaker
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.org import DEFAULT_ORG_ID, Organization
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_engine, get_sessionmaker
+from everwas.models.device import Device, OsFamily
+from everwas.models.org import DEFAULT_ORG_ID, Organization
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -110,7 +110,7 @@ async def test_nothing_filters_on_it_yet():
     """Documents the current truth rather than an aspiration.
 
     If this test ever starts failing, tenant filtering has been implemented
-    and the warnings in openrmm.models.org should come out.
+    and the warnings in everwas.models.org should come out.
     """
     async with get_sessionmaker()() as db, db.begin():
         db.add(
@@ -122,5 +122,5 @@ async def test_nothing_filters_on_it_yet():
         everything = (await db.execute(select(Device))).scalars().all()
     assert len({d.hostname for d in everything}) == 2, (
         "the default device query returned fewer rows than exist, which means "
-        "filtering was added; update openrmm.models.org and delete this test"
+        "filtering was added; update everwas.models.org and delete this test"
     )

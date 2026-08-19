@@ -10,11 +10,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from openrmm.bitemporal.query import get_facts
-from openrmm.bitemporal.store import record_facts
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.device import Device, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.bitemporal.query import get_facts
+from everwas.bitemporal.store import record_facts
+from everwas.db.engine import get_sessionmaker
+from everwas.models.device import Device, OsFamily
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -113,7 +113,7 @@ async def test_exclusion_constraint_rejects_overlapping_current_beliefs():
     # rejected by the database itself, not just by store.py discipline.
     from sqlalchemy.dialects.postgresql import Range
 
-    from openrmm.models.facts import FactSoftware
+    from everwas.models.facts import FactSoftware
 
     with pytest.raises(IntegrityError):
         async with sm() as db, db.begin():

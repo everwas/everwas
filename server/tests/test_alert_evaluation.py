@@ -17,11 +17,11 @@ import uuid
 import pytest
 from sqlalchemy import delete, select
 
-from openrmm.alerting import engine as engine_mod
-from openrmm.alerting.engine import AlertEngine
-from openrmm.alerting.rules import numeric, value_for_metric
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.alert import (
+from everwas.alerting import engine as engine_mod
+from everwas.alerting.engine import AlertEngine
+from everwas.alerting.rules import numeric, value_for_metric
+from everwas.db.engine import get_sessionmaker
+from everwas.models.alert import (
     Alert,
     AlertRule,
     AlertState,
@@ -33,8 +33,8 @@ from openrmm.models.alert import (
     RuleChannel,
     Severity,
 )
-from openrmm.models.device import Device, DeviceStatus, OsFamily
-from openrmm.util.ids import uuid7
+from everwas.models.device import Device, DeviceStatus, OsFamily
+from everwas.util.ids import uuid7
 
 # --- value_for_metric: the boundary that keeps junk out of the comparison ---
 

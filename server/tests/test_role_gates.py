@@ -12,12 +12,12 @@ import uuid
 
 import pytest
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.alert import NotificationChannel
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.script import ShellSession
-from openrmm.models.user import Role
-from openrmm.util.ids import uuid7
+from everwas.db.engine import get_sessionmaker
+from everwas.models.alert import NotificationChannel
+from everwas.models.device import Device, OsFamily
+from everwas.models.script import ShellSession
+from everwas.models.user import Role
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -140,7 +140,7 @@ async def test_the_schema_itself_refuses_to_carry_a_credential():
     of them safe. This asserts the other two cannot be reintroduced by someone
     reaching for the obvious constructor.
     """
-    from openrmm.schemas.alert import ChannelOut
+    from everwas.schemas.alert import ChannelOut
 
     leaked = ChannelOut(
         id=uuid.uuid4(),

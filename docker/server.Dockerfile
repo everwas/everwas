@@ -22,11 +22,11 @@ ENV PATH="/app/.venv/bin:$PATH"
 # --- dev: editable install + dev deps, source bind-mounted by compose ---
 FROM base AS dev
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
-CMD ["uvicorn", "openrmm.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "everwas.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 # --- prod: non-editable, no dev deps, non-root ---
 FROM base AS prod
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-editable
-RUN useradd -r -u 10001 openrmm && chown -R openrmm /app
-USER openrmm
-CMD ["uvicorn", "openrmm.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN useradd -r -u 10001 everwas && chown -R everwas /app
+USER everwas
+CMD ["uvicorn", "everwas.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

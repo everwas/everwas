@@ -38,18 +38,18 @@ of them could catch this.
 
 import pytest
 
-from openrmm.db.engine import session_scope
-from openrmm.models.device import Device, OsFamily
-from openrmm.services.enrollment import rotate_agent_secret, verify_agent_secret
-from openrmm.util.ids import uuid7
+from everwas.db.engine import session_scope
+from everwas.models.device import Device, OsFamily
+from everwas.services.enrollment import rotate_agent_secret, verify_agent_secret
+from everwas.util.ids import uuid7
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
 
 async def test_confirming_a_rotation_through_session_scope_does_not_raise():
     """Exercised through session_scope(), the shape the callout actually uses."""
-    from openrmm.models.device import AgentCredential
-    from openrmm.services.enrollment import _sha256
+    from everwas.models.device import AgentCredential
+    from everwas.services.enrollment import _sha256
 
     device_id = uuid7()
     async with session_scope() as db:

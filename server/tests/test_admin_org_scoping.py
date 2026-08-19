@@ -18,9 +18,9 @@ import uuid
 
 import pytest
 
-from openrmm.db.engine import session_scope
-from openrmm.models.org import DEFAULT_ORG_ID, Organization
-from openrmm.models.user import Role, User
+from everwas.db.engine import session_scope
+from everwas.models.org import DEFAULT_ORG_ID, Organization
+from everwas.models.user import Role, User
 
 pytestmark = pytest.mark.usefixtures("pg_database")
 
@@ -35,7 +35,7 @@ async def _org_b() -> uuid.UUID:
 
 
 async def test_a_created_user_belongs_to_the_creating_admins_org():
-    from openrmm.services.admin import create_user
+    from everwas.services.admin import create_user
 
     org_b = await _org_b()
     async with session_scope() as db:
@@ -56,7 +56,7 @@ async def test_a_created_user_belongs_to_the_creating_admins_org():
 
 
 async def test_a_minted_api_key_belongs_to_the_creating_admins_org():
-    from openrmm.services.admin import mint_api_key
+    from everwas.services.admin import mint_api_key
 
     org_b = await _org_b()
     async with session_scope() as db:
@@ -75,7 +75,7 @@ async def test_a_minted_api_key_belongs_to_the_creating_admins_org():
 
 
 async def test_a_created_site_belongs_to_the_creating_admins_org():
-    from openrmm.services.admin import create_site
+    from everwas.services.admin import create_site
 
     org_b = await _org_b()
     async with session_scope() as db:
@@ -89,7 +89,7 @@ async def test_the_default_org_is_not_a_dumping_ground():
     """Explicitly: nothing should silently choose DEFAULT_ORG_ID for a caller
     who has a real organization. The default exists to backfill history, not to
     catch new rows."""
-    from openrmm.services.admin import create_site
+    from everwas.services.admin import create_site
 
     org_b = await _org_b()
     async with session_scope() as db:

@@ -21,8 +21,8 @@ import uuid
 
 import pytest
 
-from openrmm.services import shell_session
-from openrmm.services.shell_session import QUEUE_MAXSIZE, AsciicastRecorder, bridge_shell
+from everwas.services import shell_session
+from everwas.services.shell_session import QUEUE_MAXSIZE, AsciicastRecorder, bridge_shell
 
 
 class FakeNats:

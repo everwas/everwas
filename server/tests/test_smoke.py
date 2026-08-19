@@ -1,10 +1,10 @@
 import httpx
 import pytest
 
-from openrmm import __version__
-from openrmm.api.app import create_app
-from openrmm.api.deps import db_session
-from openrmm.natsio import subjects
+from everwas import __version__
+from everwas.api.app import create_app
+from everwas.api.deps import db_session
+from everwas.natsio import subjects
 
 
 class FakeDb:
@@ -111,7 +111,7 @@ def test_device_tags_support_array_operators():
     no overlap(), so every tag-targeted script run and patch policy raised
     AttributeError at query-build time.
     """
-    from openrmm.models.device import Device
+    from everwas.models.device import Device
 
     assert "&&" in str(Device.tags.overlap(["prod"]))
     assert "@>" in str(Device.tags.contains(["prod"]))
@@ -136,7 +136,7 @@ def test_every_route_requires_auth_except_the_documented_few():
     """
     from routewalk import api_routes
 
-    from openrmm.api.app import create_app
+    from everwas.api.app import create_app
 
     # Public by design: liveness, login, logout, and agent enrollment (which
     # authenticates with a one-time token in its body, not a session).
@@ -205,8 +205,8 @@ def test_agents_can_publish_to_the_reply_subject_the_server_uses():
     Every server-to-agent request therefore has to reply inside the agent's own
     inbox namespace. This asserts the two halves still agree.
     """
-    from openrmm.natsio.agent_request import reply_subject
-    from openrmm.natsio.subjects import agent_permissions
+    from everwas.natsio.agent_request import reply_subject
+    from everwas.natsio.subjects import agent_permissions
 
     agent_id = "01a00b45-0e50-78c8-b572-8b8fbc272ad1"
     subject = reply_subject(agent_id)
@@ -220,8 +220,8 @@ def test_agents_can_publish_to_the_reply_subject_the_server_uses():
 
 def test_the_server_reply_subject_is_not_shared_between_agents():
     """It has to be per-agent, or the fix reintroduces the hole it came from."""
-    from openrmm.natsio.agent_request import reply_subject
-    from openrmm.natsio.subjects import agent_permissions
+    from everwas.natsio.agent_request import reply_subject
+    from everwas.natsio.subjects import agent_permissions
 
     mine = "01a00b45-0e50-78c8-b572-8b8fbc272ad1"
     theirs = "01a00710-f7a8-7a84-8986-2081f6ac56c6"

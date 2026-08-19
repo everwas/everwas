@@ -435,6 +435,67 @@ wheels = [
 ]
 
 [[package]]
+name = "everwas"
+version = "2026.8.15"
+source = { editable = "." }
+dependencies = [
+    { name = "aiosmtplib" },
+    { name = "alembic" },
+    { name = "apscheduler" },
+    { name = "asyncpg" },
+    { name = "croniter" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "fastmcp" },
+    { name = "httpx" },
+    { name = "nats-py" },
+    { name = "nkeys" },
+    { name = "pwdlib", extra = ["argon2"] },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "structlog" },
+    { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosmtplib", specifier = ">=5.1.2" },
+    { name = "alembic", specifier = ">=1.19.1" },
+    { name = "apscheduler", specifier = ">=3.11.3" },
+    { name = "asyncpg", specifier = ">=0.31.0" },
+    { name = "croniter", specifier = ">=6.2.4" },
+    { name = "cryptography", specifier = ">=45.0" },
+    { name = "fastapi", specifier = ">=0.141.1" },
+    { name = "fastmcp", specifier = ">=3.4.7" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "nats-py", specifier = ">=2.15.0" },
+    { name = "nkeys", specifier = ">=0.2.1" },
+    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.1" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.15.0" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
+    { name = "structlog", specifier = ">=26.1.0" },
+    { name = "typer", specifier = ">=0.27.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "ruff", specifier = ">=0.16.3" },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -950,67 +1011,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/02/2e/58d83848dd1a79cb92ed8e63f6ba901ca282c5f09d04af9423ec26c56fd7/openapi_pydantic-0.5.1.tar.gz", hash = "sha256:ff6835af6bde7a459fb93eb93bb92b8749b754fc6e51b2f1590a19dc3005ee0d", size = 60892, upload-time = "2025-01-08T19:29:27.083Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/cf/03675d8bd8ecbf4445504d8071adab19f5f993676795708e36402ab38263/openapi_pydantic-0.5.1-py3-none-any.whl", hash = "sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146", size = 96381, upload-time = "2025-01-08T19:29:25.275Z" },
-]
-
-[[package]]
-name = "openrmm"
-version = "2026.8.15"
-source = { editable = "." }
-dependencies = [
-    { name = "aiosmtplib" },
-    { name = "alembic" },
-    { name = "apscheduler" },
-    { name = "asyncpg" },
-    { name = "croniter" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "fastmcp" },
-    { name = "httpx" },
-    { name = "nats-py" },
-    { name = "nkeys" },
-    { name = "pwdlib", extra = ["argon2"] },
-    { name = "pydantic", extra = ["email"] },
-    { name = "pydantic-settings" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "structlog" },
-    { name = "typer" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosmtplib", specifier = ">=5.1.2" },
-    { name = "alembic", specifier = ">=1.19.1" },
-    { name = "apscheduler", specifier = ">=3.11.3" },
-    { name = "asyncpg", specifier = ">=0.31.0" },
-    { name = "croniter", specifier = ">=6.2.4" },
-    { name = "cryptography", specifier = ">=45.0" },
-    { name = "fastapi", specifier = ">=0.141.1" },
-    { name = "fastmcp", specifier = ">=3.4.7" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "nats-py", specifier = ">=2.15.0" },
-    { name = "nkeys", specifier = ">=0.2.1" },
-    { name = "pwdlib", extras = ["argon2"], specifier = ">=0.3.1" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.15.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.52" },
-    { name = "structlog", specifier = ">=26.1.0" },
-    { name = "typer", specifier = ">=0.27.1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.1.1" },
-    { name = "pytest-asyncio", specifier = ">=1.4.0" },
-    { name = "ruff", specifier = ">=0.16.3" },
 ]
 
 [[package]]

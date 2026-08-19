@@ -16,21 +16,21 @@ import uuid
 import pytest
 from sqlalchemy import select, update
 
-from openrmm.db.engine import get_sessionmaker
-from openrmm.models.audit import AuditLog
-from openrmm.models.device import Device, OsFamily
-from openrmm.models.job_outbox import JobOutbox, JobOutboxStatus
-from openrmm.models.patch import PatchJob, PatchJobStatus
-from openrmm.models.script import RunStatus, Script, ScriptRun, ShellKind
-from openrmm.services import job_outbox as drainer
-from openrmm.services.jobs import (
+from everwas.db.engine import get_sessionmaker
+from everwas.models.audit import AuditLog
+from everwas.models.device import Device, OsFamily
+from everwas.models.job_outbox import JobOutbox, JobOutboxStatus
+from everwas.models.patch import PatchJob, PatchJobStatus
+from everwas.models.script import RunStatus, Script, ScriptRun, ShellKind
+from everwas.services import job_outbox as drainer
+from everwas.services.jobs import (
     AmbiguousTarget,
     TooManyTargets,
     queue_script_run,
     resolve_targets,
 )
-from openrmm.services.patching import queue_patch_install
-from openrmm.util.ids import uuid7
+from everwas.services.patching import queue_patch_install
+from everwas.util.ids import uuid7
 
 FLEET = 5
 

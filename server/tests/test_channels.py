@@ -7,16 +7,16 @@ import json
 import httpx
 import pytest
 
-from openrmm.alerting.channels.base import (
+from everwas.alerting.channels.base import (
     ChannelError,
     Notification,
     build_channel,
 )
-from openrmm.alerting.channels.email import EmailChannel, build_message, subject_for
-from openrmm.alerting.channels.gotify import GotifyChannel
-from openrmm.alerting.channels.ntfy import NtfyChannel
-from openrmm.alerting.channels.webhook import SIGNATURE_HEADER, WebhookChannel
-from openrmm.services.outbox import BACKOFF_S, backoff_for
+from everwas.alerting.channels.email import EmailChannel, build_message, subject_for
+from everwas.alerting.channels.gotify import GotifyChannel
+from everwas.alerting.channels.ntfy import NtfyChannel
+from everwas.alerting.channels.webhook import SIGNATURE_HEADER, WebhookChannel
+from everwas.services.outbox import BACKOFF_S, backoff_for
 
 
 def note(severity: str = "critical") -> Notification:
@@ -61,7 +61,7 @@ async def test_webhook_signs_the_exact_body_bytes():
     assert body["severity"] == "critical"
     assert body["context"]["rule"] == "cpu-high"
     assert body["sent_at"].endswith("+00:00")
-    assert request.headers["user-agent"].startswith("OpenRMM/")
+    assert request.headers["user-agent"].startswith("Everwas/")
 
 
 async def test_webhook_unsigned_without_secret():
@@ -158,13 +158,13 @@ async def test_gotify_requires_token():
 
 @pytest.fixture
 def smtp_settings(monkeypatch):
-    from openrmm.config import get_settings
+    from everwas.config import get_settings
 
-    monkeypatch.setenv("OPENRMM_SMTP_HOST", "mailpit")
-    monkeypatch.setenv("OPENRMM_SMTP_PORT", "1025")
-    monkeypatch.setenv("OPENRMM_SMTP_USER", "")
-    monkeypatch.setenv("OPENRMM_SMTP_PASSWORD", "")
-    monkeypatch.setenv("OPENRMM_SMTP_FROM", "openrmm@example.com")
+    monkeypatch.setenv("EVERWAS_SMTP_HOST", "mailpit")
+    monkeypatch.setenv("EVERWAS_SMTP_PORT", "1025")
+    monkeypatch.setenv("EVERWAS_SMTP_USER", "")
+    monkeypatch.setenv("EVERWAS_SMTP_PASSWORD", "")
+    monkeypatch.setenv("EVERWAS_SMTP_FROM", "everwas@example.com")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -184,9 +184,9 @@ async def test_email_sends_multipart_alternative(monkeypatch, smtp_settings):
     await EmailChannel({"to": ["ops@example.com", "oncall@example.com"]}).send(note())
 
     message = sent["message"]
-    assert message["Subject"] == "[OpenRMM][critical] CPU high on web-01"
+    assert message["Subject"] == "[Everwas][critical] CPU high on web-01"
     assert message["To"] == "ops@example.com, oncall@example.com"
-    assert message["From"] == "openrmm@example.com"
+    assert message["From"] == "everwas@example.com"
 
     types = {part.get_content_type() for part in message.walk() if not part.is_multipart()}
     assert types == {"text/plain", "text/html"}
@@ -234,9 +234,9 @@ def test_email_requires_recipients():
 
 
 def test_email_subject_carries_severity_and_title():
-    assert subject_for(note("warning")) == "[OpenRMM][warning] CPU high on web-01"
-    message = build_message(note(), ["ops@example.com"], "openrmm@example.com")
-    assert message["X-OpenRMM-Severity"] == "critical"
+    assert subject_for(note("warning")) == "[Everwas][warning] CPU high on web-01"
+    message = build_message(note(), ["ops@example.com"], "everwas@example.com")
+    assert message["X-Everwas-Severity"] == "critical"
 
 
 # --- factory and payload ---------------------------------------------------
