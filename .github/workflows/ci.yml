@@ -152,3 +152,14 @@ jobs:
             range="HEAD~1..HEAD"
           fi
           ./scripts/check-docs-mirrors.sh "$range"
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks over full history
+        run: >
+          docker run --rm -v $PWD:/repo:ro zricethezav/gitleaks:latest
+          detect -s /repo -c /repo/.gitleaks.toml --no-banner

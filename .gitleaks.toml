@@ -1,0 +1,15 @@
+# Gitleaks config for CI and pre-publication scans.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secrets"
+regexes = [
+  # OpenReplay project key on the marketing site: a client-side write-only
+  # key that ships in the served JS bundle to every visitor by design.
+  '''RsUB9UfA6uOSSilQf4u9''',
+  # NATS nkey seed used exclusively by revocation tests; generated for the
+  # fixture, never used by any live system (see server/tests/test_revocation.py).
+  '''SAANDLKMXL6CUS3CP52WIXBEDN6YJ545GDKC65U5JZPPV6WH6ESWUA6YAI''',
+]
