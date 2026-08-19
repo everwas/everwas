@@ -1,5 +1,7 @@
 """NATS connection for the API process (interactive request/reply + job publish)."""
 
+import asyncio
+
 import nats
 import structlog
 
@@ -13,12 +15,20 @@ _nc: nats.NATS | None = None
 async def connect() -> nats.NATS:
     global _nc
     settings = get_settings()
-    _nc = await nats.connect(
-        settings.nats_url,
-        name="everwas-api",
-        user=settings.nats_server_user,
-        password=settings.nats_server_password,
-        max_reconnect_attempts=-1,
+    # max_reconnect_attempts=-1 keeps a LIVE connection healing forever, but
+    # nats-py also applies it to the INITIAL connect, which then retries
+    # unboundedly instead of raising. The API's lifespan catches a failed
+    # connect and serves reads without NATS; it can only do that if the
+    # failure actually surfaces, so the first connect gets a hard deadline.
+    _nc = await asyncio.wait_for(
+        nats.connect(
+            settings.nats_url,
+            name="everwas-api",
+            user=settings.nats_server_user,
+            password=settings.nats_server_password,
+            max_reconnect_attempts=-1,
+        ),
+        timeout=15,
     )
     log.info("api connected to nats")
     return _nc
