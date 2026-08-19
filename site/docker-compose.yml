@@ -22,6 +22,9 @@ services:
     labels:
       caddy: ${DOMAIN:-everwas.supported.systems}
       caddy.reverse_proxy: "{{upstreams 80}}"
+      # The pre-rename domain redirects here permanently.
+      caddy_1: openrmm.supported.systems
+      caddy_1.redir: https://${DOMAIN:-everwas.supported.systems}{uri} permanent
 
   everwas-site-dev:
     profiles: ["dev"]
