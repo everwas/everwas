@@ -38,6 +38,7 @@ export default defineConfig({
             'guides/certificates',
             'guides/alerts',
             'guides/device-history',
+            'guides/sync-to-nautobot',
             'guides/enable-mcp',
           ],
         },
