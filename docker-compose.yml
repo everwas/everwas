@@ -20,6 +20,14 @@ services:
     environment:
       EVERWAS_NATS_AUTH_ISSUER: ${EVERWAS_NATS_AUTH_ISSUER:?run `everwas gen-nats-keys`}
       EVERWAS_NATS_SERVER_PASSWORD: ${EVERWAS_NATS_SERVER_PASSWORD:?set in .env}
+      # The default is a bcrypt hash whose preimage was generated and
+      # discarded: the l2trace user exists but nobody can log in as it,
+      # which is the correct state for a deployment with no l2trace. An
+      # EMPTY default would be worse than none — NATS matches an
+      # empty-string password, quietly opening the posture feed to anyone.
+      # Set a real password (plaintext or bcrypt) in .env to enable the
+      # consumer. $$ is compose escaping for literal $.
+      EVERWAS_NATS_L2TRACE_PASSWORD: ${EVERWAS_NATS_L2TRACE_PASSWORD:-$$2a$$11$$QvqBTiGgKiAsyM00bPfRUOOyCOOO.voqH1uqgE/i9fky4fziUbJ5m}
     volumes:
       - ./docker/nats/nats.conf:/etc/nats/nats.conf:ro
       - everwas-natsdata:/data
@@ -79,7 +87,10 @@ services:
       # line setting it in .env changes nothing and issues 90-day certificates
       # while the operator believes they asked for 30. Same silent shape as the
       # passphrase: the code is right, the value never arrives.
-      EVERWAS_CA_CERT_LIFETIME_DAYS: ${EVERWAS_CA_CERT_LIFETIME_DAYS:-}
+      # :-90 (matching the Settings default), not :- — an EMPTY string here
+      # reaches pydantic's int field and crash-loops the container at
+      # startup, and .env.example ships the variable empty.
+      EVERWAS_CA_CERT_LIFETIME_DAYS: ${EVERWAS_CA_CERT_LIFETIME_DAYS:-90}
     networks: [everwas-internal, caddy]
     volumes:
       # /data holds the device CA and the agent packages, and neither can live
