@@ -64,6 +64,9 @@ jobs:
 
   agent:
     strategy:
+      # Each platform reports honestly; a Windows failure must not leave
+      # macOS unproven by cancellation.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
