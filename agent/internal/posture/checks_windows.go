@@ -12,6 +12,7 @@ func Checks() []Check {
 		winBitLockerCheck{},
 		winFirewallCheck{},
 		winAntivirusCheck{},
+		identitySourceCheck{},
 	}
 }
 

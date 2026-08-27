@@ -45,6 +45,10 @@ const (
 	CategoryEncryption Category = "encryption"
 	CategoryMalware    Category = "malware"
 	CategoryFirewall   Category = "firewall"
+	// CategoryNetwork arrives with the 802.1X identity-source check on Windows.
+	// A category with no check in it looks covered while gating nothing, so
+	// they ship together.
+	CategoryNetwork Category = "network"
 )
 
 // NotAssessedReason distinguishes the two ways a check produces no verdict.
