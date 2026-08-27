@@ -34,6 +34,21 @@ type WindowsProfile struct {
 	// ServerNames optionally constrains the RADIUS server's subject. Empty
 	// means any name that chains to a trusted root is accepted.
 	ServerNames string
+
+	// ClientIssuerThumbprints pins WHICH certificate this machine presents, by
+	// the SHA-1 thumbprint of the CA that issued it. Ours.
+	//
+	// Distinct from ServerCAThumbprints above, which is about the far end. This
+	// one decides what we send; that one decides who we accept.
+	//
+	// Populate it. The alternative is SimpleCertSelection, which hands the
+	// choice to Windows, and that is only safe while this machine has exactly
+	// one client-auth certificate. A domain-joined machine with AD CS
+	// autoenrollment has a second one, issued by the enterprise CA, and Windows
+	// then picks by its own heuristics with no say from us. Presenting the wrong
+	// one to a RADIUS server that trusts only our CA surfaces as an
+	// authentication rejection with nothing pointing at the cause.
+	ClientIssuerThumbprints []string
 }
 
 // eapTLSMethodType is EAP method 13. Named because a bare 13 appears four
@@ -93,11 +108,14 @@ func RenderWindows(p WindowsProfile) (string, error) {
 	b.WriteString("\t\t\t\t\t\t\t\t<EapType xmlns=\"http://www.microsoft.com/provisioning/EapTlsConnectionPropertiesV1\">\n")
 	b.WriteString("\t\t\t\t\t\t\t\t\t<CredentialsSource>\n")
 	b.WriteString("\t\t\t\t\t\t\t\t\t\t<CertificateStore>\n")
-	// SimpleCertSelection lets Windows pick the machine certificate whose EKU
-	// and issuer fit. Ours is the only client-auth certificate the agent
-	// installs, and it is marked clientAuth-critical with no serverAuth, which
-	// is what makes an automatic choice safe rather than a guess.
-	b.WriteString("\t\t\t\t\t\t\t\t\t\t\t<SimpleCertSelection>true</SimpleCertSelection>\n")
+	// SimpleCertSelection hands the choice of certificate to Windows, and it is
+	// only safe while this machine holds exactly one client-auth certificate.
+	// That was true when this profile was first written and stops being true
+	// the moment the machine is domain-joined with AD CS autoenrollment, which
+	// puts a second one in the same store. So it is false whenever we can name
+	// our own issuer, and the filter below does the choosing instead.
+	pinned := len(p.ClientIssuerThumbprints) > 0
+	fmt.Fprintf(&b, "\t\t\t\t\t\t\t\t\t\t\t<SimpleCertSelection>%t</SimpleCertSelection>\n", !pinned)
 	b.WriteString("\t\t\t\t\t\t\t\t\t\t</CertificateStore>\n")
 	b.WriteString("\t\t\t\t\t\t\t\t\t</CredentialsSource>\n")
 
@@ -117,6 +135,27 @@ func RenderWindows(p WindowsProfile) (string, error) {
 	b.WriteString("\t\t\t\t\t\t\t\t\t</ServerValidation>\n")
 
 	b.WriteString("\t\t\t\t\t\t\t\t\t<DifferentUsername>false</DifferentUsername>\n")
+
+	if pinned {
+		// Client certificate filtering. The nesting is not obvious and is not
+		// ours to choose: TLSExtensions comes from the V2 schema and
+		// FilteringInfo from V3, both declared inline here because the
+		// surrounding EapType element is V1. Getting the namespaces wrong
+		// produces a profile netsh rejects without naming the element.
+		b.WriteString("\t\t\t\t\t\t\t\t\t<TLSExtensions xmlns=\"http://www.microsoft.com/provisioning/EapTlsConnectionPropertiesV2\">\n")
+		b.WriteString("\t\t\t\t\t\t\t\t\t\t<FilteringInfo xmlns=\"http://www.microsoft.com/provisioning/EapTlsConnectionPropertiesV3\">\n")
+		b.WriteString("\t\t\t\t\t\t\t\t\t\t\t<CAHashList Enabled=\"true\">\n")
+		for _, tp := range p.ClientIssuerThumbprints {
+			clean := normaliseThumbprint(tp)
+			if clean == "" {
+				return "", fmt.Errorf("%w: client issuer %q is not a SHA-1 thumbprint", ErrInvalidProfile, tp)
+			}
+			fmt.Fprintf(&b, "\t\t\t\t\t\t\t\t\t\t\t\t<IssuerHash>%s</IssuerHash>\n", clean)
+		}
+		b.WriteString("\t\t\t\t\t\t\t\t\t\t\t</CAHashList>\n")
+		b.WriteString("\t\t\t\t\t\t\t\t\t\t</FilteringInfo>\n")
+		b.WriteString("\t\t\t\t\t\t\t\t\t</TLSExtensions>\n")
+	}
 	b.WriteString("\t\t\t\t\t\t\t\t</EapType>\n")
 	b.WriteString("\t\t\t\t\t\t\t</Eap>\n")
 	b.WriteString("\t\t\t\t\t\t</Config>\n")

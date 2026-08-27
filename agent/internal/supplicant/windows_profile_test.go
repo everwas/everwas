@@ -151,3 +151,73 @@ func TestItDoesNotEnforce8021X(t *testing.T) {
 		t.Error("802.1X is not enabled at all")
 	}
 }
+
+func TestPinningTheIssuerTurnsOffWindowsOwnChoice(t *testing.T) {
+	// SimpleCertSelection is only safe while the machine holds exactly one
+	// client-auth certificate. A domain-joined machine with AD CS
+	// autoenrollment has a second one in the same store, and Windows then picks
+	// by its own heuristics with no say from us. Presenting the AD certificate
+	// to a RADIUS server that trusts only our CA fails as an authentication
+	// rejection with nothing pointing at the cause.
+	p := winProfile()
+	p.ClientIssuerThumbprints = []string{"A1 B2 C3 D4 E5 F6 07 18 29 3A 4B 5C 6D 7E 8F 90 A1 B2 C3 D4"}
+	out, err := RenderWindows(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "<SimpleCertSelection>false</SimpleCertSelection>") {
+		t.Error("issuer is pinned but Windows was still left to choose")
+	}
+	if !strings.Contains(out, `<CAHashList Enabled="true">`) {
+		t.Error("no client certificate filter was emitted")
+	}
+	if !strings.Contains(out, "<IssuerHash>a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4</IssuerHash>") {
+		t.Errorf("issuer thumbprint missing or not normalised:\n%s", out)
+	}
+}
+
+func TestWithNoIssuerToPinItFallsBackAndSaysSo(t *testing.T) {
+	// Not a silent fallback: the profile still works, and the only reason to be
+	// here is that we could not determine our own issuer, which should not
+	// happen because the agent holds the chain.
+	out, err := RenderWindows(winProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "<SimpleCertSelection>true</SimpleCertSelection>") {
+		t.Error("without a pinned issuer, Windows has to be allowed to choose")
+	}
+	if strings.Contains(out, "CAHashList") {
+		t.Error("emitted an empty certificate filter, which would match nothing")
+	}
+}
+
+func TestABadClientIssuerThumbprintIsRefused(t *testing.T) {
+	p := winProfile()
+	p.ClientIssuerThumbprints = []string{"nonsense"}
+	if _, err := RenderWindows(p); !errors.Is(err, ErrInvalidProfile) {
+		t.Errorf("err = %v, want ErrInvalidProfile", err)
+	}
+}
+
+func TestTheTwoThumbprintListsAreNotConfusedForEachOther(t *testing.T) {
+	// One decides what we SEND, the other decides who we ACCEPT. Swapping them
+	// produces a profile that presents nothing usable and trusts the wrong CA,
+	// so they must land in different elements.
+	p := winProfile()
+	p.ClientIssuerThumbprints = []string{"a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"}
+	p.ServerCAThumbprints = []string{"ffeeddccbbaa99887766554433221100ffeeddcc"}
+	out, err := RenderWindows(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "<IssuerHash>a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4</IssuerHash>") {
+		t.Error("the client issuer did not reach IssuerHash")
+	}
+	if !strings.Contains(out, "<TrustedRootCA>ffeeddccbbaa99887766554433221100ffeeddcc</TrustedRootCA>") {
+		t.Error("the server CA did not reach TrustedRootCA")
+	}
+	if strings.Contains(out, "<TrustedRootCA>a1b2c3d4") || strings.Contains(out, "<IssuerHash>ffeeddcc") {
+		t.Error("the two thumbprint lists were crossed")
+	}
+}
