@@ -97,8 +97,8 @@ source of truth. Solid lines exist today; dashed lines are designed
 (ADR-0003/0004) but not yet wired.
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 90, "curve": "basis", "padding": 14}, "themeVariables": {"fontSize": "16px"}}}%%
-flowchart LR
+%%{init: {"flowchart": {"nodeSpacing": 70, "rankSpacing": 75, "curve": "basis", "padding": 14}, "themeVariables": {"fontSize": "16px"}}}%%
+flowchart TB
   classDef amber fill:#241a0c,stroke:#ffb454,stroke-width:2.5px,color:#ffcf8a,font-weight:bold
   classDef cyan fill:#0e2129,stroke:#5fc9e8,stroke-width:2.5px,color:#9addf2,font-weight:bold
   classDef truth fill:#1d2230,stroke:#e9e7e1,stroke-width:2.5px,color:#e9e7e1,font-weight:bold
