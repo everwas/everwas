@@ -10,6 +10,10 @@ services:
     ports:
       - "127.0.0.1:24222:4222"
       - "127.0.0.1:28222:8222"
+    # everwas-dev: the cross-stack dev bridge, so the l2trace lab consumer
+    # reaches the bus by container name (full set restated — overlay lists
+    # replace, not merge).
+    networks: [everwas-internal, caddy, everwas-dev]
 
   everwas-api:
     volumes:
