@@ -21,6 +21,7 @@ from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
 from everwas.alerting.engine import AlertEngine
 from everwas.bitemporal.store import StaleObservationError, WholesaleRetirementError
 from everwas.db.engine import session_scope
+from everwas.egress.posture import publish_posture
 from everwas.ingest.events import parse_agent_event, record_agent_event
 from everwas.ingest.inventory import apply_inventory, parse_inventory
 from everwas.ingest.results import (
@@ -209,6 +210,13 @@ async def _handle_inventory(subject: str, data: bytes) -> None:
         # believe it has some. Never retryable: the payload is fixed.
         log.error("refused inventory snapshot", subject=subject, kind=kind, reason=str(exc))
         raise PermanentIngestError(str(exc)) from exc
+
+    if kind == "posture":
+        # After the facts committed, never before: "one envelope per device
+        # per collection" means per collection we BELIEVE, and a collection
+        # ingest refused above must not reach the verifier either. This call
+        # never raises; egress failure is its problem, not ingest's.
+        await publish_posture(device_id, observed_at, payload)
 
 
 async def _handle_job_output(subject: str, data: bytes) -> None:
