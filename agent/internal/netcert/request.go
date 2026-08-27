@@ -101,6 +101,17 @@ func Ensure(
 	dir, serverURL, agentID, agentSecret string,
 	now time.Time,
 ) (*Material, error) {
+	return ensure(ctx, newDeviceKey, dir, serverURL, agentID, agentSecret, now)
+}
+
+// ensure is Ensure with the key source injected, so the orderings below can be
+// tested against a stand-in provider on a machine that has no CNG.
+func ensure(
+	ctx context.Context,
+	mk keyMaker,
+	dir, serverURL, agentID, agentSecret string,
+	now time.Time,
+) (*Material, error) {
 	existing, err := Load(dir)
 	if err != nil && !errors.Is(err, ErrNoCertificate) {
 		return nil, err
@@ -109,35 +120,59 @@ func Ensure(
 		return existing, nil
 	}
 
-	// The new key is held in MEMORY until the certificate for it exists.
+	// Nothing the device is currently using is touched until save, at the
+	// bottom.
 	//
-	// Writing it first is the obvious shape and it destroys a working device on
-	// a failed renewal: the key on disk no longer matches the certificate on
-	// disk, so the machine drops off the network at its next reauthentication,
-	// having been perfectly healthy until it tried to renew. Renewal must never
-	// be able to leave the device worse than not renewing at all.
-	key, keyPEM, err := newKeyPair()
+	// On Unix the new key is held in MEMORY until the certificate for it
+	// exists. Writing it first is the obvious shape and it destroys a working
+	// device on a failed renewal: the key on disk no longer matches the
+	// certificate on disk, so the machine drops off the network at its next
+	// reauthentication, having been perfectly healthy until it tried to renew.
+	// Renewal must never be able to leave the device worse than not renewing at
+	// all.
+	//
+	// On Windows the key cannot be held in memory, because it is created inside
+	// a provider that will not hand it back. It is persisted under a name
+	// derived from the certificate it is REPLACING, so it cannot overwrite the
+	// key in use, and discard removes it on every path that does not end in an
+	// issued certificate.
+	var predecessor string
+	if existing != nil {
+		predecessor = existing.Serial
+	}
+	key, err := mk(dir, agentID, predecessor)
 	if err != nil {
 		return nil, err
 	}
-	csr, err := buildCSRFor(key)
+	csr, err := buildCSRFor(key.signer)
 	if err != nil {
+		_ = key.discard()
 		return nil, err
 	}
 	certPEM, chainPEM, err := Request(ctx, serverURL, agentID, agentSecret, csr)
 	if err != nil {
-		// Nothing on disk was touched. The device still holds whatever it had,
-		// which for a renewal is a certificate with weeks left on it.
+		// The certificate and chain on disk were not touched, and the key that
+		// matches them is still where it was. The device still holds whatever
+		// it had, which for a renewal is a certificate with weeks left on it.
 		//
 		// That material is returned ALONGSIDE the error rather than discarded,
 		// because how urgent this failure is depends entirely on what is still
 		// on disk: the same error means "retry tomorrow" for a certificate
 		// with three weeks left and "tell the user now" for one expiring
 		// tonight. Returning only the error throws away the difference.
+		//
+		// discard is what keeps a week of failures from filling the machine's
+		// key store, and its own failure is deliberately not reported: the
+		// renewal already failed for a reason the caller needs to see, and a
+		// second error about a leftover container would bury it.
+		_ = key.discard()
 		return existing, err
 	}
-	m, err := saveAll(dir, keyPEM, certPEM, chainPEM)
+	m, err := key.save(certPEM, chainPEM)
 	if err != nil {
+		// The certificate exists at the CA but this device could not install
+		// it, so the key it belongs to is of no use to anyone.
+		_ = key.discard()
 		return nil, err
 	}
 	m.Issued = true

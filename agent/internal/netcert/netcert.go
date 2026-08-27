@@ -12,9 +12,18 @@
 // wire. A key that travelled is a key that sat in a log, a proxy buffer and
 // somebody's database, and unlike a password it cannot be rotated quietly: it
 // is the machine's identity on the network until the certificate expires.
+//
+// Where the key lives differs by platform, and on Windows it differs for two
+// reasons rather than one. It is a CNG key storage provider container, so the
+// key is never bytes this process can read, and it is in the machine
+// certificate store, because the native Windows supplicant takes its client
+// credential from there and cannot be pointed at a file. Unix writes a PEM and
+// the supplicant is given its path. See key.go for the seam and key_windows.go
+// for what Windows does with it.
 package netcert
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -112,12 +121,15 @@ type Material struct {
 // handshake is cheaper on the switch, and the key is small enough to sit in a
 // TPM without special handling.
 //
-// SOFTWARE key for now. A TPM-bound, non-exportable key is the correct answer
-// and is platform-specific work (CNG with the Platform Crypto Provider on
-// Windows, tpm2-pkcs11 on Linux, Secure Enclave on macOS). Until then the file
-// permissions below are the only thing protecting it, which means a stolen disk
-// yields a usable network identity for the life of the certificate. That is the
-// reason the lifetime is ninety days and not a year.
+// This is the UNIX path. On Windows the key is created inside a CNG key storage
+// provider instead and no file is written at all: see key_windows.go, and note
+// that GenerateKey itself is no longer on the Windows renewal path.
+//
+// On Unix the file permissions below are the only thing protecting it, which
+// means a stolen disk yields a usable network identity for the life of the
+// certificate. That is the reason the lifetime is ninety days and not a year.
+// The non-exportable answer here is tpm2-pkcs11 on Linux and the Secure Enclave
+// on macOS, and neither is done.
 func GenerateKey(dir string) (string, error) {
 	// secure, not os.MkdirAll: on Windows the 0700 is ignored and the
 	// directory inherits C:\ProgramData's default, which grants every local
@@ -150,7 +162,12 @@ func newKeyPair() (*ecdsa.PrivateKey, []byte, error) {
 	return key, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), nil
 }
 
-func buildCSRFor(key *ecdsa.PrivateKey) ([]byte, error) {
+// buildCSRFor takes a crypto.Signer rather than a private key, and that seam is
+// what lets the key live somewhere this package cannot read.
+// x509.CreateCertificateRequest never wanted the private half: it wants a public
+// key and something that will sign one digest. A key inside a CNG provider, or
+// later inside a TPM, satisfies that without any of the code below changing.
+func buildCSRFor(key crypto.Signer) ([]byte, error) {
 	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
 		Subject: pkix.Name{CommonName: "everwas-device"},
 	}, key)

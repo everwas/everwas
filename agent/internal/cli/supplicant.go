@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/everwas/everwas/agent/internal/config"
 	"github.com/everwas/everwas/agent/internal/netcert"
@@ -72,6 +73,33 @@ func CmdSupplicantProfile(args []string) int {
 
 	fmt.Printf("wrote %s\n", path)
 	fmt.Println("Nothing is using it yet. To test it against a switch:")
-	fmt.Printf("  wpa_supplicant -c %s -i <interface> -D wired\n", path)
+	for _, line := range applySteps(runtime.GOOS, path) {
+		fmt.Println("  " + line)
+	}
 	return 0
+}
+
+// applySteps is what an operator types next, which is not the same sequence on
+// the two platforms and is not a difference worth making them discover.
+//
+// Verified on Windows 11: dot3svc, the Wired AutoConfig service, ships Stopped
+// and set to Manual, and netsh refuses to add a LAN profile at all until it is
+// running. An operator following the Linux instructions gets an error from
+// netsh about the service, several steps away from the one thing they were
+// told to do.
+func applySteps(goos, path string) []string {
+	if goos != "windows" {
+		return []string{
+			fmt.Sprintf("wpa_supplicant -c %s -i <interface> -D wired", path),
+		}
+	}
+	return []string{
+		"Start-Service dot3svc",
+		fmt.Sprintf(`netsh lan add profile filename="%s" interface="Ethernet"`, path),
+		"",
+		"The certificate itself is already in LocalMachine\\My, put there by the",
+		"agent when it was issued. Get-ChildItem Cert:\\LocalMachine\\My should",
+		"show it with HasPrivateKey True; if it does not, the supplicant has no",
+		"credential to present and the profile will not help.",
+	}
 }
