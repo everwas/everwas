@@ -1,0 +1,105 @@
+---
+import { Icon } from 'astro-icon/components';
+import './Constellation.css';
+
+const properties = [
+  {
+    icon: 'lucide:waypoints',
+    title: 'Nautobot is where the systems meet',
+    body: 'Everwas and l2trace never talk to each other directly. One reports what is true on machines, the other observes what is true between them, and Nautobot reconciles both against intent.',
+  },
+  {
+    icon: 'lucide:history',
+    title: 'Bitemporality is the family trait',
+    body: 'Everwas facts, l2trace observations, and the belief log they sync into all carry both time axes, so "what did we believe last Tuesday" survives every hop.',
+  },
+  {
+    icon: 'lucide:file-check',
+    title: 'Discovery never overwrites intent',
+    body: 'Findings land as review-gated proposals. A human applies them; the Everwas sync writes only into its own vendor-neutral models. Nothing observed silently becomes something intended.',
+  },
+];
+---
+
+<section id="constellation" class="section con">
+  <div class="container">
+    <p class="section-kicker">The bigger picture</p>
+    <h2 class="section-title">One system in a constellation</h2>
+    <p class="section-lede">
+      Everwas is not trying to be your source of truth. It is one member of a
+      family of systems that report into Nautobot: Everwas covers the machines,
+      a sibling covers the wire, and the source of truth reconciles both
+      against what you intended.
+    </p>
+
+    <div
+      class="con-diagram"
+      role="img"
+      aria-label="Constellation: Everwas reports what is true on the machines and l2trace observes what is true on the wire. Both sync into Nautobot, the source of truth, via one-way and review-gated SSoT apps. A planned link will carry EAP-TLS certificates and posture between Everwas and l2trace."
+    >
+      <div class="con-top">
+        <div class="con-node con-node-amber">
+          <span class="con-node-name">Everwas</span>
+          <span class="con-node-claim">what is true <em>on</em> the machines</span>
+          <span class="con-node-scope">inventory · patches · posture · certificates</span>
+        </div>
+
+        <div class="con-planned" aria-hidden="true">
+          <span class="con-planned-line"></span>
+          <span class="con-planned-chip">planned · EAP&#8209;TLS + posture</span>
+          <span class="con-planned-line"></span>
+        </div>
+
+        <div class="con-node con-node-cyan">
+          <span class="con-node-name">l2trace</span>
+          <span class="con-node-claim">what is true <em>on the wire</em></span>
+          <span class="con-node-scope">MAC history · L2 paths · RADIUS</span>
+        </div>
+      </div>
+
+      <div class="con-converge" aria-hidden="true">
+        <svg
+          class="con-lines"
+          viewBox="0 0 100 110"
+          preserveAspectRatio="none"
+          fill="none"
+        >
+          <path
+            class="con-line con-line-amber"
+            d="M 22 0 C 22 60, 50 55, 50 110"
+            vector-effect="non-scaling-stroke"
+          />
+          <path
+            class="con-line con-line-cyan"
+            d="M 78 0 C 78 60, 50 55, 50 110"
+            vector-effect="non-scaling-stroke"
+          />
+        </svg>
+        <span class="con-edge con-edge-amber">
+          sync, one&#8209;way · <code>nautobot-ssot-everwas</code>
+        </span>
+        <span class="con-edge con-edge-cyan">
+          findings, review&#8209;gated · <code>nautobot-ssot-l2trace</code>
+        </span>
+      </div>
+
+      <div class="con-node con-node-truth">
+        <span class="con-node-name">Nautobot</span>
+        <span class="con-node-claim">the source of truth</span>
+        <span class="con-node-scope">DCIM · IPAM · intent · belief log</span>
+      </div>
+    </div>
+
+    <div class="con-points">
+      {properties.map((p) => (
+        <div class="con-point">
+          <Icon name={p.icon} size={19} />
+          <div>
+            <h3>{p.title}</h3>
+            <p>{p.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
