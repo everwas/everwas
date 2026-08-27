@@ -1,0 +1,32 @@
+---
+// A framed product screenshot sourced from the `screenshots` content
+// collection. The entry carries the image AND the recipe that produced it
+// (see src/content/screenshots/*.md), so every shot on the site is
+// regenerable by following its own documentation.
+import { getEntry } from 'astro:content';
+import { Image } from 'astro:assets';
+import { Icon } from 'astro-icon/components';
+import './ProductShot.css';
+
+interface Props {
+  id: string;
+  icon?: string;
+}
+
+const { id, icon = 'lucide:app-window' } = Astro.props;
+const entry = await getEntry('screenshots', id);
+if (!entry) {
+  throw new Error(`ProductShot: no screenshots entry named "${id}"`);
+}
+const { image, alt, frameLabel, caption } = entry.data;
+const captionId = `shot-${id}-caption`;
+---
+
+<figure class="pshot card" aria-describedby={captionId}>
+  <div class="pshot-bar">
+    <Icon name={icon} size={15} />
+    <span>{frameLabel}</span>
+  </div>
+  <Image src={image} alt={alt} widths={[800, 1200, image.width]} sizes="(max-width: 900px) 100vw, 1100px" />
+  <figcaption id={captionId} class="pshot-caption">{caption}</figcaption>
+</figure>

@@ -1,5 +1,6 @@
 ---
 import { Icon } from 'astro-icon/components';
+import ProductShot from './ProductShot.astro';
 import './NautobotSync.css';
 
 const points = [
@@ -32,24 +33,7 @@ const points = [
       sync API any other system of record would.
     </p>
 
-    <figure class="nbs-frame card" aria-describedby="nbs-caption">
-      <div class="nbs-frame-bar">
-        <Icon name="lucide:database" size={15} />
-        <span>nautobot · rmm posture checks</span>
-      </div>
-      <img
-        src="/nautobot-posture-checks.png"
-        alt="Nautobot table of RMM posture checks synced from Everwas. Each row pairs an endpoint with one check and its verdict: Pass, Fail, Not applicable, or Not assessed, plus a detail column explaining why."
-        width="1596"
-        height="680"
-        loading="lazy"
-      />
-      <figcaption id="nbs-caption" class="nbs-caption">
-        Verdicts keep their semantics in transit: only an explicit fail is ever
-        a failure. A check that ran and found nothing to assess says exactly
-        that, instead of quietly counting against the machine.
-      </figcaption>
-    </figure>
+    <ProductShot id="nautobot-posture-checks" icon="lucide:database" />
 
     <div class="nbs-points">
       {points.map((p) => (
