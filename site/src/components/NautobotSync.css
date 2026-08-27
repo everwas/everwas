@@ -8,23 +8,6 @@
 
 /* ---- framed screenshot ---- */
 
-.nbs-frame {
-  margin: 3rem 0 0;
-  overflow: hidden;
-}
-
-.nbs-frame-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  border-bottom: 1px solid var(--hairline);
-  background: var(--bg-2);
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--text-faint);
-}
-
 .nbs-frame-bar svg {
   color: var(--cyan);
 }
@@ -34,14 +17,6 @@
   width: 100%;
   height: auto;
   border-bottom: 1px solid var(--hairline);
-}
-
-.nbs-caption {
-  padding: 0.9rem 1.2rem 1rem;
-  font-size: 0.88rem;
-  color: var(--text-dim);
-  line-height: 1.6;
-  max-width: 46rem;
 }
 
 /* ---- point cards ---- */

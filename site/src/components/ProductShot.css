@@ -1,0 +1,34 @@
+.pshot {
+  margin: 3rem 0 0;
+  overflow: hidden;
+}
+
+.pshot-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-faint);
+}
+
+.pshot-bar svg {
+  color: var(--cyan);
+}
+
+.pshot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pshot-caption {
+  padding: 1rem 1.2rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
