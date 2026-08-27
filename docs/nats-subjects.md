@@ -171,6 +171,48 @@ The `sched.sync` reply carries `rejected: [{entry_id, reason}]` for entries the
 agent will not schedule (a cron it cannot parse, an unknown timezone). The
 server must not go on believing those will fire.
 
+## Server → verifier (posture egress)
+
+Opt-in, off by default. When `EVERWAS_POSTURE_EGRESS_SUBJECT` is set, the
+dispatcher pushes **one envelope per device per posture collection** to that
+subject (core NATS, on the server's existing connection) immediately after the
+collection's facts commit. l2trace's ingress consumes `l2trace.posture`; the
+subject stays configuration until the transport details (endpoint, auth) are
+confirmed on the integration thread. Empty setting = no publisher = the safe
+state, since a verifier reads absence as not-assessed and not-assessed never
+gates.
+
+```json
+{
+  "device_id": "01a00b45-0e50-78c8-b572-8b8fbc272ad1",
+  "hostname": "deb01",
+  "agent_version": "2026.08.20",
+  "macs": ["52:54:00:12:34:56"],
+  "collected_at": "2026-08-27T12:00:00Z",
+  "ingested_at": "2026-08-27T12:00:02Z",
+  "checks": [
+    {"check": "disk-encryption", "category": "encryption", "status": "fail",
+     "detail": "the root filesystem is on unencrypted storage", "took_ms": 1}
+  ]
+}
+```
+
+- `checks` is the agent's serialised posture verbatim — three statuses
+  (`pass` / `fail` / `not_assessed`) with `not_assessed_reason`
+  distinguishing `not_applicable` from `undetermined`, plus the forensic
+  extras (`detail`, `evidence`, `took_ms`). The server passes it through
+  untouched; the agent's serialisation is the only place the wire form is
+  shaped.
+- `macs` is the device's current MAC set from its network facts, loopbacks
+  excluded, deduplicated, sorted. It is the only join material for devices
+  that authenticate by MAB.
+- `ingested_at` is THIS server's clock and is what the verifier's freshness
+  window (2 h against our 30 min collection cadence) gates on;
+  `collected_at` is the endpoint's clock, forensic only.
+- Delivery is fire-and-forget: a publish failure is logged and ingest
+  proceeds; the next collection is the retry, and a stale entry on the
+  verifier degrades to not-assessed, which never gates.
+
 ## JetStream streams (created and owned by the server)
 
 | Stream | Subjects | Policy |

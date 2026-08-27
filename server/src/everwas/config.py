@@ -76,6 +76,15 @@ class Settings(BaseSettings):
 
     mcp_enabled: bool = False
 
+    #: NATS subject each device's posture collection is pushed to for an
+    #: access verifier (l2trace consumes `l2trace.posture`). Empty disables
+    #: egress entirely, which is the safe default: a verifier treats absence
+    #: as not-assessed and not-assessed never gates, so a deployment without
+    #: one loses nothing by publishing nothing. Published on the server's
+    #: existing NATS connection; a publish failure never fails ingest (see
+    #: everwas/egress/posture.py).
+    posture_egress_subject: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

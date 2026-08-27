@@ -126,6 +126,15 @@ async def run() -> None:
     # they are pushed explicitly.
     await reconcile_durables(js)
 
+    # Before the consumers start, so the first posture collection ingested
+    # after boot is also the first one pushed. Unset means no publisher and
+    # ingest behaves exactly as it always has.
+    if settings.posture_egress_subject:
+        from everwas.egress.posture import PosturePublisher, set_publisher
+
+        set_publisher(PosturePublisher(nc, settings.posture_egress_subject))
+        log.info("posture egress enabled", subject=settings.posture_egress_subject)
+
     from everwas.services.job_outbox import job_outbox_loop
     from everwas.services.outbox import outbox_loop
 
