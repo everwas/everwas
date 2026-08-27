@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/everwas/everwas/agent/internal/secure"
 )
@@ -11,7 +12,17 @@ import (
 // FileName is the generated profile inside the directory given to Write.
 const FileName = "wpa_supplicant-everwas.conf"
 
-// Write renders the profile and writes it, replacing any previous one.
+// WindowsFileName is the same thing on Windows, and it is a different thing:
+// `netsh lan add profile` takes an XML document and would reject a
+// wpa_supplicant config with an error about the file rather than about the
+// format.
+const WindowsFileName = "everwas-8021x.xml"
+
+// WindowsProfileName is what the profile is called once netsh has it.
+const WindowsProfileName = "Everwas 802.1X"
+
+// Write renders the profile for THIS platform and writes it, replacing any
+// previous one.
 //
 // Returns the path written. It does NOT start or reload a supplicant: see the
 // package comment for why applying is deliberately a separate, human decision.
@@ -21,7 +32,7 @@ const FileName = "wpa_supplicant-everwas.conf"
 // parses to something other than what either side intended, and the failure
 // appears as an authentication problem rather than as a truncated file.
 func Write(dir string, p Profile) (string, error) {
-	content, err := Render(p)
+	name, content, err := renderFor(runtime.GOOS, p)
 	if err != nil {
 		return "", err
 	}
@@ -33,7 +44,7 @@ func Write(dir string, p Profile) (string, error) {
 		return "", err
 	}
 
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, name)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
 		return "", fmt.Errorf("supplicant: write %s: %w", tmp, err)
@@ -42,4 +53,38 @@ func Write(dir string, p Profile) (string, error) {
 		return "", fmt.Errorf("supplicant: install %s: %w", path, err)
 	}
 	return path, nil
+}
+
+// renderFor picks the form of profile the named platform can actually consume.
+//
+// The goos is a parameter rather than a build tag so that a Linux test can
+// check what a Windows machine would get. That is not a stylistic preference:
+// RenderWindows was written, tested and verified against real netsh, and was
+// then unreachable from the command an operator runs, because Write had no
+// branch at all. Testing the renderer without testing the choice of renderer is
+// how that happens.
+func renderFor(goos string, p Profile) (name, content string, err error) {
+	if goos != "windows" {
+		content, err = Render(p)
+		return FileName, content, err
+	}
+
+	// Validated even though RenderWindows interpolates none of these: refusing
+	// the same inputs on both platforms means an operator who tests a profile
+	// on Linux and deploys on Windows does not discover a different set of
+	// rules.
+	if err := validate(p); err != nil {
+		return "", "", err
+	}
+	if !p.Wired() {
+		// A wireless 802.1X profile on Windows is a WLANProfile, a different
+		// document with a different schema added by `netsh wlan`, not `netsh
+		// lan`. Emitting the wired one for an SSID would produce a file netsh
+		// accepts nowhere.
+		return "", "", fmt.Errorf(
+			"%w: wireless 802.1X on Windows needs a WLAN profile, which this does not generate yet",
+			ErrInvalidProfile)
+	}
+	content, err = RenderWindows(WindowsProfile{Name: WindowsProfileName})
+	return WindowsFileName, content, err
 }
