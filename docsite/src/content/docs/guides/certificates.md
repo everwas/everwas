@@ -77,7 +77,8 @@ still say no.
 
 ## The renewal lifecycle
 
-Certificates live 90 days and renew at half life, and the 45-day gap is
+Certificates live 90 days by default (`EVERWAS_CA_CERT_LIFETIME_DAYS`)
+and renew at half life, and the 45-day gap is
 the entire safety margin: for 802.1X, an expired certificate locks a
 machine off the network, and a machine off the network cannot be
 repaired remotely. The weeks between first renewal attempt and expiry
@@ -104,7 +105,9 @@ Why 90 days rather than shorter: ADR-0004 ties certificate lifetime to
 whether an expired certificate strands the machine or merely drops it
 into a remediation VLAN that permits reaching the server. Until your
 RADIUS enforcement provides that remediation path, lifetime stays long;
-shortening it first inverts the risk.
+shortening it first inverts the risk. The
+[802.1X guide](/guides/network-authentication/) covers what that VLAN has
+to permit and when it is safe to drop to 30 days.
 
 ## Knowing what devices actually hold
 
@@ -137,13 +140,14 @@ consume; before wiring that up, read the ADR's warning about `nextUpdate`
 and fleet-wide failure, because an expired CRL fails every certificate,
 not just revoked ones.
 
-## What is not here yet
+## Getting the certificate onto the network
 
-Installing the certificate into each platform's supplicant
-(wpa_supplicant and NetworkManager, the Windows certificate store and
-Wired AutoConfig, macOS profiles and keychain) is ADR-0003's step 4 and
-is not built yet, and the remediation VLAN on the RADIUS side is a
-deployment prerequisite that Everwas cannot provide for you. Until both
-exist, treat this as the issuance and lifecycle layer: the certificates
-are real, renewed, and tracked, and the network enforcement that
-consumes them is the next seam.
+Issued and installed are different states. `everwas-agent
+supplicant-profile` generates the client configuration that presents this
+certificate, and the [802.1X guide](/guides/network-authentication/)
+covers that per platform, along with the remediation VLAN you have to
+build first and why generating a profile deliberately does not apply it.
+
+macOS is not covered: profiles plus keychain are their own piece of work
+and are not built. Everything here works on a macOS endpoint, up to and
+including the drift report; only the supplicant side is missing.

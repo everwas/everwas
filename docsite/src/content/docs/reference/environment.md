@@ -41,6 +41,26 @@ external `caddy` network, which handles TLS.
 | `EVERWAS_MCP_ENABLED` | `false` | The MCP server is opt-in; see [enabling it](/guides/enable-mcp/) |
 | `EVERWAS_POSTURE_EGRESS_SUBJECT` | (empty; egress off) | NATS subject each device's posture collection is pushed to for an access verifier (l2trace consumes `l2trace.posture`). Empty publishes nothing, which is safe: a verifier reads absence as not-assessed, and not-assessed never gates. See the [wire protocol](/reference/wire-protocol/#server-to-verifier-posture-egress) |
 
+## Device CA
+
+Issuance is off until a passphrase exists. See
+[device certificates](/guides/certificates/).
+
+| Variable | Default | Notes |
+|---|---|---|
+| `EVERWAS_CA_PASSPHRASE` | (empty; issuance off) | Unlocks the intermediate signing key. `openssl rand -base64 36`, and back it up separately from the server: losing it orphans every certificate already issued |
+
+Two more CA settings exist on the server and are **not forwarded by the
+compose file**, so putting them in `.env` alone has no effect. Add them
+to the `everwas-api` service's `environment:` block (the `&server-env`
+anchor, so the dispatcher and MCP get them too) if you need to change
+them.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `EVERWAS_CA_DIR` | `/data/ca` | Where CA material lives. The root private key is never stored here; the intermediate is stored encrypted |
+| `EVERWAS_CA_CERT_LIFETIME_DAYS` | `90` | Device certificate lifetime; the agent renews at half of whatever it was issued, reading the window from the certificate itself. 30 is correct **only once a remediation VLAN is enforcing**, because the floor is how long this server may be down, not how long a laptop may be off. See [802.1X](/guides/network-authentication/) |
+
 ## NATS auth
 
 | Variable | Default | Notes |

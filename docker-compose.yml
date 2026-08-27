@@ -74,6 +74,12 @@ services:
       EVERWAS_CA_PASSPHRASE: ${EVERWAS_CA_PASSPHRASE:-}
       # Posture egress to an access verifier (l2trace). Empty = off.
       EVERWAS_POSTURE_EGRESS_SUBJECT: ${EVERWAS_POSTURE_EGRESS_SUBJECT:-}
+      # Forwarded explicitly, like everything else under this anchor. The
+      # setting exists in config.py and is read at issuance, so without this
+      # line setting it in .env changes nothing and issues 90-day certificates
+      # while the operator believes they asked for 30. Same silent shape as the
+      # passphrase: the code is right, the value never arrives.
+      EVERWAS_CA_CERT_LIFETIME_DAYS: ${EVERWAS_CA_CERT_LIFETIME_DAYS:-}
     networks: [everwas-internal, caddy]
     volumes:
       # /data holds the device CA and the agent packages, and neither can live

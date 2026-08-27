@@ -158,7 +158,7 @@ there.
 |---|---|---|
 | `device_id` | uuid | |
 | `check` | str | The check's stable name (`disk-encryption`, `firewall`, `antivirus`, ...) — the per-device natural key. A check **absent** from a device's rows never ran on it; absence is not a failure |
-| `status` | str | Agent-defined verdict: `pass`, `fail`, `not_applicable` today, and new values may appear before consumers learn them. **Treat any unknown value as not-assessed, never as failed** — only an explicit `fail` is a failure. `not_applicable` means the check ran and could not assess that platform |
+| `status` | str | Agent-defined verdict: `pass`, `fail`, `not_assessed`, and new values may appear before consumers learn them. **Treat any unknown value as not-assessed, never as failed** — only an explicit `fail` is a failure |
 | `detail` | str | Human-oriented explanation. `""` when the agent gave none — the verdict stands on its own |
 | `observed_at` | ts | When the machine last reported this verdict |
 
@@ -166,6 +166,13 @@ The three-state rule is load-bearing: a consumer gating network access on
 posture (the l2trace remediation/quarantine integration) must read
 "not assessed" as *no verdict*, because misreading it as `fail` cuts a
 healthy machine off the network.
+
+The stored fact also carries `not_assessed_reason` (`not_applicable`
+versus `undetermined`), which this endpoint does not project: both mean
+the same thing to a policy, and the distinction is for an operator
+looking at a collection problem. The [check
+catalogue](/reference/posture-checks/) has the full wire shape and what
+each check concludes.
 
 ### `GET /sync/patches`
 
