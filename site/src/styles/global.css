@@ -92,12 +92,12 @@ kbd {
 
 /* The kicker leads with the brand's heartbeat, not a rule line. Inline SVG
  * because ::before can't reach CSS vars inside a data URI; the stroke is
- * --amber (#ffb454) by value. Keep in step with favicon.svg's pulse. */
+ * --cyan (#5fc9e8) by value, the ProductShot title-bar hue. Keep in step with favicon.svg's pulse. */
 .section-kicker::before {
   content: '';
   width: 1.9rem;
   height: 0.75rem;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 12'%3E%3Cpolyline points='0,6 9,6 12,2 16,10 19,6 30,6' fill='none' stroke='%23ffb454' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 12'%3E%3Cpolyline points='0,6 9,6 12,2 16,10 19,6 30,6' fill='none' stroke='%235fc9e8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
 }
 
 .section-title {
