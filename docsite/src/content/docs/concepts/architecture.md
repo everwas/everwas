@@ -97,48 +97,38 @@ source of truth. Solid lines exist today; dashed lines are designed
 (ADR-0003/0004) but not yet wired.
 
 ```mermaid
-flowchart TB
-  subgraph edge["The network edge"]
-    EP["Endpoints<br/>Windows · macOS · Linux"]
-    SW["Switches & WLCs"]
-  end
+%%{init: {"flowchart": {"nodeSpacing": 60, "rankSpacing": 90, "curve": "basis", "padding": 14}, "themeVariables": {"fontSize": "16px"}}}%%
+flowchart LR
+  classDef amber fill:#241a0c,stroke:#ffb454,stroke-width:2.5px,color:#ffcf8a,font-weight:bold
+  classDef cyan fill:#0e2129,stroke:#5fc9e8,stroke-width:2.5px,color:#9addf2,font-weight:bold
+  classDef truth fill:#1d2230,stroke:#e9e7e1,stroke-width:2.5px,color:#e9e7e1,font-weight:bold
+  classDef edge fill:#10131a,stroke:#384053,color:#a3a8b4
 
-  subgraph ew["Everwas"]
-    EWS["Server<br/>bitemporal inventory · patch state ·<br/>posture checks · device CA"]
-  end
+  EP["Endpoints<br/><small>Windows · macOS · Linux</small>"]:::edge
+  SW["Switches & WLCs"]:::edge
+  AI["AI assistants"]:::edge
 
-  subgraph l2["l2trace"]
-    L2S["Bitemporal CAM/MAC store ·<br/>L2 traceroute · RADIUS/802.1X<br/>(monitor-first)"]
-  end
+  EW["<b>EVERWAS</b><br/>what is true <i>on</i> the machines<br/><small>inventory · patches · posture · certificates</small>"]:::amber
+  L2["<b>L2TRACE</b><br/>what is true <i>on the wire</i><br/><small>MAC history · L2 paths · RADIUS</small>"]:::cyan
+  NB["<b>NAUTOBOT</b><br/>the source of truth<br/><small>DCIM · IPAM · intent · belief log</small>"]:::truth
 
-  subgraph nb["Nautobot · the source of truth"]
-    SSOTE["nautobot-ssot-everwas"]
-    RMM["nautobot-app-rmm-models<br/>vendor-neutral RMM schema ·<br/>bitemporal belief log"]
-    SSOTL["nautobot-ssot-l2trace<br/>observed L2 vs intent,<br/>review-gated"]
-    SCAN["nautobot-app-scanner<br/>nmap discovery"]
-    CORE["Nautobot core<br/>DCIM · IPAM · Tenancy"]
-  end
+  EP -->|"everwas-agent"| EW
+  EP -->|"802.1X"| SW
+  SW -->|"RADIUS · gNMI"| L2
+  AI -->|"MCP"| EW
+  AI -->|"MCP"| NB
 
-  EP -- "everwas-agent, outbound only" --> EWS
-  EP -- "802.1X (EAP)" --> SW
-  SW -- "RADIUS" --> L2S
-  SW -- "gNMI: CAM/MAC · adjacency" --> L2S
-
-  EWS -- "sync API<br/>(ewpk_ key → ewst_ token)" --> SSOTE
-  SSOTE --> RMM
-  RMM --> CORE
-  NINJA["nautobot-ssot-ninjaone<br/>(structural twin)"] -.-> RMM
-
-  L2S -- "observations" --> SSOTL
-  SSOTL -- "findings, human-applied" --> CORE
-  CORE -- "authors 802.1X policy,<br/>cached locally in l2trace" --> L2S
-  SCAN --> CORE
-
-  AI["AI assistants"] -- "MCP" --> EWS
-  AI -- "MCP (mcnautobot)" --> CORE
-
-  EWS -. "planned: device certificates (EAP-TLS)<br/>and posture verdicts for remediation" .-> L2S
+  EW ==>|"sync, one-way<br/><small>nautobot-ssot-everwas</small>"| NB
+  L2 ==>|"findings, review-gated<br/><small>nautobot-ssot-l2trace</small>"| NB
+  NB -->|"802.1X policy,<br/>cached locally"| L2
+  EW -.->|"<small>planned: EAP-TLS certificates<br/>+ posture for remediation</small>"| L2
 ```
+
+The boxes that did not make the diagram still exist: the Everwas sync
+writes through `nautobot-app-rmm-models` (a vendor-neutral schema with a
+bitemporal belief log, shared with its structural twin
+`nautobot-ssot-ninjaone`), and `nautobot-app-scanner` feeds nmap
+discovery into the same core, review-gated like everything else.
 
 Three properties of this constellation are deliberate:
 
