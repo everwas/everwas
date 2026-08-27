@@ -15,13 +15,13 @@ import {
 
 const REFRESH_MS = 10_000
 
-const osIcon = {
+export const osIcon = {
   windows: AppWindow,
   macos: Apple,
   linux: Terminal,
 } as const
 
-function StatusPill({ status }: { status: Device["status"] }) {
+export function StatusPill({ status }: { status: Device["status"] }) {
   const styles: Record<Device["status"], string> = {
     active: "bg-emerald-500",
     offline: "bg-red-500",
@@ -36,7 +36,7 @@ function StatusPill({ status }: { status: Device["status"] }) {
   )
 }
 
-function lastSeen(iso: string | null): string {
+export function lastSeen(iso: string | null): string {
   if (!iso) return "never"
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
   if (s < 60) return `${Math.floor(s)}s ago`

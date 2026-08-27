@@ -15,12 +15,38 @@ import {
   type Alert,
   type AuditEntry,
   type Device,
+  type DeviceDetail,
   type OutboxHealth,
 } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { StatusPill, lastSeen, osIcon } from "@/pages/Devices"
 
 const REFRESH_MS = 10_000
+
+/** One labelled utilization bar; amber past 85 because that is when you care. */
+function UtilBar({ label, pct }: { label: string; pct: number | null }) {
+  const value = pct == null ? null : Math.round(pct)
+  const hot = value != null && value >= 85
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-8 shrink-0 text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted">
+        {value != null && (
+          <div
+            className={`h-full rounded-full ${hot ? "bg-amber-500" : "bg-emerald-500/70"}`}
+            style={{ width: `${Math.min(100, value)}%` }}
+          />
+        )}
+      </div>
+      <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+        {value != null ? `${value}%` : "–"}
+      </span>
+    </div>
+  )
+}
 
 /** One number and what it means, linking to where you act on it. */
 function Stat({
@@ -64,13 +90,28 @@ function Stat({
 
 export function OverviewPage() {
   const [devices, setDevices] = useState<Device[]>([])
+  const [details, setDetails] = useState<Record<string, DeviceDetail>>({})
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [outbox, setOutbox] = useState<OutboxHealth | null>(null)
   const [recent, setRecent] = useState<AuditEntry[]>([])
 
   useEffect(() => {
     const load = () => {
-      api.devices().then(setDevices).catch(() => {})
+      api
+        .devices()
+        .then((list) => {
+          setDevices(list)
+          // Utilization lives on the detail endpoint. Per-device fetches are
+          // fine at overview scale; a fleet this page cannot fit on one
+          // screen deserves a bulk endpoint before it deserves this loop.
+          list.slice(0, 12).forEach((d) =>
+            api
+              .device(d.id)
+              .then((det) => setDetails((m) => ({ ...m, [d.id]: det })))
+              .catch(() => {}),
+          )
+        })
+        .catch(() => {})
       api.alerts().then(setAlerts).catch(() => {})
       api.outboxHealth().then(setOutbox).catch(() => {})
       // The consequential things only: a wall of every read is not a summary.
@@ -161,6 +202,44 @@ export function OverviewPage() {
 
       <section className="flex flex-col gap-2">
         <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Activity className="size-4" />
+          Fleet
+        </h2>
+        <div className="grid gap-2 lg:grid-cols-2">
+          {devices
+            .filter((d) => d.status !== "retired")
+            .map((d) => {
+              const det = details[d.id]
+              const OsIcon = osIcon[d.os_family]
+              return (
+                <Link key={d.id} to={`/devices/${d.id}`}>
+                  <Card className="transition-colors hover:bg-accent/40">
+                    <CardContent className="flex items-center gap-3 py-3">
+                      <OsIcon className="size-4 shrink-0 text-muted-foreground" />
+                      <div className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm font-medium">{d.hostname}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {[d.os_version, `seen ${lastSeen(d.last_heartbeat_at)}`]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </div>
+                      <div className="ml-auto flex shrink-0 flex-col gap-1">
+                        <UtilBar label="cpu" pct={det?.cpu_pct ?? null} />
+                        <UtilBar label="mem" pct={det?.mem_pct ?? null} />
+                        <UtilBar label="disk" pct={det?.worst_disk_pct ?? null} />
+                      </div>
+                      <StatusPill status={d.status} />
+                    </CardContent>
+                  </Card>
+                </Link>
+              )
+            })}
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <BellRing className="size-4" />
           Firing now
         </h2>
@@ -207,7 +286,14 @@ export function OverviewPage() {
                 {e.action}
               </span>
               <span className="truncate text-xs text-muted-foreground">
-                {typeof e.detail?.hostname === "string" ? e.detail.hostname : (e.actor_id ?? "")}
+                {typeof e.detail?.hostname === "string"
+                  ? e.detail.hostname
+                  : // Audit rows store ids; readers want names. Resolve when the
+                    // actor is a device we know, shorten when it is not.
+                    (devices.find((d) => d.id === e.actor_id)?.hostname ??
+                      (e.actor_id && e.actor_id.length > 20
+                        ? `${e.actor_id.slice(0, 8)}…`
+                        : (e.actor_id ?? "")))}
               </span>
             </div>
           ))}
