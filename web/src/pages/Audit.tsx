@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react"
-import { Bot, KeyRound, Server, ScrollText, User } from "lucide-react"
+import { Fragment, useCallback, useEffect, useState } from "react"
+import { Link } from "react-router-dom"
+import { Bot, ChevronRight, KeyRound, Server, ScrollText, User } from "lucide-react"
 
 import { api, type ActorType, type AuditEntry } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
@@ -51,15 +52,33 @@ function ActorCell({ entry }: { entry: AuditEntry }) {
 
 /** The detail blob is where the useful specifics live (which updates
  *  installed, which host was retired) and it is different for every action,
- *  so it is rendered as compact key=value rather than pretty-printed JSON. */
+ *  so it is rendered as key=value pairs rather than pretty-printed JSON.
+ *  Null-valued keys are noise in a one-line summary (tag=null status=null on
+ *  every list call) and are held back for the expanded row, as is anything
+ *  past the first handful — the row expands for the rest. */
+const COLLAPSED_PAIRS = 5
+
+function fmtValue(v: unknown): string {
+  const text = typeof v === "object" ? JSON.stringify(v) : String(v)
+  return text.length > 48 ? `${text.slice(0, 48)}…` : text
+}
+
 function Detail({ detail }: { detail: Record<string, unknown> | null }) {
-  if (!detail || Object.keys(detail).length === 0) return <span className="text-muted-foreground">n/a</span>
-  const text = Object.entries(detail)
-    .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-    .join("  ")
+  if (!detail || Object.keys(detail).length === 0)
+    return <span className="text-muted-foreground">—</span>
+  const pairs = Object.entries(detail).filter(([, v]) => v !== null && v !== undefined)
+  if (pairs.length === 0) return <span className="text-muted-foreground">—</span>
+  const shown = pairs.slice(0, COLLAPSED_PAIRS)
+  const hidden = pairs.length - shown.length
   return (
-    <span className="font-mono text-xs text-muted-foreground" title={JSON.stringify(detail, null, 2)}>
-      {text.length > 140 ? `${text.slice(0, 140)}…` : text}
+    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 font-mono text-xs">
+      {shown.map(([k, v]) => (
+        <span key={k} className="whitespace-nowrap">
+          <span className="text-muted-foreground">{k}=</span>
+          <span className="text-foreground/90">{fmtValue(v)}</span>
+        </span>
+      ))}
+      {hidden > 0 && <span className="text-muted-foreground">+{hidden} more</span>}
     </span>
   )
 }
@@ -72,6 +91,12 @@ export function AuditPage() {
   const [hours, setHours] = useState<number | "">("")
   const [nextBefore, setNextBefore] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // A failed load must not render as "Nothing matches those filters": an
+  // empty log and an unreachable server look identical otherwise, and the
+  // wrong lesson ("nothing happened") is exactly what an audit page must
+  // never teach.
+  const [failed, setFailed] = useState(false)
+  const [open, setOpen] = useState<string | null>(null)
 
   const load = useCallback(
     async (append = false) => {
@@ -86,6 +111,9 @@ export function AuditPage() {
         })
         setEntries((prev) => (append ? [...prev, ...page.entries] : page.entries))
         setNextBefore(page.has_more ? page.next_before : null)
+        setFailed(false)
+      } catch {
+        setFailed(true)
       } finally {
         setLoading(false)
       }
@@ -102,8 +130,11 @@ export function AuditPage() {
         if (cancelled) return
         setEntries(page.entries)
         setNextBefore(page.has_more ? page.next_before : null)
+        setFailed(false)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
     return () => {
       cancelled = true
     }
@@ -167,7 +198,14 @@ export function AuditPage() {
         </div>
       </div>
 
-      {entries.length === 0 ? (
+      {failed ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+          <span>The audit log could not be loaded. This is a connection problem, not an empty log.</span>
+          <Button size="sm" variant="outline" disabled={loading} onClick={() => load(false)}>
+            {loading ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      ) : entries.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
           Nothing matches those filters.
         </div>
@@ -185,9 +223,18 @@ export function AuditPage() {
             </TableHeader>
             <TableBody>
               {entries.map((e) => (
-                <TableRow key={e.id}>
+                <Fragment key={e.id}>
+                <TableRow
+                  className="cursor-pointer"
+                  onClick={() => setOpen(open === e.id ? null : e.id)}
+                >
                   <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {new Date(e.at).toLocaleString()}
+                    <span className="flex items-center gap-1">
+                      <ChevronRight
+                        className={`size-3.5 shrink-0 transition-transform ${open === e.id ? "rotate-90" : ""}`}
+                      />
+                      {new Date(e.at).toLocaleString()}
+                    </span>
                   </TableCell>
                   <TableCell className="max-w-44">
                     <ActorCell entry={e} />
@@ -219,6 +266,38 @@ export function AuditPage() {
                     <Detail detail={e.detail} />
                   </TableCell>
                 </TableRow>
+                {open === e.id && (
+                  <TableRow className="bg-muted/30 hover:bg-muted/30">
+                    <TableCell colSpan={5} className="py-3">
+                      <div className="flex flex-col gap-2 pl-5">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span className="whitespace-nowrap">{new Date(e.at).toISOString()}</span>
+                          <span className="font-mono">entry {e.id}</span>
+                          {e.target_id && (
+                            <span className="font-mono">
+                              {e.target_type ?? "target"} {e.target_id}
+                            </span>
+                          )}
+                          {e.target_type === "device" && e.target_id && (
+                            <Link
+                              to={`/devices/${e.target_id}`}
+                              onClick={(ev) => ev.stopPropagation()}
+                              className="font-medium text-foreground underline-offset-4 hover:underline"
+                            >
+                              View device →
+                            </Link>
+                          )}
+                        </div>
+                        {e.detail && Object.keys(e.detail).length > 0 && (
+                          <pre className="overflow-x-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed">
+                            {JSON.stringify(e.detail, null, 2)}
+                          </pre>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                </Fragment>
               ))}
             </TableBody>
           </Table>
