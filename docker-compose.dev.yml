@@ -18,6 +18,13 @@ services:
       - ./server/alembic.ini:/app/alembic.ini
     ports:
       - "127.0.0.1:28000:8000"
+    # everwas-dev is a dedicated bridge shared with the Nautobot SSoT dev
+    # stack, which syncs against this API by container name. Not the caddy
+    # network: that fabric is host-wide and for reverse-proxy targets only.
+    # The full set is restated because an overlay networks list replaces the
+    # base file's, it does not merge. Create once: `docker network create
+    # everwas-dev`.
+    networks: [everwas-internal, caddy, everwas-dev]
 
   everwas-dispatcher:
     command: ["watchfiles", "--filter", "python", "everwas-dispatcher", "/app/src"]
@@ -67,3 +74,7 @@ services:
       caddy.reverse_proxy: "{{upstreams 8025}}"
     ports:
       - "127.0.0.1:28025:8025"
+
+networks:
+  everwas-dev:
+    external: true
