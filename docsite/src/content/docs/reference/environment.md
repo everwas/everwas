@@ -39,6 +39,7 @@ external `caddy` network, which handles TLS.
 |---|---|---|
 | `EVERWAS_SECRET_KEY` | (required) | Session cookie signing and CSRF. Generate with `openssl rand -hex 32` |
 | `EVERWAS_MCP_ENABLED` | `false` | The MCP server is opt-in; see [enabling it](/guides/enable-mcp/) |
+| `EVERWAS_POSTURE_EGRESS_SUBJECT` | (empty; egress off) | NATS subject each device's posture collection is pushed to for an access verifier (l2trace consumes `l2trace.posture`). Empty publishes nothing, which is safe: a verifier reads absence as not-assessed, and not-assessed never gates. See the [wire protocol](/reference/wire-protocol/#server-to-verifier-posture-egress) |
 
 ## NATS auth
 

@@ -72,6 +72,8 @@ services:
       EVERWAS_SMTP_FROM: ${EVERWAS_SMTP_FROM:-everwas@localhost}
       EVERWAS_MCP_ENABLED: ${EVERWAS_MCP_ENABLED:-false}
       EVERWAS_CA_PASSPHRASE: ${EVERWAS_CA_PASSPHRASE:-}
+      # Posture egress to an access verifier (l2trace). Empty = off.
+      EVERWAS_POSTURE_EGRESS_SUBJECT: ${EVERWAS_POSTURE_EGRESS_SUBJECT:-}
     networks: [everwas-internal, caddy]
     volumes:
       # /data holds the device CA and the agent packages, and neither can live
