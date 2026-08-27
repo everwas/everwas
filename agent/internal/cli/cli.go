@@ -22,6 +22,7 @@ import (
 	"github.com/everwas/everwas/agent/internal/secure"
 	"github.com/everwas/everwas/agent/internal/svc"
 	"github.com/everwas/everwas/agent/internal/update"
+	"github.com/everwas/everwas/agent/internal/winident"
 )
 
 // Version is injected at build time via -ldflags.
@@ -219,6 +220,9 @@ func runAgent(parent context.Context) int {
 	// shutdown path is the same one SIGTERM takes.
 	restart := make(chan stopReason, 1)
 	var restartOnce sync.Once
+	// Whether we have already said we are standing aside for another
+	// identity provider. See the netcert closure below.
+	var deferredOnce bool
 
 	sup := &agentcore.Supervisor{
 		NC:       nc,
@@ -250,6 +254,32 @@ func runAgent(parent context.Context) int {
 			// the value at startup would keep presenting the old one and be
 			// refused from the first rotation onwards, on a path that only
 			// runs every twelve hours: nobody would connect the two.
+			// Stand aside for a machine Active Directory is already
+			// provisioning. Installing a second client-auth certificate makes
+			// Windows' choice non-deterministic, and a netsh profile under a
+			// Group Policy machine profile does nothing at all, so taking over
+			// would not even be a clean takeover.
+			//
+			// A failed detection never defers: Decide is given what we did
+			// find, which for a failure is nothing, and nothing never defers.
+			// The dangerous direction here is stopping, not continuing.
+			if src, dErr := winident.Detect(ctx); dErr == nil {
+				if d := winident.Decide(src, false); d.Defer {
+					if !deferredOnce {
+						// Once, not every cycle. A machine that is correctly
+						// deferring is in its steady state, and saying so twice
+						// a day forever is how the line stops being read.
+						log.Info("not providing an 802.1X identity to this machine",
+							"reason", d.Reason)
+						deferredOnce = true
+					}
+					// Reported the same way as a server with no CA: nothing is
+					// wrong, there is no deadline, and the loop must not
+					// escalate or interrupt anybody about it.
+					return nil, netcert.ErrNotConfigured
+				}
+			}
+
 			m, err := netcert.Ensure(
 				ctx, netcertDir(stateDir), cfg.ServerURL, cfg.AgentID, cfg.AgentSecret, time.Now(),
 			)
