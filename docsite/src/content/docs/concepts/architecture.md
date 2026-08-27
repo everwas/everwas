@@ -106,7 +106,6 @@ flowchart LR
 
   EP["Endpoints<br/><small>Windows · macOS · Linux</small>"]:::edge
   SW["Switches & WLCs"]:::edge
-  AI["AI assistants"]:::edge
 
   EW["<b>EVERWAS</b><br/>what is true <i>on</i> the machines<br/><small>inventory · patches · posture · certificates</small>"]:::amber
   L2["<b>L2TRACE</b><br/>what is true <i>on the wire</i><br/><small>MAC history · L2 paths · RADIUS</small>"]:::cyan
@@ -115,8 +114,6 @@ flowchart LR
   EP -->|"everwas-agent"| EW
   EP -->|"802.1X"| SW
   SW -->|"RADIUS · gNMI"| L2
-  AI -->|"MCP"| EW
-  AI -->|"MCP"| NB
 
   EW ==>|"sync, one-way<br/><small>nautobot-ssot-everwas</small>"| NB
   L2 ==>|"findings, review-gated<br/><small>nautobot-ssot-l2trace</small>"| NB
