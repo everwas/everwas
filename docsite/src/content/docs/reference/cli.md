@@ -53,4 +53,5 @@ The agent binary is self-contained; these run on the endpoint.
 | `everwas-agent install` | Install as a system service (systemd / launchd / SCM) |
 | `everwas-agent uninstall` | Remove the system service |
 | `everwas-agent status` | Show enrollment state, agent id, server, and NATS URL |
+| `everwas-agent supplicant-profile` | Write an 802.1X client profile for this device: `--ssid NAME` for wireless, omitted for wired, `--out DIR` to place it. Writes a file and nothing else, and refuses if the device is not enrolled or holds no certificate. See [802.1X](/guides/network-authentication/) |
 | `everwas-agent version` | Print the agent version |

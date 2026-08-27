@@ -45,8 +45,13 @@ from then on (the `EVERWAS_NATS_PUBLIC_URL` you set during the
 [quickstart](/getting-started/quickstart/)). On success:
 
 ```text
-enrolled; identity saved to /var/lib/everwas-agent/state.json
+enrolled; identity saved to /etc/everwas/agent.json
 ```
+
+The state directory is `/etc/everwas` for a root agent on Linux,
+`~/.config/everwas` for one running as a user, `C:\ProgramData\Everwas\Agent`
+on Windows and `/Library/Application Support/Everwas` on macOS.
+`EVERWAS_STATE_DIR` overrides all of them.
 
 ## 4. Install as a service
 
@@ -70,6 +75,27 @@ seconds, so within one of those the device appears in the **Devices** view
 with live telemetry following about a minute later. A device that misses
 heartbeats for 90 seconds is marked offline and can trigger an alert; see
 [alerting](/guides/alerts/).
+
+## Upgrading an agent from before the rename
+
+Machines running an agent from when the project was called OpenRMM do
+not need re-enrolling. The state directory moved with the name
+(`/etc/openrmm` to `/etc/everwas`, `C:\ProgramData\OpenRMM\Agent` to
+`C:\ProgramData\Everwas\Agent`), and the new build migrates it on first
+start.
+
+It moves the whole directory rather than the identity file alone,
+because the directory also holds the 802.1X key and certificate, the
+schedule cache and the script working area. If you ever move state by
+hand, move the directory: copying `agent.json` on its own leaves a
+machine enrolled and managed while silently dropping its network
+identity, and that surfaces weeks later as an authentication failure with
+no obvious cause.
+
+Migration is skipped when the new location already holds an identity, so
+a machine enrolled fresh under the new name is never rolled back to a
+stale one, and skipped when `EVERWAS_STATE_DIR` is set, because an
+operator who names the directory is telling the agent where it is.
 
 ## What just happened
 
