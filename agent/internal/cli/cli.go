@@ -166,6 +166,16 @@ func runAgent(parent context.Context) int {
 		return 1
 	}
 
+	// Parsed once at startup rather than inside the twelve-hourly loop, so a
+	// typo is reported now instead of being discovered when somebody wonders
+	// why a migration never started. An unusable value falls back to the
+	// cautious default, which is the one that cannot take over a machine by
+	// accident.
+	identityMode, err := winident.ParseMode(cfg.NetworkIdentity)
+	if err != nil {
+		log.Error("network identity setting is not understood, using auto", "err", err)
+	}
+
 	// Renew BEFORE connecting, so the connection that follows is itself the
 	// proof of receipt: the server clears the old secret the moment it sees
 	// this agent authenticate with the new one.
@@ -264,13 +274,22 @@ func runAgent(parent context.Context) int {
 			// find, which for a failure is nothing, and nothing never defers.
 			// The dangerous direction here is stopping, not continuing.
 			if src, dErr := winident.Detect(ctx); dErr == nil {
-				if d := winident.Decide(src, false); d.Defer {
+				if d := winident.Decide(src, identityMode); d.Defer {
 					if !deferredOnce {
 						// Once, not every cycle. A machine that is correctly
 						// deferring is in its steady state, and saying so twice
 						// a day forever is how the line stops being read.
-						log.Info("not providing an 802.1X identity to this machine",
-							"reason", d.Reason)
+						//
+						// Except when it is about to cost the machine its
+						// network access, which is not a steady state and is
+						// logged where somebody will see it.
+						if d.Warn {
+							log.Warn("not providing an 802.1X identity to this machine",
+								"reason", d.Reason)
+						} else {
+							log.Info("not providing an 802.1X identity to this machine",
+								"reason", d.Reason)
+						}
 						deferredOnce = true
 					}
 					// Reported the same way as a server with no CA: nothing is

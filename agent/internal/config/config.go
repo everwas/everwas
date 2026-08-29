@@ -22,6 +22,17 @@ type Config struct {
 	AgentID     string `json:"agent_id"`
 	AgentSecret string `json:"agent_secret"`
 	NATSURL     string `json:"nats_url"`
+
+	// NetworkIdentity is what this machine should do about 802.1X: "auto"
+	// (default), "always" or "never". See internal/winident.
+	//
+	// Set by an operator, not by enrollment, and it lives here rather than in
+	// an environment variable so a fleet-wide change can be pushed as a script
+	// through the agent that is already on every machine. omitempty so a
+	// machine that has never been told anything keeps a config file that says
+	// nothing about it, which is the honest representation of "no decision has
+	// been made here".
+	NetworkIdentity string `json:"network_identity,omitempty"`
 }
 
 // Enrolled reports whether the config carries usable credentials.
