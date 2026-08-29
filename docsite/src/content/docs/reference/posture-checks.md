@@ -31,7 +31,7 @@ it is never a failure.
 | Field | Type | Notes |
 |---|---|---|
 | `check` | string | The stable identifier, e.g. `disk-encryption`. Renaming one costs every record that came before, so it does not happen |
-| `category` | string | `encryption`, `malware`, or `firewall`. Set from the check, not per result, so a check cannot report itself under different categories on different runs. Additive-only |
+| `category` | string | `encryption`, `malware`, `firewall`, or `network`. Set from the check, not per result, so a check cannot report itself under different categories on different runs. Additive-only |
 | `status` | string | As above |
 | `not_assessed_reason` | string | Present only when the status is `not_assessed` |
 | `detail` | string | One sentence for a human reading a console: why this status |
@@ -98,6 +98,29 @@ Windows checks shell out to PowerShell rather than going through WMI over
 COM. COM is faster and is what the patch collector uses, and it needs a
 locked OS thread, is stateful, and hangs. A posture check runs on a timer
 on somebody's laptop and is worth none of that.
+
+### `8021x-identity-source` (category `network`)
+
+Windows only; on other platforms the check is not registered at all, so
+it never appears in their envelopes. It reports which system owns this
+machine's 802.1X identity, because in a domain, Active Directory may be
+provisioning the same thing the agent does (an AD CS machine certificate
+plus a Group Policy profile), and neither system is told about the
+other. The [802.1X guide](/guides/network-authentication/) covers how
+the agent *acts* on this; the check is how an operator *sees* it,
+fleet-wide, and both share one detector so the machine in the console
+and the machine the agent acts on cannot drift apart.
+
+| Outcome | When |
+|---|---|
+| `pass` | Everwas provides the identity, **or** Active Directory does. A domain machine getting its identity from AD is a perfectly good arrangement, not a finding |
+| `fail` | Both are providing one. The only arrangement worth surfacing: which certificate the machine presents now depends on heuristics neither system controls |
+| `not_assessed` / `not_applicable` | No 802.1X identity from anyone. Whether this machine is *supposed* to have one is not knowable from the machine, and guessing would fail every workstation in a fleet that does not use 802.1X |
+| `not_assessed` / `undetermined` | The detection itself failed |
+
+Evidence carries `domain_joined`, `everwas_certs`, `other_client_certs`,
+and `group_policy_8021x`, so the console can show *why* a machine
+reported what it did rather than just the verdict.
 
 ## On the wire
 

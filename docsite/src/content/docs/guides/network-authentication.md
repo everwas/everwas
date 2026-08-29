@@ -98,6 +98,53 @@ The second failing is the point. Three files live in `netcert/`:
 | `network.crt` | `0644` | The leaf, readable by the supplicant |
 | `network-chain.pem` | `0644` | Intermediate then root, the order a verifier expects |
 
+## Who provides the identity
+
+On a domain-joined Windows machine, Active Directory may already do
+everything this guide describes: AD CS autoenrollment issues a machine
+certificate into the same store, and Group Policy pushes the 802.1X
+profile. Two systems then believe they own the same thing, and the
+failure modes are quiet rather than loud. A Group Policy machine profile
+takes precedence over one added with `netsh`, so the agent can write a
+profile, report success, and change nothing; and with two client-auth
+certificates in the store, whichever one Windows picks may not be the
+one your RADIUS server trusts, which surfaces as an authentication
+rejection pointing at nothing.
+
+So the agent detects an existing identity provider and, by default,
+stands aside. What a machine does about 802.1X is a setting,
+`network_identity` in the agent's config file, with three values:
+
+| Value | Meaning |
+|---|---|
+| `auto` (default, and what an unset value means) | Defer to whatever is already provisioning this machine; provide an identity on a clean one |
+| `always` | Provide an identity even beside AD. For migrating a fleet from AD CS to Everwas, where both are deliberately present for a while |
+| `never` | Provide none. For a site whose Windows estate is entirely AD-provisioned and would rather not have a heuristic deciding |
+
+It lives in the config file rather than an environment variable on
+purpose: a fleet-wide change can be pushed as a script through the agent
+that is already on every machine. A mistyped value is an error in the
+log, not a silent fallback to the wrong intention; the agent then runs
+`auto`, the one mode that cannot take over a machine by accident.
+
+The rule underneath is an asymmetry: **detection may never stop us, an
+operator may**. If Everwas is already this machine's identity source,
+finding Active Directory beside it does not make the agent defer,
+because detection can be wrong and deferring would stop renewing a
+certificate the machine is actively using; that certificate would
+expire, and an expired 802.1X certificate takes the machine off the
+network with no remote way back. An explicit `never` on that same
+machine *is* honoured, because that is somebody's decision rather than a
+heuristic misfiring, and it is logged as a warning naming the
+consequence, since the person who set it may not have known this machine
+was one of ours.
+
+The same detection is also reported, not just acted on: the
+[`8021x-identity-source` posture check](/reference/posture-checks/)
+shows which system owns each machine's identity in the console, and it
+fails only for the one arrangement worth surfacing, both systems
+provisioning the same machine at once.
+
 ## Give the RADIUS server the trust anchor
 
 The RADIUS server needs the Everwas device CA chain as a trust anchor for
