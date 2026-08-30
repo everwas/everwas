@@ -37,6 +37,7 @@ from everwas.services.enrollment import (
     retire_device,
     rotate_agent_secret,
 )
+from everwas.services.identity_preview import devices_in_scope, preview_mode
 from everwas.services.network_telemetry import interface_rates
 
 router = APIRouter()
@@ -120,6 +121,60 @@ async def list_certificate_drift(db: DbSession, _user: CurrentUser) -> list[Cert
         )
         for d in await certificate_drift(db, query)
     ]
+
+
+class AffectedDeviceOut(BaseModel):
+    device_id: uuid.UUID
+    hostname: str
+    loses_access_at: datetime
+    serial: str | None
+
+
+class IdentityPreviewOut(BaseModel):
+    mode: str
+    safe: bool
+    affected_count: int
+    unaffected_count: int
+    earliest_loss: datetime | None
+    latest_loss: datetime | None
+    affected: list[AffectedDeviceOut]
+
+
+@router.get("/network-identity/preview")
+async def preview_network_identity(
+    db: DbSession, _user: CurrentUser, mode: Literal["auto", "always", "never"]
+) -> IdentityPreviewOut:
+    """What setting this network-identity mode across the fleet would do.
+
+    Changes nothing. It exists because the setting is safe per machine and
+    dangerous per fleet without the words changing between the two: "never" on
+    one machine is a considered decision, and the same value applied to an
+    organisation lets every machine currently using one of our certificates
+    keep working and then drop off the network as it expires, one at a time,
+    over the following weeks. Nothing errors when the change is made.
+
+    Reads what each device REPORTS holding rather than what we last issued it,
+    because that is the certificate that will actually stop working.
+    """
+    query = scope_to_org(devices_in_scope(), Device.org_id, caller_org(_user))
+    p = await preview_mode(db, mode, query)
+    return IdentityPreviewOut(
+        mode=p.mode,
+        safe=p.safe,
+        affected_count=len(p.affected),
+        unaffected_count=p.unaffected,
+        earliest_loss=p.earliest_loss,
+        latest_loss=p.latest_loss,
+        affected=[
+            AffectedDeviceOut(
+                device_id=a.device_id,
+                hostname=a.hostname,
+                loses_access_at=a.loses_access_at,
+                serial=a.serial,
+            )
+            for a in p.affected
+        ],
+    )
 
 
 # Registered BEFORE /{device_id}. FastAPI matches routes in registration order,
