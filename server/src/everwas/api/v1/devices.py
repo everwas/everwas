@@ -14,6 +14,7 @@ from everwas.bitemporal.query import get_facts
 from everwas.config import get_settings
 from everwas.models.device import Device, DeviceStatus
 from everwas.models.facts import FactKind, FactNetwork
+from everwas.models.org import Organization
 from everwas.models.script import RunStatus, RunTrigger, ScriptRun
 from everwas.models.telemetry import DeviceSnapshot, DeviceStatusLatest, telemetry_metrics
 from everwas.models.user import Role
@@ -171,6 +172,73 @@ async def preview_network_identity(
                 hostname=a.hostname,
                 loses_access_at=a.loses_access_at,
                 serial=a.serial,
+            )
+            for a in p.affected
+        ],
+    )
+
+
+class SetIdentityModeIn(BaseModel):
+    mode: Literal["auto", "always", "never"]
+
+    #: How many machines the caller was told would lose network access.
+    #:
+    #: This is the whole safety mechanism, and it is a required field rather
+    #: than a confirmation flag on purpose. A flag is something a client sets
+    #: once and forgets; a COUNT can only be supplied by somebody who fetched
+    #: the preview, and it stops matching if the fleet changed in between, which
+    #: forces a fresh look rather than approving a stale picture.
+    acknowledge_affected: int
+
+
+@router.post("/network-identity", dependencies=[ADMIN])
+async def set_network_identity(
+    db: DbSession, _user: CurrentUser, body: SetIdentityModeIn
+) -> IdentityPreviewOut:
+    """Set the organization's 802.1X identity policy.
+
+    Refuses unless the caller's acknowledged casualty count matches what this
+    change would actually cost right now. The setting reads identically whether
+    it takes nothing offline or half the estate, and the expensive version fails
+    silently: machines keep working and then drop off as their certificates
+    expire, weeks later, looking like something else.
+
+    Returns the same shape as the preview, so the caller sees what they just
+    committed to rather than an acknowledgement that says nothing.
+    """
+    org_id = caller_org(_user)
+    query = scope_to_org(devices_in_scope(), Device.org_id, org_id)
+    p = await preview_mode(db, body.mode, query)
+
+    if body.acknowledge_affected != len(p.affected):
+        # 409, not 400: the request was well formed and the world moved, or the
+        # caller never looked. Either way the answer is to look again.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"this change would take {len(p.affected)} machine(s) off the network, "
+            f"not {body.acknowledge_affected}; fetch the preview and try again",
+        )
+
+    org = await db.get(Organization, org_id) if org_id else None
+    if org is None:
+        # Fail closed. A caller with no organization must not be able to set a
+        # policy that would land on somebody else's machines.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no organization to set a policy on")
+    org.network_identity = body.mode
+    await db.commit()
+
+    log.info(
+        "network identity policy set",
+        org_id=str(org_id), mode=body.mode, affected=len(p.affected),
+    )
+    return IdentityPreviewOut(
+        mode=p.mode, safe=p.safe,
+        affected_count=len(p.affected), unaffected_count=p.unaffected,
+        earliest_loss=p.earliest_loss, latest_loss=p.latest_loss,
+        affected=[
+            AffectedDeviceOut(
+                device_id=a.device_id, hostname=a.hostname,
+                loses_access_at=a.loses_access_at, serial=a.serial,
             )
             for a in p.affected
         ],

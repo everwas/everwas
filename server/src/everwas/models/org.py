@@ -38,3 +38,12 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)
     description: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    #: What machines in this organization should do about 802.1X: "auto",
+    #: "always", "never", or None.
+    #:
+    #: None is a meaningful state rather than a gap: nobody has decided, so the
+    #: agent's own default applies. Storing "auto" instead would look identical
+    #: and would erase the difference between choosing the cautious behaviour
+    #: and never having thought about it.
+    network_identity: Mapped[str | None] = mapped_column(String(16), default=None)

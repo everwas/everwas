@@ -159,3 +159,80 @@ async def test_the_endpoint_refuses_a_mode_it_does_not_know(client):
     # be applied, which would be a preview that reassures about the wrong thing.
     r = await client.get("/api/v1/devices/network-identity/preview", params={"mode": "nevr"})
     assert r.status_code == 422
+
+
+async def test_applying_requires_a_count_that_matches_reality(client):
+    # The whole safety mechanism. A confirmation flag is something a client
+    # sets once and forgets; a count can only come from somebody who fetched
+    # the preview.
+    await _device("would-be-stranded", serial="aaa", expires_in_days=30)
+
+    wrong = await client.post(
+        "/api/v1/devices/network-identity",
+        json={"mode": "never", "acknowledge_affected": 0},
+    )
+    assert wrong.status_code == 409
+    assert "1 machine" in wrong.text
+
+    right = await client.post(
+        "/api/v1/devices/network-identity",
+        json={"mode": "never", "acknowledge_affected": 1},
+    )
+    assert right.status_code == 200, right.text
+    assert right.json()["affected_count"] == 1
+
+
+async def test_a_stale_acknowledgement_is_refused_when_the_fleet_moved(client):
+    # Somebody previews, wanders off, and a machine enrols in the meantime.
+    # Approving the picture they remember would strand a machine nobody
+    # counted, so the count stops matching and they have to look again.
+    await _device("known-at-preview-time", serial="aaa", expires_in_days=30)
+    acknowledged = 1
+
+    await _device("arrived-since", serial="bbb", expires_in_days=30)
+
+    r = await client.post(
+        "/api/v1/devices/network-identity",
+        json={"mode": "never", "acknowledge_affected": acknowledged},
+    )
+    assert r.status_code == 409
+    assert "2 machine" in r.text
+
+
+async def test_a_harmless_change_still_has_to_be_acknowledged(client):
+    # auto takes nothing offline, so the count is zero, but it is still
+    # required: a client that can skip the field for safe modes is a client
+    # that has a code path which does not send it.
+    r = await client.post("/api/v1/devices/network-identity", json={"mode": "auto"})
+    assert r.status_code == 422
+
+    ok = await client.post(
+        "/api/v1/devices/network-identity",
+        json={"mode": "auto", "acknowledge_affected": 0},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["safe"] is True
+
+
+async def test_the_policy_reaches_the_agent_through_renewal(client):
+    # Pull, not push. Set at the top, collected by the agent on the request it
+    # already makes on a timer and at startup.
+    from everwas.models.device import AgentCredential
+    from everwas.services.enrollment import _sha256
+
+    secret = "renewal-policy-secret"
+    device_id = await _device("policy-puller")
+    async with session_scope() as db:
+        db.add(AgentCredential(device_id=device_id, secret_hash=_sha256(secret)))
+
+    await client.post(
+        "/api/v1/devices/network-identity",
+        json={"mode": "never", "acknowledge_affected": 0},
+    )
+
+    r = await client.post(
+        "/api/v1/agents/renew",
+        json={"agent_id": str(device_id), "agent_secret": secret},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["network_identity"] == "never"

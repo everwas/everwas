@@ -38,6 +38,12 @@ type renewRequest struct {
 
 type renewResponse struct {
 	AgentSecret string `json:"agent_secret"`
+	// NetworkIdentity is the organization's 802.1X policy, empty when nobody
+	// has set one. Carried here rather than on its own channel because this is
+	// the request every agent already makes on a timer and at startup, so a
+	// machine that was switched off collects it when it comes back instead of
+	// having missed a push while it was away.
+	NetworkIdentity string `json:"network_identity"`
 }
 
 // Renew exchanges the credential this agent holds for a fresh one and saves it.
@@ -97,6 +103,15 @@ func Renew(ctx context.Context, cfg *config.Config) error {
 	}
 
 	cfg.AgentSecret = out.AgentSecret
+	// Recorded alongside the credential, in the same write. The server telling
+	// us its policy and the server handing us a secret arrive together, so
+	// persisting them separately would create a window where one landed and the
+	// other did not.
+	//
+	// Written even when empty, because an organization CLEARING its policy has
+	// to reach the fleet too: keeping the last value we happened to see would
+	// leave machines running on a decision that had been withdrawn.
+	cfg.NetworkIdentityPolicy = out.NetworkIdentity
 	if err := cfg.Save(); err != nil {
 		// The server has already rotated. We hold the new secret only in memory
 		// and it is about to be lost, but the old one still works until we

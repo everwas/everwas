@@ -21,6 +21,7 @@ from everwas.services.enrollment import (
     renew_agent_secret,
     verify_agent_secret,
 )
+from everwas.services.identity_policy import organization_identity_policy
 
 router = APIRouter()
 log = structlog.get_logger()
@@ -56,6 +57,15 @@ class RenewRequest(BaseModel):
 class RenewResponse(BaseModel):
     agent_secret: str
 
+    #: The organization's 802.1X identity policy, or None if nobody has set one.
+    #:
+    #: Carried on the renewal rather than pushed on its own channel, because
+    #: this is already the thing every agent asks for on a timer and at
+    #: startup. A push would miss the machines that are switched off or
+    #: travelling, which are the ones most likely to be in an odd state to
+    #: begin with, and that is the mistake this endpoint's own history records.
+    network_identity: str | None = None
+
 
 @router.post("/renew")
 async def renew(body: RenewRequest, db: DbSession) -> RenewResponse:
@@ -77,9 +87,14 @@ async def renew(body: RenewRequest, db: DbSession) -> RenewResponse:
     except (UnknownCredentialError, RevokedCredentialError) as exc:
         log.warning("agent renewal refused", agent_id=str(body.agent_id), reason=str(exc))
         raise HTTPException(status.HTTP_403_FORBIDDEN, "renewal refused") from exc
+    # Looked up after the credential check, not before: an unauthenticated
+    # caller learns nothing about an organization's policy by guessing device
+    # ids, and a refused renewal returns before reaching here.
+    policy = await organization_identity_policy(db, body.agent_id)
+
     await db.commit()
     log.info("agent credential renewed", agent_id=str(body.agent_id))
-    return RenewResponse(agent_secret=secret)
+    return RenewResponse(agent_secret=secret, network_identity=policy)
 
 
 class CertificateRequest(BaseModel):

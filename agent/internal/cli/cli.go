@@ -166,12 +166,13 @@ func runAgent(parent context.Context) int {
 		return 1
 	}
 
-	// Parsed once at startup rather than inside the twelve-hourly loop, so a
-	// typo is reported now instead of being discovered when somebody wonders
-	// why a migration never started. An unusable value falls back to the
-	// cautious default, which is the one that cannot take over a machine by
-	// accident.
-	identityMode, err := winident.ParseMode(cfg.NetworkIdentity)
+	// Parsed at startup so a typo is reported NOW rather than being discovered
+	// when somebody wonders why a migration never started. The loop re-reads
+	// the value per cycle, because renewal rewrites it while the process runs;
+	// this parse exists for the complaint and as the fallback when a later
+	// re-read is unusable. An unusable value becomes auto, which is the one
+	// that cannot take over a machine by accident.
+	identityMode, err := winident.ParseMode(cfg.EffectiveNetworkIdentity())
 	if err != nil {
 		log.Error("network identity setting is not understood, using auto", "err", err)
 	}
@@ -273,8 +274,19 @@ func runAgent(parent context.Context) int {
 			// A failed detection never defers: Decide is given what we did
 			// find, which for a failure is nothing, and nothing never defers.
 			// The dangerous direction here is stopping, not continuing.
+			// The mode is re-read here for the same reason the secret above
+			// is. Renewal rewrites the organization's policy on this machine
+			// every twelve hours, and a mode captured at startup would mean a
+			// fleet-wide change reached each machine only when it next
+			// rebooted, which for a fleet of laptops is weeks. The value
+			// parsed at startup stays the one that gets VALIDATED, so a typo
+			// is still reported then rather than silently ignored now.
+			mode, mErr := winident.ParseMode(cfg.EffectiveNetworkIdentity())
+			if mErr != nil {
+				mode = identityMode
+			}
 			if src, dErr := winident.Detect(ctx); dErr == nil {
-				if d := winident.Decide(src, identityMode); d.Defer {
+				if d := winident.Decide(src, mode); d.Defer {
 					if !deferredOnce {
 						// Once, not every cycle. A machine that is correctly
 						// deferring is in its steady state, and saying so twice

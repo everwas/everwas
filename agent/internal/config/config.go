@@ -33,6 +33,35 @@ type Config struct {
 	// nothing about it, which is the honest representation of "no decision has
 	// been made here".
 	NetworkIdentity string `json:"network_identity,omitempty"`
+
+	// NetworkIdentityPolicy is what the SERVER last told us this
+	// organization's policy is. Written by the agent on renewal, never by an
+	// operator.
+	//
+	// Separate from NetworkIdentity above, and that separation is the escape
+	// hatch. With one field, a renewal twelve hours after somebody hand-fixed
+	// a single machine would overwrite their fix and nobody would connect the
+	// two events. With two, a local value always wins and the server's answer
+	// is remembered underneath it, so removing the override falls back to the
+	// fleet policy rather than to nothing.
+	NetworkIdentityPolicy string `json:"network_identity_policy,omitempty"`
+}
+
+// EffectiveNetworkIdentity is the mode this machine should actually use.
+//
+// A local override beats the server's policy, because the reason to set one is
+// that something is wrong with this particular machine and changing the whole
+// fleet to fix it would be the wrong move. The cost is that a fleet-wide change
+// silently skips overridden machines, which is why the posture check reports
+// the effective mode rather than only the source.
+func (c *Config) EffectiveNetworkIdentity() string {
+	if c == nil {
+		return ""
+	}
+	if c.NetworkIdentity != "" {
+		return c.NetworkIdentity
+	}
+	return c.NetworkIdentityPolicy
 }
 
 // Enrolled reports whether the config carries usable credentials.
