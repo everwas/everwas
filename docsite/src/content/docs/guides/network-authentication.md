@@ -112,20 +112,89 @@ one your RADIUS server trusts, which surfaces as an authentication
 rejection pointing at nothing.
 
 So the agent detects an existing identity provider and, by default,
-stands aside. What a machine does about 802.1X is a setting,
-`network_identity` in the agent's config file, with three values:
+stands aside. What a machine does about 802.1X is a mode with three
+values:
 
 | Value | Meaning |
 |---|---|
-| `auto` (default, and what an unset value means) | Defer to whatever is already provisioning this machine; provide an identity on a clean one |
+| `auto` (the default when nobody has decided) | Defer to whatever is already provisioning this machine; provide an identity on a clean one |
 | `always` | Provide an identity even beside AD. For migrating a fleet from AD CS to Everwas, where both are deliberately present for a while |
 | `never` | Provide none. For a site whose Windows estate is entirely AD-provisioned and would rather not have a heuristic deciding |
 
-It lives in the config file rather than an environment variable on
-purpose: a fleet-wide change can be pushed as a script through the agent
-that is already on every machine. A mistyped value is an error in the
-log, not a silent fallback to the wrong intention; the agent then runs
-`auto`, the one mode that cannot take over a machine by accident.
+### Set it once for the organization
+
+The common case is a site that runs Active Directory everywhere and
+wants one answer for the estate, not a decision repeated per host and
+forgotten on the next machine somebody images. So the policy is set on
+the organization, and there is a step before setting it, because this
+setting is safe per machine and dangerous per fleet without the words
+changing between the two. `never` on one machine is a considered
+decision; `never` across an organization lets every machine currently
+using an Everwas certificate keep working and then drop off the network
+as that certificate expires, one at a time, over the following weeks.
+Nothing errors at the moment of the change; the failure arrives a month
+later, spread out, looking like something else.
+
+First, ask what the change would cost:
+
+```text
+GET /api/v1/devices/network-identity/preview?mode=never
+```
+
+The preview changes nothing. It returns whether the mode is `safe`, how
+many machines would lose network access and how many would not, the
+window the losses fall inside (`earliest_loss` to `latest_loss`), and
+the affected machines themselves, each with the hostname, the moment it
+loses access, and the certificate serial it is holding. It reads what
+each device **reports holding** rather than what the server last issued
+it, because a machine that never installed its newest certificate loses
+access when the older one it is actually using expires, which is
+sooner. Machines holding no certificate are not counted; they have no
+access to lose.
+
+Then set it, acknowledging the cost:
+
+```text
+POST /api/v1/devices/network-identity
+{"mode": "never", "acknowledge_affected": 12}
+```
+
+The server refuses with a 409 unless `acknowledge_affected` matches
+what the change would cost *right now*. This is a count rather than a
+confirmation flag on purpose: a flag is something a client sets once
+and forgets, while a count can only come from somebody who fetched the
+preview, and it stops matching when the fleet moves underneath them,
+which forces a fresh look rather than approval of a remembered picture.
+A harmless change must be acknowledged too (`"acknowledge_affected": 0`),
+so no client grows a code path that skips the field. The response is
+the same shape as the preview: what you just committed to, not an
+acknowledgement that says nothing.
+
+### How it reaches the fleet
+
+Agents **pull** the policy on the credential renewal they already make,
+at startup and on a timer, and re-read their effective mode every cycle
+rather than capturing it at startup. Nothing is pushed, for the same
+reason nothing else here is pushed: a push reaches every machine except
+the ones in an odd state already, which are exactly the machines that
+matter. A fleet-wide change reaches machines within a renewal cycle,
+not on their next reboot.
+
+### The per-machine escape hatch
+
+`network_identity` in a machine's own config file overrides the
+organization policy, always. The reason to set one is that something is
+wrong with *this* machine, and changing the fleet to fix one machine
+would be the wrong move. The agent keeps the fleet policy it last
+pulled in a separate field underneath (`network_identity_policy`,
+maintained by the agent; do not edit it), so removing a local override
+falls back to what the organization decided rather than to the default,
+and "the org chose `auto`" stays distinct from "nobody has decided" the
+whole way down.
+
+A mistyped local value is an error in the log, not a silent fallback to
+the wrong intention; the agent then runs `auto`, the one mode that
+cannot take over a machine by accident.
 
 The rule underneath is an asymmetry: **detection may never stop us, an
 operator may**. If Everwas is already this machine's identity source,
