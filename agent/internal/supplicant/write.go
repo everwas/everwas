@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/everwas/everwas/agent/internal/secure"
 )
@@ -85,6 +86,26 @@ func renderFor(goos string, p Profile) (name, content string, err error) {
 			"%w: wireless 802.1X on Windows needs a WLAN profile, which this does not generate yet",
 			ErrInvalidProfile)
 	}
-	content, err = RenderWindows(WindowsProfile{Name: WindowsProfileName})
+	if strings.TrimSpace(p.ClientIssuerThumbprint) == "" {
+		// Refused rather than rendered unpinned. RenderWindows treats an empty
+		// list as "let Windows choose", which is a documented fallback there
+		// and a silent regression here: the pin was added, verified against
+		// real netsh, and then never reached from this function, which called
+		// RenderWindows with nothing in it — the exact verified-but-unreachable
+		// failure the comment above describes, repeated one level down. An
+		// error names the missing piece; an unpinned profile authenticates
+		// with whatever certificate Windows fancies until a decoy shows up.
+		return "", "", fmt.Errorf(
+			"%w: no issuer thumbprint to pin the client certificate with; on Windows the profile must name which certificate to present",
+			ErrInvalidProfile)
+	}
+	content, err = RenderWindows(WindowsProfile{
+		Name:                    WindowsProfileName,
+		ClientIssuerThumbprints: []string{p.ClientIssuerThumbprint},
+		// ServerCAThumbprints stays empty on purpose: that field pins which CA
+		// the RADIUS SERVER may chain to, a per-site trust decision nobody has
+		// made yet, and inventing one here would be guessing with someone
+		// else's network. Empty means the machine's trusted roots, as before.
+	})
 	return WindowsFileName, content, err
 }

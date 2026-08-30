@@ -38,6 +38,18 @@ type Profile struct {
 	// SSID selects a wireless network. Empty means WIRED 802.1X, which is a
 	// different key management mode rather than the same thing without a name.
 	SSID string
+
+	// ClientIssuerThumbprint pins WHICH certificate the Windows supplicant
+	// presents: the SHA-1 thumbprint of OUR issuing CA, read from the machine
+	// that will use the profile (netcert.Presence supplies it from the
+	// certificate store there).
+	//
+	// Required when rendering for Windows, ignored everywhere else.
+	// wpa_supplicant is pointed at the certificate by path and cannot present
+	// anything else, so there is nothing to pin; the Windows supplicant
+	// chooses from a store, and a machine with AD CS autoenrollment has a
+	// second client-auth certificate in that store to choose wrongly.
+	ClientIssuerThumbprint string
 }
 
 // Wired reports whether this profile is for wired 802.1X.

@@ -7,6 +7,9 @@ import (
 	"testing"
 )
 
+// testIssuerPin stands in for the SHA-1 thumbprint of our issuing CA.
+const testIssuerPin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4"
+
 func TestWindowsGetsTheProfileWindowsCanRead(t *testing.T) {
 	// The gap this closes. RenderWindows was written, tested and checked
 	// against real netsh, and Write never called it: there was no platform
@@ -15,6 +18,7 @@ func TestWindowsGetsTheProfileWindowsCanRead(t *testing.T) {
 	// was tested; the choice of renderer was not.
 	name, out, err := renderFor("windows", Profile{
 		Identity: "device-1", CertDir: `C:\ProgramData\Everwas\Agent\netcert`,
+		ClientIssuerThumbprint: testIssuerPin,
 	})
 	if err != nil {
 		t.Fatalf("renderFor windows: %v", err)
@@ -54,6 +58,46 @@ func TestWirelessOnWindowsIsRefusedRatherThanRenderedWrong(t *testing.T) {
 	// than the request.
 	_, _, err := renderFor("windows", Profile{
 		Identity: "device-1", CertDir: `C:\netcert`, SSID: "corp",
+		ClientIssuerThumbprint: testIssuerPin,
+	})
+	if !errors.Is(err, ErrInvalidProfile) {
+		t.Errorf("err = %v, want ErrInvalidProfile", err)
+	}
+}
+
+func TestTheWindowsProfileThatIsWrittenCarriesTheClientPin(t *testing.T) {
+	// The pin's own history is the reason this test exists. The CAHashList
+	// filter was added to RenderWindows, tested, and verified against real
+	// netsh — and renderFor kept calling RenderWindows with an empty
+	// WindowsProfile, so every profile the command actually wrote rendered
+	// with SimpleCertSelection true and Windows free to present the
+	// enterprise CA's certificate instead of ours. The renderer was tested;
+	// what reached the renderer was not. Same failure renderFor's comment
+	// describes, one level down.
+	_, out, err := renderFor("windows", Profile{
+		Identity: "device-1", CertDir: `C:\ProgramData\Everwas\Agent\netcert`,
+		ClientIssuerThumbprint: "A1 B2 C3 D4 E5 F6 07 18 29 3A 4B 5C 6D 7E 8F 90 A1 B2 C3 D4",
+	})
+	if err != nil {
+		t.Fatalf("renderFor windows: %v", err)
+	}
+	if !strings.Contains(out, "<IssuerHash>"+testIssuerPin+"</IssuerHash>") {
+		t.Errorf("the issuer pin did not reach the written profile:\n%s", out)
+	}
+	if !strings.Contains(out, "<SimpleCertSelection>false</SimpleCertSelection>") {
+		t.Error("the profile still lets Windows choose which certificate to present")
+	}
+}
+
+func TestWindowsWithNoPinIsRefusedNotRenderedUnpinned(t *testing.T) {
+	// RenderWindows accepts an empty thumbprint list as a documented
+	// fallback, and that acceptance is precisely what let the pin vanish
+	// between the command and the file without anything failing. The command
+	// path refuses instead: an error names the missing piece, an unpinned
+	// profile authenticates with whatever certificate Windows fancies and
+	// fails at the RADIUS server with nothing pointing here.
+	_, _, err := renderFor("windows", Profile{
+		Identity: "device-1", CertDir: `C:\ProgramData\Everwas\Agent\netcert`,
 	})
 	if !errors.Is(err, ErrInvalidProfile) {
 		t.Errorf("err = %v, want ErrInvalidProfile", err)

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -49,9 +50,22 @@ func CmdSupplicantProfile(args []string) int {
 	// profile would be syntactically fine and would fail the handshake with an
 	// error about the certificate, which sends whoever reads it looking at the
 	// CA rather than at the machine that never obtained one.
-	if _, err := netcert.Load(certDir); err != nil {
-		fmt.Fprintf(os.Stderr,
-			"supplicant-profile: this device holds no network certificate (%v)\n", err)
+	//
+	// "There" is not the same place on the two platforms, and Presence knows
+	// which one this build's supplicant reads: PEM files for wpa_supplicant,
+	// LocalMachine\My for Windows, where the netcert flow writes no files at
+	// all. Checking the directory here refused every Windows device that was
+	// actually holding a working certificate in the store. Presence also
+	// hands back the issuer pin the Windows profile needs, from the same
+	// store, so the two cannot drift apart.
+	issuerPin, err := netcert.Presence(certDir, cfg.AgentID)
+	if err != nil {
+		if errors.Is(err, netcert.ErrNoCertificate) {
+			fmt.Fprintf(os.Stderr,
+				"supplicant-profile: this device holds no network certificate (%v)\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "supplicant-profile: %v\n", err)
+		}
 		return 1
 	}
 
@@ -65,6 +79,10 @@ func CmdSupplicantProfile(args []string) int {
 		Identity: cfg.AgentID,
 		CertDir:  certDir,
 		SSID:     *ssid,
+		// "" on Unix, where there is nothing to pin. The Windows renderer
+		// refuses an empty one rather than falling back to letting Windows
+		// pick a certificate, so this cannot quietly go missing again.
+		ClientIssuerThumbprint: issuerPin,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "supplicant-profile: %v\n", err)
